@@ -301,6 +301,28 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_llamadas_en ON fid_llamadas(hecha_en)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_cambios_p ON fid_cambios(prospecto_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_prospectos_prox ON fid_prospectos(proxima_llamada)")
+    # La agenda del vendedor (24/9): lo que agenda y no es una reunión con un
+    # restaurante (una visita, un recordatorio). Las reuniones siguen viviendo
+    # en fid_prospectos.fecha_reunion: es lo que mueve la etapa.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_eventos (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo        TEXT NOT NULL,
+            inicio        TEXT NOT NULL,
+            fin           TEXT NOT NULL,
+            lugar         TEXT,
+            notas         TEXT,
+            prospecto_id  INTEGER REFERENCES fid_prospectos(id) ON DELETE SET NULL,
+            usuario       TEXT,
+            creado_en     TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_eventos_inicio ON fid_eventos(inicio)")
+    for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT")):
+        try:
+            conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
+        except sqlite3.OperationalError:
+            pass  # ya existe
     # El rol del socio. Solo ve estas dos pantallas; el candado real está en
     # `solo_fidelidad` (dashboard.require_login), no en el menú.
     conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
@@ -736,6 +758,167 @@ def armar_pipeline(db: str, zona: str | None = None, cat: str | None = None,
                      "potencial_usd": potencial, "probabilidad": PROBABILIDAD.get(e),
                      "items": items[:por_columna]})
     return {"columnas": cols, "precio_usd": cfg["precio_usd"]}
+
+
+# ── agenda ───────────────────────────────────────────────────────────────────
+# El calendario del vendedor. Muestra SOLO lo de Fidelidad: sus reuniones, sus
+# llamadas agendadas y sus eventos. El calendario de la agencia (Google, las
+# reuniones de Scalerics) no pasa por acá y el vendedor no puede leerlo
+# (dashboard.require_login le corta /api/calendar).
+
+REUNION_MINUTOS = 45
+LLAMADA_MINUTOS = 15
+
+
+def _validar_rango(inicio, fin=None, minutos=None):
+    a = parse_dt(inicio)
+    if not a or len(str(inicio).strip()) < 16:
+        return None, None, "falta el día y la hora"
+    try:
+        b = parse_dt(fin) if fin else (a + timedelta(minutes=int(minutos or 60)))
+    except (TypeError, ValueError):
+        return None, None, "la duración no es un número"
+    if not b or b <= a:
+        return None, None, "termina antes de empezar"
+    if b - a > timedelta(hours=12):
+        return None, None, "dura más de 12 horas"
+    return a, b, None
+
+
+def _texto(v, largo):
+    return (str(v).strip()[:largo] or None) if v is not None else None
+
+
+def crear_evento(db: str, datos: dict, usuario: str) -> tuple[int | None, str | None]:
+    titulo = _texto(datos.get("titulo"), 120)
+    if not titulo:
+        return None, "falta el título"
+    a, b, err = _validar_rango(datos.get("inicio"), datos.get("fin"), datos.get("minutos"))
+    if err:
+        return None, err
+    pid = datos.get("prospecto_id") or None
+    c = _conn(db)
+    try:
+        if pid and not c.execute("SELECT 1 FROM fid_prospectos WHERE id = ?", (pid,)).fetchone():
+            return None, "ese restaurante no existe"
+        cur = c.execute("INSERT INTO fid_eventos (titulo, inicio, fin, lugar, notas, prospecto_id, usuario, creado_en) "
+                        "VALUES (?,?,?,?,?,?,?,?)",
+                        (titulo, fmt(a), fmt(b), _texto(datos.get("lugar"), 200), _texto(datos.get("notas"), 2000),
+                         pid, usuario, fmt(ahora())))
+        c.commit()
+        return cur.lastrowid, None
+    finally:
+        c.close()
+
+
+def editar_evento(db: str, eid: int, datos: dict) -> str | None:
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_eventos WHERE id = ?", (eid,)).fetchone()
+        if not f:
+            return "el evento no existe"
+        e = dict(f)
+        titulo = _texto(datos.get("titulo", e["titulo"]), 120)
+        if not titulo:
+            return "falta el título"
+        duracion = int((parse_dt(e["fin"]) - parse_dt(e["inicio"])).total_seconds() // 60)
+        a, b, err = _validar_rango(datos.get("inicio", e["inicio"]), datos.get("fin"),
+                                   datos.get("minutos") or duracion)
+        if err:
+            return err
+        c.execute("UPDATE fid_eventos SET titulo=?, inicio=?, fin=?, lugar=?, notas=? WHERE id=?",
+                  (titulo, fmt(a), fmt(b), _texto(datos.get("lugar", e["lugar"]), 200),
+                   _texto(datos.get("notas", e["notas"]), 2000), eid))
+        c.commit()
+        return None
+    finally:
+        c.close()
+
+
+def borrar_evento(db: str, eid: int) -> bool:
+    c = _conn(db)
+    try:
+        cur = c.execute("DELETE FROM fid_eventos WHERE id = ?", (eid,))
+        c.commit()
+        return cur.rowcount > 0
+    finally:
+        c.close()
+
+
+def agendar_reunion(db: str, pid: int, inicio: str, usuario: str, minutos=None,
+                    lugar=None) -> tuple[dict | None, str | None]:
+    """Agendar o mover la reunión de un restaurante desde la agenda. Si todavía
+    no estaba en 'Reunión agendada', pasa a esa etapa (y queda en el historial)."""
+    a, b, err = _validar_rango(inicio, None, minutos or REUNION_MINUTOS)
+    if err:
+        return None, err
+    p = get_prospecto(db, pid)
+    if not p:
+        return None, "el prospecto no existe"
+    if p["estado"] == "cerrado":
+        return None, "ese restaurante ya es cliente"
+    p, err = mover_estado(db, pid, "reunion_agendada", usuario, fecha_reunion=fmt(a))
+    if err:
+        return None, err
+    c = _conn(db)
+    try:
+        c.execute("UPDATE fid_prospectos SET reunion_minutos = ?, reunion_lugar = ?, proxima_llamada = NULL "
+                  "WHERE id = ?", (int((b - a).total_seconds() // 60),
+                                   _texto(lugar, 200) or p.get("reunion_lugar"), pid))
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid), None
+
+
+def armar_agenda(db: str, desde: str, hasta: str, con_llamadas: bool = True) -> dict:
+    """Todo lo de Fidelidad entre dos fechas (inclusive), en un solo formato."""
+    d0, d1 = (desde or "")[:10], (hasta or "")[:10]
+    if not (parse_dt(d0) and parse_dt(d1)) or d1 < d0:
+        return {"items": [], "error": "rango inválido"}
+    if (parse_dt(d1) - parse_dt(d0)).days > 62:
+        d1 = (parse_dt(d0) + timedelta(days=62)).strftime("%Y-%m-%d")
+    fin_txt = d1 + " 23:59"
+    items = []
+    c = _conn(db)
+    try:
+        for f in c.execute("SELECT id, nombre, barrio, direccion, telefono, fecha_reunion, reunion_minutos, "
+                           "reunion_lugar FROM fid_prospectos WHERE archivado = 0 AND estado = 'reunion_agendada' "
+                           "AND fecha_reunion BETWEEN ? AND ?", (d0, fin_txt)):
+            a = parse_dt(f["fecha_reunion"])
+            items.append({"tipo": "reunion", "id": f"r{f['id']}", "prospecto_id": f["id"],
+                          "titulo": f"Reunión · {f['nombre']}", "inicio": fmt(a),
+                          "fin": fmt(a + timedelta(minutes=f["reunion_minutos"] or REUNION_MINUTOS)),
+                          "lugar": f["reunion_lugar"] or f["direccion"], "barrio": f["barrio"],
+                          "telefono": f["telefono"]})
+        if con_llamadas:
+            for f in c.execute("SELECT id, nombre, barrio, telefono, proxima_llamada, estado FROM fid_prospectos "
+                               "WHERE archivado = 0 AND estado NOT IN ('cerrado', 'reunion_agendada') "
+                               "AND proxima_llamada BETWEEN ? AND ?", (d0, fin_txt)):
+                a = parse_dt(f["proxima_llamada"])
+                items.append({"tipo": "llamada", "id": f"l{f['id']}", "prospecto_id": f["id"],
+                              "titulo": f"Llamar · {f['nombre']}", "inicio": fmt(a),
+                              "fin": fmt(a + timedelta(minutes=LLAMADA_MINUTOS)),
+                              "barrio": f["barrio"], "telefono": f["telefono"],
+                              "reactivar": f["estado"] == "descartado"})
+        for f in c.execute("SELECT e.*, p.nombre AS prospecto FROM fid_eventos e "
+                           "LEFT JOIN fid_prospectos p ON p.id = e.prospecto_id "
+                           "WHERE e.inicio <= ? AND e.fin >= ?", (fin_txt, d0)):
+            items.append({"tipo": "evento", "id": f"e{f['id']}", "evento_id": f["id"],
+                          "prospecto_id": f["prospecto_id"], "prospecto": f["prospecto"],
+                          "titulo": f["titulo"], "inicio": f["inicio"], "fin": f["fin"],
+                          "lugar": f["lugar"], "notas": f["notas"], "usuario": f["usuario"]})
+    finally:
+        c.close()
+    items.sort(key=lambda x: (x["inicio"], x["tipo"]))
+    # Superposiciones entre reuniones y eventos (las llamadas son cortas y se
+    # corren solas: no cuentan). Solo contra lo propio: el vendedor no ve la
+    # agenda de la agencia.
+    firmes = [x for x in items if x["tipo"] != "llamada"]
+    for x in firmes:
+        x["choca_con"] = [y["titulo"] for y in firmes
+                          if y is not x and y["inicio"] < x["fin"] and x["inicio"] < y["fin"]]
+    return {"desde": d0, "hasta": d1, "items": items}
 
 
 def listar_reuniones(db: str, cuando: datetime | None = None) -> dict:

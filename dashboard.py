@@ -265,7 +265,8 @@ ESC_JS = r"""function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/<
 # `if (a.tipo !== 'audio') return ''`. La foto llegaba al CRM y no se veia en
 # ningun lado, asi que la conversacion del panel quedaba con un hueco.
 # Outbound e Inteligencia comercial de Scalerics Fidelidad (services/fidelidad.py).
-# Crudo y entre {% raw %}: el HTML pasa por Jinja y el JS usa barras.
+# Crudo porque el JS usa barras. El {% raw %} va adentro de comentarios de JS
+# para que los tests con node, que leen el HTML antes de Jinja, no se rompan.
 FID_JS = r"""// ========== Fidelidad ==========
 // Outbound e Inteligencia comercial de Scalerics Fidelidad (23/9). La logica
 // (cuando vuelve a la cola cada prospecto, el puntaje, las metricas) vive en
@@ -336,7 +337,7 @@ function fidLoad() {
 
 function fidVista(v) {
   _fid.vista = v;
-  ['hoy','pipe','todos','reu'].forEach(k => {
+  ['hoy','pipe','todos','agenda','reu'].forEach(k => {
     document.getElementById('fid-v-'+k).style.display = k === v ? '' : 'none';
     document.getElementById('fid-t-'+k).classList.toggle('on', k === v);
   });
@@ -344,6 +345,7 @@ function fidVista(v) {
   if (v === 'pipe') fidCargarPipe();
   if (v === 'todos') fidCargarTodos(_fid.pag);
   if (v === 'reu') fidCargarReuniones();
+  if (v === 'agenda') fidCargarAgenda();
 }
 
 function fidAviso(html, tipo) {
@@ -864,6 +866,201 @@ function _fidHeat(mapa) {
   h += '<div class="fid-lg">0%<i style="background:rgba(0,136,204,.15)"></i><i style="background:rgba(0,136,204,.45)"></i><i style="background:rgba(0,136,204,.75)"></i><i style="background:rgba(0,136,204,1)"></i>70%+'
     + (buenas.length ? ' · <span>Mejor franja: <b style="color:var(--texto-fuerte)">'+dias[buenas[0].dia]+' '+buenas[0].hora+' h</b></span>' : ' · <span>Hacen falta más llamadas para ver la mejor franja.</span>') + '</div>';
   return h;
+}
+// ── Agenda ──────────────────────────────────────────────────────────────────
+// Solo lo de Fidelidad: /api/fidelidad/agenda nunca devuelve el calendario de
+// la agencia, y el vendedor no puede pedir /api/calendar.
+const FID_H0 = 8, FID_H1 = 22, FID_PX = 44;
+_fid.lunes = null;
+
+function _fidLunes(d) { d = new Date(d); d.setHours(0,0,0,0); const w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return d; }
+function _fidDia(d) { return _fidTxt(d).slice(0, 10); }
+
+function fidSemana(delta) {
+  if (!delta || !_fid.lunes) _fid.lunes = _fidLunes(new Date());
+  if (delta) _fid.lunes = new Date(_fid.lunes.getTime() + delta * 7 * 864e5);
+  fidCargarAgenda();
+}
+
+async function fidCargarAgenda() {
+  if (!_fid.lunes) _fid.lunes = _fidLunes(new Date());
+  const l = _fid.lunes, dom = new Date(l.getTime() + 6 * 864e5);
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  document.getElementById('fid-sem-label').textContent = l.getDate() + ' ' + meses[l.getMonth()] + ' – ' + dom.getDate() + ' ' + meses[dom.getMonth()] + ' ' + dom.getFullYear();
+  const q = new URLSearchParams({desde: _fidDia(l), hasta: _fidDia(dom), llamadas: document.getElementById('fid-ag-llamadas').checked ? '1' : '0'});
+  let d; try { d = await _fidJson('/api/fidelidad/agenda?' + q); }
+  catch(e) { document.getElementById('fid-cal').innerHTML = '<div class="fid-vacio">' + esc(e.message) + '</div>'; return; }
+  _fid.agenda = d.items;
+  const cont = document.getElementById('fid-cal');
+  if (window.innerWidth <= 900) { cont.className = ''; cont.innerHTML = _fidAgendaLista(l, d.items); return; }
+  cont.className = 'fid-cal';
+  cont.innerHTML = _fidAgendaSemana(l, d.items);
+}
+
+function _fidAgendaSemana(l, items) {
+  const hoy = _fidDia(new Date());
+  let h = '<div class="fid-cal-h"></div>';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(l.getTime() + i * 864e5);
+    h += '<div class="fid-cal-h' + (_fidDia(d) === hoy ? ' hoy' : '') + '">' + FID_DIAS[d.getDay()] + '<b>' + d.getDate() + '</b></div>';
+  }
+  h += '<div class="fid-cal-horas">';
+  for (let hr = FID_H0; hr < FID_H1; hr++) h += '<div class="fid-cal-hora">' + (hr > FID_H0 ? hr + ':00' : '') + '</div>';
+  h += '</div>';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(l.getTime() + i * 864e5), dia = _fidDia(d);
+    h += '<div class="fid-cal-dia' + (dia === hoy ? ' hoy' : '') + '">';
+    for (let hr = FID_H0; hr < FID_H1; hr++) h += '<div class="fid-cal-slot" onclick="fidAgendarAbrir(\'' + dia + 'T' + String(hr).padStart(2,'0') + ':00\')" title="Agendar el ' + FID_DIAS[d.getDay()] + ' ' + d.getDate() + ' a las ' + hr + ':00"></div>';
+    const delDia = items.filter(x => x.inicio.slice(0,10) === dia);
+    // Columnas para lo que se pisa: cada item va a la primera libre.
+    const cols = [];
+    delDia.forEach(x => {
+      let c = cols.findIndex(fin => fin <= x.inicio);
+      if (c < 0) { c = cols.length; cols.push(''); }
+      cols[c] = x.fin; x._col = c;
+    });
+    delDia.forEach(x => {
+      const a = _fidDt(x.inicio), b = _fidDt(x.fin);
+      const top = Math.max(0, (a.getHours() + a.getMinutes() / 60 - FID_H0) * FID_PX);
+      const alto = Math.max(x.tipo === 'llamada' ? 16 : 22, (b - a) / 36e5 * FID_PX - 2);
+      const n = Math.max(1, cols.length), w = 100 / n;
+      const hora = x.inicio.slice(11, 16);
+      h += '<div class="fid-cal-ev ' + x.tipo + ((x.choca_con || []).length ? ' choca' : '') + '" style="top:' + top + 'px;height:' + alto + 'px;left:calc(' + (x._col * w) + '% + 3px);right:auto;width:calc(' + w + '% - 6px)" onclick="event.stopPropagation();fidAgendaItem(\'' + x.id + '\')" title="' + esc(hora + ' ' + x.titulo + (x.lugar ? ' · ' + x.lugar : '') + ((x.choca_con || []).length ? ' · se pisa con ' + x.choca_con.join(', ') : '')) + '">'
+        + '<b>' + esc(x.tipo === 'llamada' ? hora + ' ' + x.titulo.replace('Llamar · ', '☎ ') : x.titulo) + '</b>'
+        + (x.tipo !== 'llamada' ? '<span>' + hora + '–' + x.fin.slice(11, 16) + (x.lugar ? ' · ' + esc(x.lugar) : '') + '</span>' : '') + '</div>';
+    });
+    if (dia === hoy) {
+      const ahora = new Date(), y = (ahora.getHours() + ahora.getMinutes() / 60 - FID_H0) * FID_PX;
+      if (y > 0 && y < (FID_H1 - FID_H0) * FID_PX) h += '<div class="fid-cal-ahora" style="top:' + y + 'px"></div>';
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
+function _fidAgendaLista(l, items) {
+  const hoy = _fidDia(new Date());
+  let h = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(l.getTime() + i * 864e5), dia = _fidDia(d);
+    const delDia = items.filter(x => x.inicio.slice(0,10) === dia);
+    h += '<div class="fid-lista-dia' + (dia === hoy ? ' hoy' : '') + '"><h4>' + FID_DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + (dia === hoy ? ' · hoy' : '') + '</h4>'
+      + (delDia.length ? delDia.map(x => '<div class="fid-lista-ev ' + x.tipo + '" onclick="fidAgendaItem(\'' + x.id + '\')"><span class="h">' + x.inicio.slice(11,16) + '</span><div><b>' + esc(x.titulo) + '</b>' + (x.lugar ? '<div class="fid-meta">' + esc(x.lugar) + '</div>' : '') + '</div></div>').join('') : '<div class="fid-meta">Libre</div>')
+      + '<button class="fid-chip" onclick="fidAgendarAbrir(\'' + dia + 'T10:00\')">+ Agendar</button></div>';
+  }
+  return h;
+}
+
+function fidAgendaItem(id) {
+  const x = (_fid.agenda || []).find(i => i.id === id);
+  if (!x) return;
+  if (x.tipo === 'evento') return fidEventoAbrir(x);
+  if (x.tipo === 'reunion') return fidAgendarAbrir(x.inicio.replace(' ', 'T'), x);
+  fidAbrir(x.prospecto_id);
+}
+
+function _fidDuraciones(sel) {
+  return [15, 30, 45, 60, 90, 120].map(m => '<option value="' + m + '"' + (m === sel ? ' selected' : '') + '>' + (m < 60 ? m + ' min' : (m / 60) + ' h') + '</option>').join('');
+}
+
+function fidAgendarAbrir(inicio, reunion) {
+  const ini = inicio || _fidTxt(new Date(Date.now() + 864e5)).slice(0, 11) + '10:00';
+  _fid.agTipo = 'reunion';
+  _fid.agReunion = reunion || null;
+  const minutos = reunion ? Math.round((_fidDt(reunion.fin) - _fidDt(reunion.inicio)) / 6e4) : 45;
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button>'
+    + '<h3>' + (reunion ? 'Mover la reunión' : 'Agendar') + '</h3>'
+    + (reunion ? '<div class="fid-meta" style="margin:-8px 0 12px">' + esc(reunion.titulo) + ' · <a href="#" onclick="fidCerrarModal();fidAbrir(' + reunion.prospecto_id + ');return false">abrir la ficha</a></div>'
+      : '<div class="fid-tipo"><button class="fid-btn on" id="fid-ag-t-reunion" onclick="fidAgTipo(\'reunion\')">Reunión con un restaurante</button><button class="fid-btn" id="fid-ag-t-evento" onclick="fidAgTipo(\'evento\')">Otra cosa</button></div>')
+    + '<div class="fid-form">'
+    + '<div class="full" id="fid-ag-rest"' + (reunion ? ' style="display:none"' : '') + '><label for="fid-ag-q">Restaurante *</label><input class="fid-in" id="fid-ag-q" placeholder="Buscá por nombre o barrio" oninput="fidAgBuscar(this.value)" autocomplete="off"><div id="fid-ag-res"></div></div>'
+    + '<div class="full" id="fid-ag-tit" style="display:none"><label for="fid-ag-titulo">Qué es *</label><input class="fid-in" id="fid-ag-titulo" placeholder="Visita, degustación, recordatorio…"></div>'
+    + '<div><label for="fid-ag-inicio">Día y hora *</label><input class="fid-in" type="datetime-local" id="fid-ag-inicio" value="' + ini + '"></div>'
+    + '<div><label for="fid-ag-min">Duración</label><select class="fid-in" id="fid-ag-min">' + _fidDuraciones(minutos) + '</select></div>'
+    + '<div class="full"><label for="fid-ag-lugar">Lugar o link</label><input class="fid-in" id="fid-ag-lugar" value="' + esc((reunion && reunion.lugar) || '') + '" placeholder="Dirección del local o link de videollamada"></div>'
+    + '<div class="full" id="fid-ag-notas-w" style="display:none"><label for="fid-ag-notas">Notas</label><textarea class="fid-in" id="fid-ag-notas"></textarea></div>'
+    + '</div><div class="fid-err" id="fid-ag-err"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="fid-btn" onclick="fidCerrarModal()">Cancelar</button><button class="fid-btn p" onclick="fidAgGuardar()">Guardar</button></div>');
+}
+
+function fidAgTipo(t) {
+  _fid.agTipo = t;
+  document.getElementById('fid-ag-t-reunion').classList.toggle('on', t === 'reunion');
+  document.getElementById('fid-ag-t-evento').classList.toggle('on', t === 'evento');
+  document.getElementById('fid-ag-rest').style.display = t === 'reunion' ? '' : 'none';
+  document.getElementById('fid-ag-tit').style.display = t === 'evento' ? '' : 'none';
+  document.getElementById('fid-ag-notas-w').style.display = t === 'evento' ? '' : 'none';
+}
+
+async function fidAgBuscar(q) {
+  _fid.agPid = null;
+  clearTimeout(_fid.agT);
+  const res = document.getElementById('fid-ag-res');
+  if (!q || q.length < 2) { res.innerHTML = ''; return; }
+  _fid.agT = setTimeout(async () => {
+    let d; try { d = await _fidJson('/api/fidelidad/prospectos?' + new URLSearchParams({q: q})); } catch(e) { return; }
+    res.innerHTML = d.items.slice(0, 6).map(p => '<div class="fid-fila" style="grid-template-columns:1fr auto;padding:7px 8px" onclick="fidAgElegir(' + p.id + ', this)" data-nombre="' + esc(p.nombre) + '" data-dir="' + esc(p.direccion || '') + '"><div><div class="fid-nm">' + esc(p.nombre) + '</div><div class="fid-meta">' + esc([p.barrio, p.tipo].filter(Boolean).join(' · ')) + '</div></div>' + _fidPillEstado(p) + '</div>').join('')
+      || '<div class="fid-meta">No encontré ese restaurante.</div>';
+  }, 200);
+}
+
+function fidAgElegir(pid, el) {
+  _fid.agPid = pid;
+  document.getElementById('fid-ag-q').value = el.dataset.nombre;
+  document.getElementById('fid-ag-res').innerHTML = '';
+  const lugar = document.getElementById('fid-ag-lugar');
+  if (!lugar.value && el.dataset.dir) lugar.value = el.dataset.dir;
+}
+
+async function fidAgGuardar() {
+  const err = document.getElementById('fid-ag-err');
+  const inicio = document.getElementById('fid-ag-inicio').value;
+  const minutos = Number(document.getElementById('fid-ag-min').value);
+  const lugar = document.getElementById('fid-ag-lugar').value;
+  try {
+    if (_fid.agReunion || _fid.agTipo === 'reunion') {
+      const pid = _fid.agReunion ? _fid.agReunion.prospecto_id : _fid.agPid;
+      if (!pid) { err.textContent = 'Elegí el restaurante de la lista.'; return; }
+      await _fidJson('/api/fidelidad/prospectos/' + pid + '/reunion', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({inicio, minutos, lugar})});
+    } else {
+      await _fidJson('/api/fidelidad/eventos', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({titulo: document.getElementById('fid-ag-titulo').value, inicio, minutos, lugar, notas: document.getElementById('fid-ag-notas').value})});
+    }
+  } catch(e) { err.textContent = e.message; return; }
+  fidCerrarModal();
+  _fid.lunes = _fidLunes(_fidDt(inicio));
+  fidCargarAgenda();
+}
+
+function fidEventoAbrir(x) {
+  const minutos = Math.round((_fidDt(x.fin) - _fidDt(x.inicio)) / 6e4);
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>' + esc(x.titulo) + '</h3>'
+    + ((x.choca_con || []).length ? '<div class="fid-aviso-choque">Se pisa con: ' + esc(x.choca_con.join(', ')) + '</div>' : '')
+    + '<div class="fid-form">'
+    + '<div class="full"><label for="fid-ev-titulo">Qué es</label><input class="fid-in" id="fid-ev-titulo" value="' + esc(x.titulo) + '"></div>'
+    + '<div><label for="fid-ev-inicio">Día y hora</label><input class="fid-in" type="datetime-local" id="fid-ev-inicio" value="' + x.inicio.replace(' ', 'T') + '"></div>'
+    + '<div><label for="fid-ev-min">Duración</label><select class="fid-in" id="fid-ev-min">' + _fidDuraciones(minutos) + (![15,30,45,60,90,120].includes(minutos) ? '<option value="' + minutos + '" selected>' + minutos + ' min</option>' : '') + '</select></div>'
+    + '<div class="full"><label for="fid-ev-lugar">Lugar o link</label><input class="fid-in" id="fid-ev-lugar" value="' + esc(x.lugar || '') + '"></div>'
+    + '<div class="full"><label for="fid-ev-notas">Notas</label><textarea class="fid-in" id="fid-ev-notas">' + esc(x.notas || '') + '</textarea></div>'
+    + '</div><div class="fid-err" id="fid-ev-err"></div>'
+    + '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:14px"><button class="fid-btn" style="color:var(--rojo-texto)" onclick="fidEventoBorrar(' + x.evento_id + ')">Borrar</button>'
+    + '<div style="display:flex;gap:8px"><button class="fid-btn" onclick="fidCerrarModal()">Cancelar</button><button class="fid-btn p" onclick="fidEventoGuardar(' + x.evento_id + ')">Guardar</button></div></div>');
+}
+
+async function fidEventoGuardar(eid) {
+  const body = {titulo: document.getElementById('fid-ev-titulo').value, inicio: document.getElementById('fid-ev-inicio').value,
+    minutos: Number(document.getElementById('fid-ev-min').value), lugar: document.getElementById('fid-ev-lugar').value,
+    notas: document.getElementById('fid-ev-notas').value};
+  try { await _fidJson('/api/fidelidad/eventos/' + eid, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
+  catch(e) { document.getElementById('fid-ev-err').textContent = e.message; return; }
+  fidCerrarModal(); fidCargarAgenda();
+}
+
+async function fidEventoBorrar(eid) {
+  if (!confirm('¿Borrar este evento de tu agenda?')) return;
+  try { await _fidJson('/api/fidelidad/eventos/' + eid, {method:'DELETE'}); }
+  catch(e) { document.getElementById('fid-ev-err').textContent = e.message; return; }
+  fidCerrarModal(); fidCargarAgenda();
 }
 // ========== FIN Fidelidad ==========
 """
@@ -2312,6 +2509,41 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .fid-nota{font-size:.76rem;color:var(--texto-tenue);margin-top:8px;line-height:1.45}
 .fid-nota b{color:var(--texto-fuerte)}
 .fid-svg text{font-family:'Inter',sans-serif}
+/* Agenda del vendedor */
+.fid-sem-label{color:var(--texto-fuerte);font-size:.88rem;margin:0 6px}
+.fid-check{display:flex;align-items:center;gap:6px;cursor:pointer}
+.fid-cal-card{padding:0;overflow-x:auto}
+.fid-cal{display:grid;grid-template-columns:48px repeat(7,minmax(110px,1fr));min-width:820px}
+.fid-cal-h{position:sticky;top:0;background:var(--superficie);border-bottom:1px solid var(--borde);padding:8px 6px;font-size:.72rem;font-weight:700;color:var(--texto-tenue);text-align:center;z-index:2}
+.fid-cal-h.hoy{color:var(--azul-claro)}
+.fid-cal-h b{display:block;font-size:1.05rem;color:var(--texto-fuerte)}
+.fid-cal-h.hoy b{color:var(--azul-claro)}
+.fid-cal-horas{position:relative}
+.fid-cal-hora{height:44px;font-size:.62rem;color:var(--texto-debil);text-align:right;padding-right:6px;box-sizing:border-box;transform:translateY(-6px)}
+.fid-cal-dia{position:relative;border-left:1px solid var(--borde)}
+.fid-cal-dia.hoy{background:var(--azul-tinte)}
+.fid-cal-slot{height:44px;border-top:1px solid var(--borde);box-sizing:border-box;cursor:pointer}
+.fid-cal-slot:hover{background:var(--hover)}
+.fid-cal-ev{position:absolute;left:3px;right:3px;border-radius:6px;padding:3px 6px;font-size:.66rem;line-height:1.25;overflow:hidden;cursor:pointer;box-sizing:border-box;border-left:3px solid;color:var(--texto-fuerte)}
+.fid-cal-ev b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fid-cal-ev span{color:var(--texto-tenue)}
+.fid-cal-ev.reunion{background:var(--azul-tinte);border-color:var(--azul)}
+.fid-cal-ev.evento{background:var(--superficie-alta);border-color:var(--violeta)}
+.fid-cal-ev.llamada{background:var(--ambar-tinte);border-color:var(--ambar);padding:1px 6px}
+.fid-cal-ev.choca{box-shadow:0 0 0 1px var(--rojo) inset}
+.fid-cal-ahora{position:absolute;left:0;right:0;height:2px;background:var(--rojo);z-index:1;pointer-events:none}
+.fid-lista-dia{padding:12px 14px;border-bottom:1px solid var(--borde)}
+.fid-lista-dia h4{margin:0 0 8px;font-size:.76rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.05em}
+.fid-lista-dia.hoy h4{color:var(--azul-claro)}
+.fid-lista-ev{display:flex;gap:10px;align-items:flex-start;padding:7px 8px;border-radius:8px;cursor:pointer;border-left:3px solid;margin-bottom:6px;font-size:.78rem}
+.fid-lista-ev.reunion{background:var(--azul-tinte);border-color:var(--azul)}
+.fid-lista-ev.evento{background:var(--superficie-alta);border-color:var(--violeta)}
+.fid-lista-ev.llamada{background:var(--ambar-tinte);border-color:var(--ambar)}
+.fid-lista-ev .h{font-weight:700;color:var(--texto-fuerte);min-width:40px}
+.fid-tipo{display:flex;gap:6px;margin-bottom:12px}
+.fid-tipo button{flex:1}
+.fid-tipo button.on{background:var(--azul);border-color:var(--azul);color:#fff}
+.fid-aviso-choque{color:var(--rojo-texto);font-size:.74rem;margin-top:6px}
 @media (max-width:1100px){
   .fid-kpis.seis{grid-template-columns:repeat(3,1fr)}
   .fid-g3{grid-template-columns:1fr 1fr}
@@ -3524,6 +3756,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <button class="fid-tab on" id="fid-t-hoy" onclick="fidVista('hoy')">Mi día<b id="fid-n-hoy"></b></button>
       <button class="fid-tab" id="fid-t-pipe" onclick="fidVista('pipe')">Pipeline</button>
       <button class="fid-tab" id="fid-t-todos" onclick="fidVista('todos')">Todos los prospectos<b id="fid-n-todos"></b></button>
+      <button class="fid-tab" id="fid-t-agenda" onclick="fidVista('agenda')">Agenda</button>
       <button class="fid-tab" id="fid-t-reu" onclick="fidVista('reu')">Reuniones<b id="fid-n-reu"></b></button>
     </div>
     <div id="fid-aviso"></div>
@@ -3556,6 +3789,19 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <select class="fid-sel fid-cat" id="fid-f-cat" onchange="fidCargarTodos(1)"></select>
       </div>
       <div class="fid-card" style="overflow-x:auto"><div id="fid-tabla"></div></div>
+    </div>
+
+    <div id="fid-v-agenda" style="display:none">
+      <div class="fid-filtros">
+        <button class="fid-btn" onclick="fidSemana(-1)" aria-label="Semana anterior">←</button>
+        <button class="fid-btn" onclick="fidSemana(0)">Hoy</button>
+        <button class="fid-btn" onclick="fidSemana(1)" aria-label="Semana siguiente">→</button>
+        <b id="fid-sem-label" class="fid-sem-label"></b>
+        <label class="fid-meta fid-check"><input type="checkbox" id="fid-ag-llamadas" checked onchange="fidCargarAgenda()"> Mostrar llamadas</label>
+        <button class="fid-btn p" style="margin-left:auto" onclick="fidAgendarAbrir()">+ Agendar</button>
+      </div>
+      <div class="fid-sub" style="margin:-4px 0 12px">Tu agenda de Fidelidad: tus reuniones, tus llamadas y lo que agendes. Tocá un horario libre para agendar.</div>
+      <div class="fid-card fid-cal-card"><div id="fid-cal"></div></div>
     </div>
 
     <div id="fid-v-reu" style="display:none">
