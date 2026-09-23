@@ -557,11 +557,34 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - El Excel de prospectos **no va al repo** (es público): se sube desde
     Outbound → «Importar Excel».
 
+- **23/9 — L (bot de WhatsApp, semana completa + lista en conversación + pitch): worktree
+  `../scalerics-crm-wa-a-main`, rama `feat/wa-semana-completa` (sale de `main`), solo
+  `wa-service/`. Pedido de K. Lista de días = lo que queda de la semana + "La semana que
+  viene"; la lista de días/horas no se pierde cuando la respuesta cae a conversación;
+  el pitch deja de contradecir la necesidad guardada. Sin merge ni deploy.
+
+- **23/9 — J (agente de marketing): panel de Contraseñas, solo admin (pedido de Juan).**
+  Rama `feat/contrasenas`, sale de `main`, [PR #98](https://github.com/Scalerics-org/scalerics-crm/pull/98).
+  Sin mergear ni deployar. Tabla nueva `credenciales` (servicio, usuario, clave
+  cifrada, código 2FA, notas). `services/credenciales.py` cifra con Fernet
+  (paquete `cryptography`, ya estaba de transitiva, ahora explícito en
+  `requirements.txt`); la clave sale de `CREDENCIALES_KEY` (secret de Fly,
+  nuevo `.bat` en el Escritorio, "Activar contraseñas.bat"). **A propósito no
+  está en ninguno de los dos `ALL_PANELS`** (ni el del dashboard ni el del
+  editor de roles): así nunca se puede asignar a un rol por accidente, ni
+  siquiera desde el editor. La visibilidad del ítem de menú (sección
+  "SEGURIDAD", al final de todo) se resuelve con el mismo mecanismo genérico
+  que ya ocultaba grupos vacíos (`_ocultarGruposVacios`), más el chequeo
+  `m.is_admin` que ya mostraba "Usuarios". El servidor bloquea igual con
+  `require_admin` en todo el blueprint, aunque alguien fuerce el fetch.
+  Sin `CREDENCIALES_KEY` puesta, el panel avisa en vez de tirar 500.
+
 - **22/9 — J (agente de marketing): PR #91 se perdió al mergear, recuperado (pedido de Juan).**
   Rama `fix/linkedin-otra-idea-recuperado`, sale de `main`,
-  [PR #96](https://github.com/Scalerics-org/scalerics-crm/pull/96). **Importante para
-  quien lea esto:** GitHub marca el PR #91 ("LinkedIn: otra idea y comentarle una
-  mejora a Claude") como *Merged* el 22/9 18:57, pero su commit
+  [PR #96](https://github.com/Scalerics-org/scalerics-crm/pull/96). **Mergeado** (23/9,
+  verificado con `git merge-base --is-ancestor` — esta vez sí llegó a `main`).
+  **Importante para quien lea esto:** GitHub marca el PR #91 ("LinkedIn: otra idea
+  y comentarle una mejora a Claude") como *Merged* el 22/9 18:57, pero su commit
   (`a64b5c8`) **no es ancestro de `main`** — no llegó a estar en producción a
   pesar de la marca verde. No tengo explicación de por qué; lo verifiqué con
   `git merge-base --is-ancestor` y con el propio código corriendo (Juan no
