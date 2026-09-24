@@ -146,10 +146,20 @@ def _pedir(cfg: dict, metodo: str, ruta: str, cuerpo: dict | None = None) -> dic
     return datos
 
 
+# Plexo exige un email válido para crear el cliente (24/9: "Customer profile
+# validation failed" con un fijo sin email). Si el cliente no tiene, va el
+# nuestro: los avisos de Plexo le llegan a Juan.
+EMAIL_POR_DEFECTO = "contacto@scalerics.com"
+_EMAIL_OK = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 def crear_cliente(cfg: dict, referencia: str, email: str | None, nombre: str) -> str:
     partes = (nombre or "Cliente").strip().split(" ", 1)
+    email = (email or "").strip()
+    if not _EMAIL_OK.match(email):
+        email = EMAIL_POR_DEFECTO
     datos = _pedir(cfg, "POST", "/v1/customers", {
-        "referenceId": referencia, "email": email or None,
+        "referenceId": referencia, "email": email,
         "firstName": partes[0][:60], "lastName": (partes[1] if len(partes) > 1 else partes[0])[:60]})
     cid = datos.get("id") if isinstance(datos, dict) else None
     if not cid:

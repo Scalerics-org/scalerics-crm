@@ -34,6 +34,10 @@ class PlexoFalso:
     def __call__(self, cfg, metodo, ruta, cuerpo=None):
         self.llamadas.append((metodo, ruta, cuerpo))
         if metodo == "POST" and ruta == "/v1/customers":
+            # Como el real: sin email válido, nombre o apellido, lo rechaza.
+            if not (cuerpo.get("email") and "@" in cuerpo["email"] and cuerpo.get("firstName")
+                    and cuerpo.get("lastName") and cuerpo.get("referenceId")):
+                return 400, {"message": "Customer profile validation failed."}
             return 201, {"id": "cus_1"}
         if metodo == "POST" and ruta == "/v1/sessions":
             return 201, {"expiresAt": "2026-09-24T19:00:00Z",
@@ -144,6 +148,21 @@ def test_pedir_tarjeta_da_un_link_del_crm_que_no_vence(db, falso):
     r2 = plexo.pedir_tarjeta(db, fijo, {"name": "Diego Hinze"}, "https://crm.test")
     assert r2["link"] == r["link"]
     assert sum(1 for c in falso.llamadas if c[1] == "/v1/customers") == 1
+
+
+@pytest.mark.parametrize("email", [None, "", "sin-arroba", "diego@"])
+def test_sin_email_valido_va_el_de_scalerics(db, falso, email):
+    fijo = _fijo(db)
+    plexo.pedir_tarjeta(db, fijo, {"name": "Diego"}, "https://crm.test", email=email)
+    enviado = [c for c in falso.llamadas if c[1] == "/v1/customers"][-1][2]
+    assert enviado["email"] == plexo.EMAIL_POR_DEFECTO
+    assert enviado["firstName"] and enviado["lastName"]
+
+
+def test_con_email_del_cliente_va_ese(db, falso):
+    fijo = _fijo(db)
+    plexo.pedir_tarjeta(db, fijo, {"name": "Diego Hinze"}, "https://crm.test", email=" diego@ejemplo.uy ")
+    assert [c for c in falso.llamadas if c[1] == "/v1/customers"][-1][2]["email"] == "diego@ejemplo.uy"
 
 
 def test_un_codigo_inventado_no_abre_nada(db, falso):
