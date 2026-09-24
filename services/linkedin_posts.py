@@ -213,13 +213,14 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
         return None
 
     # Con URL se muestra lo que se hizo; sin URL, una frase en la tarjeta de
-    # marca. Un post sin imagen rinde bastante menos en LinkedIn.
+    # marca. Todo post lleva imagen: uno sin foto rinde bastante menos en
+    # LinkedIn, asi que ya no hay salida sin tarjeta (Juan, pedido 22/9).
     if imagen_url:
         imagen_tipo = "screenshot"
         imagen_spec = json.dumps({"url": imagen_url})
     else:
-        frase = (frase or "").strip() or _primera_frase(texto)
-        imagen_tipo = "tarjeta" if frase else "ninguna"
+        frase = recortar_frase(frase) if (frase or "").strip() else primera_frase(texto)
+        imagen_tipo = "tarjeta"
         imagen_spec = json.dumps({"frase": frase})
 
     token = secrets.token_urlsafe(16)
@@ -240,15 +241,28 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
     }
 
 
-def _primera_frase(texto: str) -> str:
-    """La primera oracion, si entra en la tarjeta. Si no entra, cadena vacia.
+def recortar_frase(frase: str) -> str:
+    """Recorta una frase al limite de la tarjeta, con puntos suspensivos.
 
-    Respaldo para el post manual sin frase propia: mejor la primera linea del
-    post que una tarjeta vacia. Recortar a la mitad una oracion queda peor que
-    no poner tarjeta, asi que si no entra entera no se usa.
+    Antes una frase mas larga que MAX_FRASE se descartaba entera y el post
+    quedaba sin imagen. Ahora toda tarjeta lleva texto: se corta en el ultimo
+    espacio antes del limite para no partir una palabra al medio.
+    """
+    frase = (frase or "").strip()
+    if len(frase) <= MAX_FRASE:
+        return frase
+    recorte = frase[:MAX_FRASE - 1].rsplit(" ", 1)[0].rstrip(",.;:")
+    return (recorte or frase[:MAX_FRASE - 1]) + "…"
+
+
+def primera_frase(texto: str) -> str:
+    """La primera oracion del post, recortada si hace falta para la tarjeta.
+
+    Respaldo para el post manual sin frase propia: toda tarjeta lleva texto,
+    aunque la primera oracion sea mas larga que el limite.
     """
     primera = texto.strip().splitlines()[0].split(". ")[0].strip().rstrip(".")
-    return primera if 0 < len(primera) <= MAX_FRASE else ""
+    return recortar_frase(primera) if primera else ""
 
 
 def _borrador_educativo(db_path: str, job_id, lote: str, fila: dict):
@@ -304,6 +318,19 @@ def linkedin_job_handler(payload: dict) -> dict:
     ahora = datetime.fromisoformat(payload["ahora"])
     manual = (payload.get("contexto_manual") or "").strip()
 
+    # "Otra idea" y las correcciones de Claude arman contenido nuevo en el
+    # panel sin tarjeta (no hay Chromium en Fly para dibujarla ahi mismo). Se
+    # miran ANTES de armar los borradores de esta corrida: si no, los que
+    # esta misma llamada esta a punto de crear (recien insertados, todavia
+    # sin imagen) se verian a si mismos como pendientes de re-renderizar y
+    # quedarian duplicados entre "borradores" y "rerender".
+    rerender = []
+    try:
+        from services.linkedin_borradores import necesita_render
+        rerender = necesita_render(db_path)
+    except Exception as e:
+        logger.error(f"LinkedIn: no se pudo revisar que borradores faltan de imagen ({type(e).__name__}: {e})")
+
     borradores = []
     aviso_cooldown = False
 
@@ -327,5 +354,13 @@ def linkedin_job_handler(payload: dict) -> dict:
     if not borradores:
         destino = os.environ.get("LINKEDIN_MAIL_TO", "scalerics@gmail.com")
         send_linkedin_failure(destino, "no se pudo armar ningun borrador")
+    else:
+        # Ademas del mail, que no cambia, quedan en el panel LinkedIn. Si
+        # guardarlos falla, el job sigue: el mail vale mas que la pantalla.
+        try:
+            from services.linkedin_borradores import guardar_borradores
+            guardar_borradores(db_path, borradores)
+        except Exception as e:
+            logger.error(f"LinkedIn: no se pudieron guardar los borradores en el panel ({type(e).__name__}: {e})")
 
-    return {"lote": lote, "borradores": borradores, "aviso_cooldown": aviso_cooldown}
+    return {"lote": lote, "borradores": borradores, "rerender": rerender, "aviso_cooldown": aviso_cooldown}

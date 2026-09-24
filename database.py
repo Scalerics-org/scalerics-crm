@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import sqlite3
 import logging
@@ -57,7 +59,10 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
         return 0
     tocadas = 0
     try:
-        filas = conn.execute("SELECT id, panel_access FROM roles").fetchall()
+        # El vendedor de Scalerics Fidelidad es de afuera: solo tiene sus dos
+        # pantallas y ningun reparto le suma otra (services/fidelidad.py).
+        filas = conn.execute("SELECT id, panel_access FROM roles "
+                             "WHERE name != 'Vendedor Fidelidad'").fetchall()
     except sqlite3.Error as e:
         logger.warning(f"panel_access migration: no se pudo leer roles ({e})")
         return 0
@@ -179,6 +184,59 @@ def _migrar_estados_preclientes(conn: sqlite3.Connection) -> None:
         except sqlite3.Error as e:
             logger.error("No se pudo migrar %s -> %s: %s", viejo, nuevo, e)
     conn.commit()
+
+
+# Inteligencia financiera. El CHECK de `regla` acepta cualquier "R" seguida de
+# un numero, asi una regla nueva no obliga a reconstruir la tabla otra vez.
+_SQL_IF_RECOMENDACIONES = """
+    CREATE TABLE IF NOT EXISTS {tabla} (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        calculo_id      INTEGER REFERENCES if_calculos(id),
+        regla           TEXT NOT NULL CHECK (regla GLOB 'R[0-9]*'),
+        clave           TEXT NOT NULL DEFAULT '',
+        titulo          TEXT NOT NULL,
+        detalle         TEXT NOT NULL,
+        calculo         TEXT NOT NULL,
+        impacto_mensual REAL,
+        unica_vez       INTEGER NOT NULL DEFAULT 0,
+        confianza       TEXT NOT NULL CHECK (confianza IN ('alta', 'media', 'baja')),
+        tipo            TEXT NOT NULL CHECK (tipo IN ('ingreso', 'recorte', 'alerta')),
+        advertencia     TEXT NOT NULL DEFAULT '',
+        acciones        TEXT NOT NULL DEFAULT '[]',
+        metrica         TEXT NOT NULL DEFAULT '{{}}',
+        generada_en     TEXT NOT NULL,
+        estado          TEXT NOT NULL DEFAULT 'nueva'
+                        CHECK (estado IN ('nueva', 'tomada', 'descartada')),
+        descartada_en   TEXT
+    )
+"""
+
+
+def _ampliar_reglas_if(conn: sqlite3.Connection) -> bool:
+    """Reconstruye `if_recomendaciones` si todavia tiene el CHECK de R1 a R7.
+
+    Se copia a una tabla nueva y despues se renombra: renombrar la vieja haria
+    que SQLite reescriba la referencia de `if_recomendaciones_tomadas`, que
+    quedaria apuntando a una tabla borrada. Los ids se copian tal cual, porque
+    los seguimientos apuntan a ellos. Idempotente: con el CHECK nuevo no hace
+    nada. Devuelve True si reconstruyo.
+    """
+    fila = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'if_recomendaciones'").fetchone()
+    if not fila or "GLOB" in (fila[0] or ""):
+        return False
+    conn.execute("DROP TABLE IF EXISTS if_recomendaciones_nueva")
+    conn.execute(_SQL_IF_RECOMENDACIONES.format(tabla="if_recomendaciones_nueva"))
+    viejas = [c[1] for c in conn.execute("PRAGMA table_info(if_recomendaciones)")]
+    nuevas = {c[1] for c in conn.execute("PRAGMA table_info(if_recomendaciones_nueva)")}
+    columnas = ", ".join(c for c in viejas if c in nuevas)
+    conn.execute(f"INSERT INTO if_recomendaciones_nueva ({columnas}) "
+                 f"SELECT {columnas} FROM if_recomendaciones")
+    conn.execute("DROP TABLE if_recomendaciones")
+    conn.execute("ALTER TABLE if_recomendaciones_nueva RENAME TO if_recomendaciones")
+    conn.commit()
+    logger.info("inteligencia financiera: if_recomendaciones acepta reglas nuevas")
+    return True
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -599,6 +657,81 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
         _add_column(conn, "businesses", "score", "INTEGER")
         _add_column(conn, "meetings", "recall_bot_id", "TEXT")
+        # Invitados y repeticion (pedido de Juan, 15/9). JSON en texto; la
+        # logica vive en services/recurrencia.py. `description` ya llegaba en
+        # el POST y se tiraba.
+        _add_column(conn, "meetings", "description", "TEXT")
+        _add_column(conn, "meetings", "invitados", "TEXT")
+        _add_column(conn, "meetings", "repeticion", "TEXT")
+        _add_column(conn, "meetings", "excepciones", "TEXT")
+        # Reuniones de "otro asunto": sin cliente. Van en su propia tabla y no
+        # en `meetings` porque ahi client_id es NOT NULL, y porque asi ninguna
+        # metrica de ventas, presupuesto, plantilla ni fusion de leads las ve.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reuniones_asunto (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                title        TEXT NOT NULL,
+                description  TEXT,
+                start_at     TIMESTAMP NOT NULL,
+                end_at       TIMESTAMP,
+                meet_link    TEXT,
+                invitados    TEXT,
+                repeticion   TEXT,
+                excepciones  TEXT,
+                status       TEXT DEFAULT 'scheduled',
+                created_by   TEXT,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # El evento que el CRM crea en Google Calendar (services/gcal_eventos.py).
+        # `google_sync`: 'ok' o 'error' (con `google_error` en palabras para la
+        # pantalla); NULL si no se intento (creacion apagada o sin credenciales).
+        # Va aparte de `calendar_event_id`, que es de las reuniones que se
+        # importan DESDE Google o llegan de Calendly.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "google_event_id", "TEXT")
+            _add_column(conn, _tabla, "google_sync", "TEXT")
+            _add_column(conn, _tabla, "google_error", "TEXT")
+            # El link de Google Meet que devuelve Google al crear el evento.
+            _add_column(conn, _tabla, "google_meet", "TEXT")
+        # De donde vino la reunion: 'crm' (creada a mano en el CRM), 'calendly'
+        # (webhook, sync de Calendly o evento de Calendly importado de Google) o
+        # 'google' (importada). SOLO las 'crm' van a Google: Calendly ya crea su
+        # evento y manda su invitacion, y tocarlo le mandaria al cliente otra.
+        # Las filas de antes quedan en NULL y se deducen de calendar_event_id.
+        _add_column(conn, "meetings", "origen", "TEXT")
+        # De que es el proyecto (pedido de Juan, 16/9). La clave es una de
+        # services/tipos_proyecto.CLAVES; `tipo_otro` es el texto libre que se
+        # escribe cuando la clave es 'otro'. Va en las dos tablas porque el
+        # modal de "Nueva reunion" es el mismo para cliente y para otro asunto.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "tipo_proyecto", "TEXT")
+            _add_column(conn, _tabla, "tipo_otro", "TEXT")
+        # Si la reunion es presencial (pedido de Juan, 22/9): en ese caso no se
+        # le agrega Google Meet al crearla, porque no hace falta un link de
+        # videollamada. Va en las dos tablas por el mismo motivo que
+        # tipo_proyecto: un solo modal de "Nueva reunion" para las dos.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "presencial", "INTEGER NOT NULL DEFAULT 0")
+
+        # Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9): mail,
+        # Instagram, Plexo, lo que sea. Solo para admin (Ruling R20, igual que
+        # Finanzas): arranca sin nadie asignado, `require_admin` en la ruta.
+        # `clave_cifrada` nunca se guarda en texto plano: ver
+        # services/credenciales.py.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS credenciales (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                servicio        TEXT NOT NULL,
+                usuario         TEXT,
+                clave_cifrada   TEXT NOT NULL,
+                codigo_2fa      TEXT,
+                notas           TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en  TEXT
+            )
+        """)
+        conn.commit()
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -902,6 +1035,13 @@ def init_db(db_path: str) -> None:
         # se cobro. La pestania arranca vacia y se llena con lo que se cargue.
         _add_column(conn, "finanzas_movimientos", "facturado", "INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "finanzas_movimientos", "iva_usd", "REAL NOT NULL DEFAULT 0")
+        # Si el monto que se cargó YA incluía el IVA (pedido de Juan, 22/9: "a
+        # veces me dan los precios con IVA"). `monto_usd` e `iva_usd` quedan
+        # iguales en los dos casos (siempre neto + su 22%), así que esto no se
+        # puede reconstruir a partir de ellos: hace falta guardarlo aparte
+        # para que editar el movimiento no vuelva a sumar el IVA encima de un
+        # monto que ya lo tenía adentro.
+        _add_column(conn, "finanzas_movimientos", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
 
         # Lo que falta cobrar. El caso real es el 50% final de un desarrollo:
         # se cobra la mitad al empezar y el resto queda pendiente con una fecha
@@ -946,6 +1086,28 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # Datos para el Balance General (pedido de Juan, 15/9): lo que
+        # Finanzas no puede saber solo. `clase` es activo | pasivo | capital |
+        # caja_inicial; `rubro` sale de BALANCE_CLASES en services/finanzas.py.
+        # Un dato existe desde `desde` y hasta el día ANTERIOR a `hasta` (el
+        # día que se vendió o se pagó ya no está). `en_blanco` decide si entra
+        # en el balance contable; el interno los cuenta todos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_balance_datos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                clase           TEXT NOT NULL,
+                rubro           TEXT NOT NULL,
+                nombre          TEXT NOT NULL,
+                monto_usd       REAL NOT NULL,
+                desde           TEXT NOT NULL,
+                hasta           TEXT,
+                en_blanco       INTEGER NOT NULL DEFAULT 1,
+                notas           TEXT,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -976,6 +1138,53 @@ def init_db(db_path: str) -> None:
         # se descontó.
         _add_column(conn, "finanzas_recurrentes", "facturado",
                     "INTEGER NOT NULL DEFAULT 0")
+        # Cómo paga el cliente un ingreso fijo (pedido de Juan, 24/9). NULL es
+        # transferencia o efectivo, como hasta ahora. Con una tarjeta
+        # (services/cobro_tarjeta.TARJETAS), cada mes el fijo genera el cobro
+        # entero: ingreso, comisión de la tarjeta, Plexo y el depósito que
+        # tiene que llegar.
+        _add_column(conn, "finanzas_recurrentes", "tarjeta", "TEXT")
+
+        # ── cobros con tarjeta (Plexo) ────────────────────────────────────────
+        # Ajustes de Finanzas que se editan desde la pantalla: clave -> JSON.
+        # Hoy la única clave es 'cobro_tarjeta' (comisiones de cada tarjeta,
+        # días de acreditación, costos de Plexo).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_ajustes (
+                clave      TEXT PRIMARY KEY,
+                valor      TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Un cobro con tarjeta son TRES movimientos (el ingreso con su IVA
+        # ventas, la comisión de la tarjeta y lo que cobra Plexo, los dos con
+        # IVA compras) más un dato que ningún movimiento tiene: cuánto y cuándo
+        # tiene que depositar la tarjeta. Esta fila los ata y guarda eso, para
+        # la lista de "depósitos por llegar". Los montos quedan congelados como
+        # se calcularon ese día: cambiar una comisión en Ajustes no reescribe
+        # cobros ya hechos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_cobros_tarjeta (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha                 TEXT NOT NULL,
+                client_id             INTEGER REFERENCES businesses(id),
+                concepto              TEXT NOT NULL,
+                tarjeta               TEXT NOT NULL,
+                comision_pct          REAL NOT NULL,
+                moneda                TEXT NOT NULL,
+                tipo_cambio           REAL,
+                precio                REAL NOT NULL,
+                total                 REAL NOT NULL,
+                deposito              REAL NOT NULL,
+                acreditacion_esperada TEXT NOT NULL,
+                acreditado_fecha      TEXT,
+                ingreso_id            INTEGER REFERENCES finanzas_movimientos(id),
+                comision_id           INTEGER REFERENCES finanzas_movimientos(id),
+                plexo_id              INTEGER REFERENCES finanzas_movimientos(id),
+                created_by_name       TEXT,
+                created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles
@@ -1109,7 +1318,7 @@ def init_db(db_path: str) -> None:
 
         # ── flujos ────────────────────────────────────────────────────────────
         # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
-        # nunca nombres de personas. Se muestra al final de Ausencias. Los
+        # nunca nombres de personas. Se muestra en el panel Flujos. Los
         # pasos viven acá y no en el código: se agregan, editan y reordenan
         # desde la pantalla. `numero` se renumera 1..n en cada cambio.
         # `flujo_paso_cobros` deja que un paso tenga más de un momento de
@@ -1153,6 +1362,9 @@ def init_db(db_path: str) -> None:
                      "ON flujo_paso_cobros(paso_id)")
         conn.commit()
         _sembrar_flujos(conn)
+        # Flujos pasó de bloque al final de Ausencias a panel propio de Recursos
+        # Humanos. Quien lo leía (Organigrama o Ausencias) lo sigue viendo.
+        _grant_panel_to_existing_roles(conn, "flujos", si_tiene=("equipo", "ausencias"))
 
         # ── Daily Programador ─────────────────────────────────────────────────
         # Actividades del día y recordatorios que se repiten (pedido de Juan,
@@ -1179,6 +1391,15 @@ def init_db(db_path: str) -> None:
             conn.execute("ALTER TABLE equipo_personas "
                          "ADD COLUMN admin_daily INTEGER NOT NULL DEFAULT 0")
             _sumar_personas_daily(conn)
+        # Rol de cada persona en Flujos (pedido de Juan, 16/9): el organigrama
+        # la pinta con el color de ese rol. NULL es "no participa de Flujos".
+        # La lista cerrada de roles vive en services/flujos.ROLES. Se precarga
+        # UNA sola vez, en el arranque que crea la columna: lo que se cambie
+        # después desde la pantalla no se pisa en los deploys.
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "rol_flujo" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas ADD COLUMN rol_flujo TEXT")
+            _precargar_rol_flujo(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_actividades (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1237,6 +1458,45 @@ def init_db(db_path: str) -> None:
         conn.commit()
         # Como Equipo: los roles que tienen Tareas reciben el Daily.
         _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
+
+        # ── horarios de trabajo ───────────────────────────────────────────────
+        # Recursos Humanos > Horarios (pedido de Juan, 15/9). Un tramo por fila:
+        # persona, día de la semana (0 = lunes ... 6 = domingo) y hora desde /
+        # hasta en 'HH:MM'. Un día puede tener más de un tramo (9-12 y 14-18);
+        # un día sin filas es "no trabaja". Sin dinero, igual que Equipo.
+        #
+        # `horarios_precarga_hecha` recuerda a quién ya se le cargó el horario
+        # inicial: sin eso, alguien que se edita a "no trabaja" toda la semana
+        # quedaba sin tramos y el próximo arranque se los volvía a poner.
+        horarios_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='horarios_tramos'"
+        ).fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS horarios_tramos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id  INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                dia         INTEGER NOT NULL CHECK (dia BETWEEN 0 AND 6),
+                desde       TEXT NOT NULL,
+                hasta       TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_horarios_tramos_persona "
+                     "ON horarios_tramos(persona_id, dia, desde)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS horarios_precarga_hecha (
+                nombre      TEXT PRIMARY KEY,
+                persona_id  INTEGER NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        _sembrar_horarios(conn)
+        # Quien ve Organigrama o Ausencias ve Horarios. UNA sola vez, en el
+        # arranque que crea la tabla (como Seguimiento de leads): si después
+        # Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
+        if horarios_nueva:
+            _grant_panel_to_existing_roles(conn, "horarios", si_tiene=("equipo", "ausencias"))
 
         # ── seguimiento de leads ──────────────────────────────────────────────
         # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:
@@ -1392,6 +1652,260 @@ def init_db(db_path: str) -> None:
                      "ON lead_attachments(demo_id)")
         _migrar_estados_preclientes(conn)
 
+        # ── inteligencia financiera ───────────────────────────────────────────
+        # Los tres datos que la pantalla necesita y el sistema no guardaba, y
+        # las recomendaciones que calcula una vez por dia. Todo del lado del
+        # CRM: Proceso de venta y Proyectos son espejos de Notion y a Notion no
+        # se le escribe nada de esto. Tampoco se toca ninguna tabla de Finanzas.
+        #
+        # 1. Motivo de perdida. Una fila por cosa perdida (ficha de Proceso de
+        #    venta en Perdido / Presupuesto Rechazado, demo "no cerro" de la
+        #    planilla, lead en `rechazo`). `motivo` NULL es "se perdio y nadie
+        #    dijo por que": asi el aviso de faltantes es una consulta.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS perdidas_motivo (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                entidad     TEXT NOT NULL
+                            CHECK (entidad IN ('notion_client', 'demo', 'lead')),
+                entidad_id  INTEGER NOT NULL,
+                business_id INTEGER,
+                motivo      TEXT CHECK (motivo IS NULL OR motivo IN
+                            ('precio', 'se_enfrio', 'eligio_otro',
+                             'no_era_momento', 'no_calificaba')),
+                perdida_en  TEXT,
+                motivo_en   TEXT,
+                cargado_por TEXT,
+                UNIQUE (entidad, entidad_id)
+            )
+        """)
+        # 2. Esfuerzo por proyecto: una estimacion cargada al cerrarlo, no un
+        #    registro de horas. Se guarda lo que se escribio (valor y unidad) y
+        #    las horas que resultan, para que un cambio en las horas por dia del
+        #    equipo no reescriba lo ya cargado.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS proyectos_esfuerzo (
+                project_id     INTEGER PRIMARY KEY,
+                horas          REAL NOT NULL CHECK (horas > 0),
+                valor_cargado  REAL NOT NULL,
+                unidad_cargada TEXT NOT NULL CHECK (unidad_cargada IN ('horas', 'dias')),
+                cargado_por    TEXT,
+                updated_at     TEXT
+            )
+        """)
+        # 3. Origen de la venta elegido a mano, cuando el lead no lo dice
+        #    (`businesses.source` vacio o 'manual') o la venta no llega a un lead
+        #    (ficha aceptada sin conectar). Gana sobre lo que diga `source`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ventas_origen_manual (
+                entidad     TEXT NOT NULL CHECK (entidad IN ('business', 'notion_client')),
+                entidad_id  INTEGER NOT NULL,
+                canal       TEXT NOT NULL
+                            CHECK (canal IN ('meta_ads', 'outbound', 'referido', 'otro')),
+                cargado_por TEXT,
+                updated_at  TEXT,
+                PRIMARY KEY (entidad, entidad_id)
+            )
+        """)
+        # A que canal pertenece un gasto fijo de Finanzas (R5). Tabla aparte
+        # para no agregarle columnas a `finanzas_recurrentes`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fijos_canal (
+                recurrente_id INTEGER PRIMARY KEY,
+                canal         TEXT NOT NULL
+                              CHECK (canal IN ('meta_ads', 'outbound', 'referido', 'otro')),
+                updated_at    TEXT
+            )
+        """)
+        # Supuestos que el sistema no tiene y Juan carga desde la pantalla
+        # (hoy, la comision de cobro del mantenimiento). Sin fila no hay valor:
+        # la regla que lo necesita muestra el aviso de dato faltante.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_supuestos (
+                clave      TEXT PRIMARY KEY,
+                valor      REAL NOT NULL,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
+        # Cada recalculo diario deja un renglon con los avisos y el encabezado
+        # que se mostraron, y sus recomendaciones cuelgan de el. Asi la
+        # pantalla muestra una foto coherente del dia y no recalcula al cargar.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_calculos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                generada_en TEXT NOT NULL,
+                avisos      TEXT NOT NULL DEFAULT '[]',
+                encabezado  TEXT NOT NULL DEFAULT '{}',
+                contexto    TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+        conn.execute(_SQL_IF_RECOMENDACIONES.format(tabla="if_recomendaciones"))
+        # La primera version aceptaba solo R1 a R7 en el CHECK. Las reglas
+        # nuevas (caja corta, concentracion, demos que no se hacen) no entran,
+        # y en produccion la tabla ya existe: se reconstruye UNA vez,
+        # conservando las filas y sus ids.
+        _ampliar_reglas_if(conn)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_if_recomendaciones_calculo "
+                     "ON if_recomendaciones(calculo_id, estado)")
+        # Los supuestos de cada sugerencia (la comision del Simulador, las
+        # horas estimadas por proyecto), en letra chica en la tarjeta.
+        _add_column(conn, "if_recomendaciones", "supuestos", "TEXT NOT NULL DEFAULT '[]'")
+        # El diagnostico del mes y el resumen en castellano se guardan con el
+        # recalculo diario, no en cada carga de la pantalla.
+        _add_column(conn, "if_calculos", "diagnostico", "TEXT NOT NULL DEFAULT '[]'")
+        _add_column(conn, "if_calculos", "resumen", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_calculos", "resumen_origen", "TEXT NOT NULL DEFAULT ''")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_recomendaciones_tomadas (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                recomendacion_id INTEGER NOT NULL UNIQUE REFERENCES if_recomendaciones(id),
+                tomada_en        TEXT NOT NULL,
+                tomada_por       TEXT,
+                impacto_esperado REAL,
+                impacto_real     REAL,
+                resultado        TEXT NOT NULL DEFAULT 'midiendo'
+                                 CHECK (resultado IN ('funciono', 'no_funciono', 'midiendo')),
+                evaluada_en      TEXT,
+                detalle_real     TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        # Que palanca es cada alternativa (mas pauta, mejorar conversion, canal
+        # nuevo, recorte de costo, pausa de trabajo). Es el color de la tarjeta
+        # en la pantalla y no es decorativo: dice de que tipo es la decision.
+        # Las filas viejas quedan en '' y la pantalla las pinta como neutras.
+        _add_column(conn, "if_recomendaciones", "palanca", "TEXT NOT NULL DEFAULT ''")
+        # La linea de riesgo/contexto que va debajo del titulo en la tarjeta, y
+        # la marca de las tarjetas que tienen que aparecer aunque no lleguen al
+        # umbral de USD 100 (las que explican una palanca sin datos). `siempre`
+        # se guarda porque la pantalla vuelve a ordenar lo que lee de la tabla:
+        # sin la marca, esas tarjetas se filtraban al releerlas.
+        _add_column(conn, "if_recomendaciones", "nota", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_recomendaciones", "siempre", "INTEGER NOT NULL DEFAULT 0")
+        # Que pasa si se elige esa alternativa, en castellano, y cuanto duele
+        # (0 nada, 1 algo, 2 mucho) para poder recomendar la combinacion que
+        # llega al objetivo rompiendo lo menos posible.
+        _add_column(conn, "if_recomendaciones", "consecuencia", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_recomendaciones", "dano", "INTEGER NOT NULL DEFAULT 1")
+
+        # El objetivo real del mes, en tres partes que Juan edita a mano
+        # (pedido del 15/9, spec en PDF). `fijos_usd` en NULL significa "usa los
+        # fijos confirmados de Finanzas": guardar el numero copiado congelaria
+        # el objetivo el dia que cambie un fijo. Una fila por mes, asi el mes
+        # que viene se vuelve a partir de los fijos de ese mes.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_objetivo (
+                periodo     TEXT PRIMARY KEY,
+                fijos_usd   REAL CHECK (fijos_usd IS NULL OR fijos_usd >= 0),
+                aportes_usd REAL NOT NULL DEFAULT 0 CHECK (aportes_usd >= 0),
+                sueldo_usd  REAL NOT NULL DEFAULT 0 CHECK (sueldo_usd >= 0),
+                updated_by  TEXT,
+                updated_at  TEXT
+            )
+        """)
+        # El costo del equipo se calcula con el promedio de los 3 meses previos
+        # de los movimientos, pero Juan sabe el sueldo exacto de cada uno: si lo
+        # escribe, vale el suyo. NULL es "calculalo vos".
+        _add_column(conn, "if_objetivo", "equipo_usd", "REAL")
+        # Lo que cobra cada uno, linea por linea. El promedio de los movimientos
+        # daba ~4 veces de mas, asi que dejo de ser la fuente: ahora la fuente es
+        # esta lista y el promedio queda solo de respaldo si la lista esta vacia.
+        #
+        # Dos formas de cobrar, por eso `tipo`:
+        #   'fijo'     -> `monto_usd` por mes, por `cantidad` personas (2
+        #                 programadores a 50 son 100).
+        #   'comision' -> no tiene costo fijo: cobra `pct` % del desarrollo
+        #                 cuando se le da un proyecto (Matias Dominguez, 50 %).
+        #                 No suma al objetivo; entra en el margen del proyecto.
+        equipo_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='if_equipo_costos'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_equipo_costos (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre     TEXT NOT NULL,
+                monto_usd  REAL NOT NULL DEFAULT 0 CHECK (monto_usd >= 0),
+                cantidad   INTEGER NOT NULL DEFAULT 1 CHECK (cantidad >= 0),
+                tipo       TEXT NOT NULL DEFAULT 'fijo'
+                           CHECK (tipo IN ('fijo', 'comision')),
+                pct        REAL NOT NULL DEFAULT 0 CHECK (pct >= 0 AND pct <= 100),
+                grupo      TEXT NOT NULL DEFAULT 'sueldos'
+                           CHECK (grupo IN ('sueldos', 'honorarios', 'fijos')),
+                orden      INTEGER NOT NULL DEFAULT 0,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
+        if equipo_nueva:
+            # UNA sola vez, en el arranque que crea la tabla: los numeros que
+            # dio Juan el 16/9 ("Honorios marketing son 300 por mes, cada
+            # programador cobra 50 por mes hay 2 en este momento, mati dominguez
+            # si le damos proyecto cobra el 50% del desarrollo. El contador
+            # cobra 75 por mes"). Fijo = 300 + 50x2 + 75 = 475. Desde la
+            # pantalla se editan, se agregan y se sacan.
+            # El grupo va explicito y no adivinado por palabra: "Contador" no
+            # tiene ninguna que lo delate como honorario. Juan lo puede cambiar.
+            for orden, (nombre, monto, cantidad, tipo, pct, grupo) in enumerate((
+                    ("Honorarios marketing", 300.0, 1, "fijo", 0.0, "honorarios"),
+                    ("Programador", 50.0, 2, "fijo", 0.0, "sueldos"),
+                    ("Contador", 75.0, 1, "fijo", 0.0, "honorarios"),
+                    ("Matías Domínguez", 0.0, 1, "comision", 50.0, "honorarios"))):
+                conn.execute(
+                    "INSERT INTO if_equipo_costos (nombre, monto_usd, cantidad, tipo, pct, "
+                    "grupo, orden, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'precarga')",
+                    (nombre, monto, cantidad, tipo, pct, grupo, orden))
+        # Que costo esta prendido y cual apagado. Juan: "que se activen o
+        # desactiven pero que los ponga todos como en el simulador". Ausente es
+        # prendido: apagar es la excepcion y se guarda, no al reves.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_costos_activos (
+                clave      TEXT PRIMARY KEY,
+                activo     INTEGER NOT NULL DEFAULT 1,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
+        # Gastos que Juan YA SABE que van a caer este mes, cargados cuando se
+        # entera y no al cierre. Alimentan el objetivo en vivo, al lado de los
+        # fijos confirmados. Cuando el gasto se carga de verdad en Finanzas se
+        # empareja con el movimiento (`movimiento_id`) y sale de la lista, para
+        # no contarlo dos veces. `descartado` es para el que al final no vino.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_gastos_esperados (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                periodo       TEXT NOT NULL,
+                concepto      TEXT NOT NULL,
+                monto_usd     REAL NOT NULL CHECK (monto_usd > 0),
+                categoria     TEXT NOT NULL CHECK (categoria IN ('fijo', 'variable')),
+                estado        TEXT NOT NULL DEFAULT 'esperado'
+                              CHECK (estado IN ('esperado', 'confirmado', 'descartado')),
+                movimiento_id INTEGER REFERENCES finanzas_movimientos(id),
+                emparejado_en TEXT,
+                cargado_por   TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_if_gastos_esperados_periodo "
+                     "ON if_gastos_esperados(periodo, estado)")
+        # Si un gasto recurrente es de ESTRUCTURA (los sueldos, las
+        # herramientas, la infra) o es el costo indirecto de UN cliente de
+        # mantenimiento (los servidores de Fulano). El sistema lo propone
+        # mirando si el concepto nombra a un cliente, pero la ultima palabra es
+        # de Juan y queda guardada aca: sin esta tabla, la clasificacion seria
+        # una adivinanza que el no puede corregir.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_fijo_clasificacion (
+                recurrente_id INTEGER PRIMARY KEY,
+                clase         TEXT NOT NULL CHECK (clase IN ('estructura', 'cliente')),
+                client_id     INTEGER REFERENCES businesses(id),
+                updated_by    TEXT,
+                updated_at    TEXT
+            )
+        """)
+        # A proposito, sin repartir el panel a los roles que ya existen
+        # (Ruling R20, igual que Finanzas y el Simulador): la pantalla muestra
+        # margenes, cobros vencidos y gastos. Los admin la ven igual y al resto
+        # se la asigna Juan desde el editor de roles.
+        conn.commit()
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
@@ -1401,6 +1915,235 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "tasks", "goal",           "INTEGER")
         _add_column(conn, "tasks", "progress",       "INTEGER DEFAULT 0")
         _add_column(conn, "tasks", "goal_type",      "TEXT")
+
+        # ── Email marketing ───────────────────────────────────────────────────
+        # Cada mail que sale por Resend, con su id de Resend y lo que Resend
+        # cuenta despues por el webhook (entregado, abierto, clic, rebote,
+        # spam). Antes no quedaba en ningun lado: `_send_estado` tiraba la
+        # respuesta de Resend y el webhook solo miraba rebotes y quejas para
+        # vedar. Sin el cuerpo del mail: como mucho un extracto corto, y solo
+        # en las campanas. Las fechas van en UTC, como en meta_reminders.
+        emails_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='emails_enviados'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS emails_enviados (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                resend_id     TEXT UNIQUE,
+                tipo          TEXT NOT NULL DEFAULT 'otro',
+                destinatario  TEXT,
+                asunto        TEXT,
+                extracto      TEXT,
+                business_id   INTEGER,
+                numero        INTEGER,
+                enviado_at    TEXT NOT NULL,
+                origen        TEXT NOT NULL DEFAULT 'crm',
+                estado_envio  TEXT NOT NULL DEFAULT 'enviado',
+                estado        TEXT NOT NULL DEFAULT 'enviado',
+                entregado_at  TEXT,
+                demorado_at   TEXT,
+                abierto_at    TEXT,
+                clic_at       TEXT,
+                rebotado_at   TEXT,
+                spam_at       TEXT,
+                fallido_at    TEXT,
+                actualizado_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_fecha ON emails_enviados(enviado_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_tipo ON emails_enviados(tipo, enviado_at)")
+        if emails_nueva:
+            # UNA sola vez, en el arranque que crea la tabla: lo que las dos
+            # campanas ya mandaron se ve desde el primer dia, sin consultar a
+            # Resend. Desde ahi cada envio se registra solo.
+            _backfill_emails_enviados(conn)
+        conn.commit()
+        # Email marketing va a quien ya ve Outbound o Inteligencia comercial,
+        # una sola vez (desde ahi manda lo que Juan tilde en el editor).
+        _grant_panel_to_existing_roles(conn, "email_mkt", si_tiene=("cola", "metrics"))
+
+        # ── LinkedIn en el CRM ────────────────────────────────────────────────
+        # Los borradores de LinkedIn semana por semana (panel LinkedIn). El
+        # cron sigue igual y el mail tambien: esto es donde ademas quedan para
+        # copiarlos, editarlos, bajar la imagen y marcarlos. La imagen es la
+        # tarjeta que el runner ya manda para el mail. Ver
+        # services/linkedin_borradores.py.
+        linkedin_borradores_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='linkedin_borradores'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_borradores (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id         INTEGER UNIQUE,
+                semana          TEXT NOT NULL,
+                orden           INTEGER NOT NULL,
+                tema            TEXT,
+                texto           TEXT NOT NULL,
+                texto_original  TEXT NOT NULL,
+                hashtags        TEXT,
+                estado          TEXT NOT NULL DEFAULT 'borrador',
+                publicado_en    TEXT,
+                editado_por     TEXT,
+                editado_en      TEXT,
+                created_at      TEXT NOT NULL,
+                imagen_png      BLOB,
+                UNIQUE (semana, orden)
+            )
+        """)
+        if linkedin_borradores_nueva:
+            # Una sola vez: lo que ya se genero esta en linkedin_posts.
+            from services.linkedin_borradores import copiar_historico
+            copiar_historico(conn)
+        # La frase de la tarjeta (pedido de Juan, 22/9: "otra idea" y las
+        # correcciones de Claude arman contenido nuevo que todavia no tiene
+        # imagen). No hay Chromium en Fly, asi que la tarjeta se dibuja en la
+        # proxima corrida del cron: mientras tanto queda guardada aca la frase
+        # para que el render sepa que dibujar. Ver
+        # services/linkedin_borradores.necesita_render().
+        _add_column(conn, "linkedin_borradores", "frase", "TEXT")
+        conn.commit()
+        # LinkedIn va a quien ya ve Inteligencia marketing, una sola vez
+        # (desde ahi manda lo que Juan tilde en el editor). No es un panel de
+        # plata.
+        _grant_panel_to_existing_roles(conn, "linkedin", si_tiene=("marketing",))
+        # Pedidos de correccion en texto libre sobre un borrador de LinkedIn.
+        # Mismo patron que ig_correcciones: los resuelve una sesion de Claude
+        # Code por /api/linkedin-bot/ (gratis, con demora), no un modelo pago.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_correcciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                borrador_id     INTEGER NOT NULL REFERENCES linkedin_borradores(id),
+                pedido          TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'pendiente',
+                respuesta       TEXT,
+                pedido_por      TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resuelto_en     TEXT
+            )
+        """)
+        conn.commit()
+
+        # ── Instagram ─────────────────────────────────────────────────────────
+        # Banco de ideas y publicaciones con aprobacion. services/instagram.py.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_banco (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave       TEXT NOT NULL UNIQUE,
+                formato     TEXT NOT NULL,
+                pilar       TEXT NOT NULL,
+                slides_json TEXT NOT NULL,
+                caption     TEXT NOT NULL,
+                usado_en    TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_publicaciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                semana          TEXT NOT NULL,
+                slot            TEXT NOT NULL,
+                clave_banco     TEXT,
+                formato         TEXT NOT NULL,
+                pilar           TEXT,
+                slides_json     TEXT NOT NULL,
+                caption         TEXT NOT NULL,
+                estilo          TEXT NOT NULL DEFAULT 'verde',
+                programada_para TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'borrador',
+                version         INTEGER NOT NULL DEFAULT 0,
+                imagenes        INTEGER NOT NULL DEFAULT 0,
+                img_token       TEXT NOT NULL,
+                ig_media_id     TEXT,
+                permalink       TEXT,
+                error           TEXT,
+                aprobada_por    TEXT,
+                aprobada_en     TEXT,
+                publicada_en    TEXT,
+                editada_por     TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (semana, slot)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ig_pub_estado "
+                     "ON ig_publicaciones(estado, programada_para)")
+        # Pedidos de correccion en texto libre. Los resuelve una sesion de
+        # Claude Code por /api/instagram-bot/ (gratis, con demora).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_correcciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                publicacion_id  INTEGER NOT NULL REFERENCES ig_publicaciones(id),
+                pedido          TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'pendiente',
+                respuesta       TEXT,
+                pedido_por      TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resuelto_en     TEXT
+            )
+        """)
+        conn.commit()
+        _grant_panel_to_existing_roles(conn, "instagram", si_tiene=("marketing", "linkedin"))
+
+        # ── Modo sombra (services/sombra_meta.py) ─────────────────────────────
+        # Que haria el agente con la pauta y como resulto. El panel `sombra`
+        # ("Recomendaciones de pauta") va a quien ve Marketing; la evaluacion
+        # del proveedor se filtra en la ruta y solo la ven los administradores.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sombra_recomendaciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                semana          TEXT NOT NULL,
+                clave           TEXT NOT NULL,
+                tipo            TEXT NOT NULL,
+                objeto_id       TEXT NOT NULL,
+                objeto_nombre   TEXT,
+                campana_id      TEXT,
+                campana_nombre  TEXT,
+                evidencia       TEXT NOT NULL,
+                antes_json      TEXT NOT NULL,
+                creada_en       TEXT NOT NULL,
+                evaluada_en     TEXT,
+                seguida         INTEGER,
+                veredicto       TEXT,
+                detalle         TEXT,
+                UNIQUE (semana, clave)
+            )
+        """)
+        # Ajustes del modo sombra que edita quien ve el panel (hoy: el tope de
+        # costo por lead). Una fila por clave.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sombra_ajustes (
+                clave           TEXT PRIMARY KEY,
+                valor           TEXT,
+                actualizado_por TEXT,
+                actualizado_en  TEXT
+            )
+        """)
+        # PDF mensual con la estrategia de marketing; el plan lo escribe el agente
+        # despues de leerlo (services/estrategia.py).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS estrategias_mensuales (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                mes            TEXT NOT NULL,
+                nombre_archivo TEXT NOT NULL,
+                pdf            BLOB NOT NULL,
+                tamano         INTEGER NOT NULL,
+                subido_por     TEXT,
+                subido_en      TEXT NOT NULL,
+                estado         TEXT NOT NULL DEFAULT 'nueva',
+                plan_json      TEXT,
+                plan_en        TEXT
+            )
+        """)
+        conn.commit()
+        _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
+
+        # Scalerics Fidelidad (23/9): el Outbound pasa a ser del socio que vende
+        # el sistema de puntos. Sus tablas son propias (services/fidelidad.py);
+        # los comercios que mostraba la cola vieja se ocultan una vez, sin borrar.
+        from services.fidelidad import (archivar_outbound_viejo, asignar_vendedores,
+                                        init_fidelidad)
+        _add_column(conn, "businesses", "archivado_en", "TEXT")
+        init_fidelidad(conn)
+        conn.commit()
+        archivar_outbound_viejo(conn)
+        asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
 
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
@@ -1477,6 +2220,44 @@ def init_db(db_path: str) -> None:
             logger.warning(f"Index creation: {e}")
     finally:
         conn.close()
+
+
+def _backfill_emails_enviados(conn: sqlite3.Connection) -> int:
+    """Copia a `emails_enviados` los envios historicos de las dos campanas.
+
+    `meta_reminders` y `discovery_reminders` guardan una fila por mail que
+    salio (la de un envio fallido se borra), pero sin id de Resend ni asunto:
+    esas filas entran como 'historico', con un asunto descriptivo y sin
+    eventos. El destinatario es el mail actual del negocio.
+    """
+    copiadas = 0
+    try:
+        cols_meta = {c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")}
+        estado = ("CASE WHEN m.estado IS NOT NULL AND m.estado <> 'sin_contactar' "
+                  "THEN ' (' || REPLACE(m.estado, '_', ' ') || ')' ELSE '' END"
+                  if "estado" in cols_meta else "''")
+        copiadas += conn.execute(f"""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'recordatorio_meta', b.email,
+                   'Recordatorio a lead de Meta' || {estado} || ' · contacto ' || m.numero,
+                   m.business_id, m.numero, datetime(m.sent_at), 'historico', 'enviado', 'enviado'
+            FROM meta_reminders m LEFT JOIN businesses b ON b.id = m.business_id
+            WHERE datetime(m.sent_at) IS NOT NULL
+        """).rowcount
+        copiadas += conn.execute("""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'discovery', b.email, 'Discovery en frío · contacto ' || d.numero,
+                   d.business_id, d.numero, datetime(d.sent_at), 'historico', 'enviado', 'enviado'
+            FROM discovery_reminders d LEFT JOIN businesses b ON b.id = d.business_id
+            WHERE datetime(d.sent_at) IS NOT NULL
+        """).rowcount
+    except sqlite3.Error as e:
+        logger.warning(f"emails_enviados: no se pudo copiar el historico ({e})")
+    if copiadas:
+        logger.info(f"emails_enviados: {copiadas} envios historicos copiados")
+    return copiadas
 
 
 # ─── Businesses (existing API, preserved) ────────────────────────────────────
@@ -1593,6 +2374,9 @@ def listar_leads(db_path: str, crm_status: str | None = None, cohorte: str | Non
         "   AND cl.outcome = 'no_interesa') AS no_interesa_count"
     )
     cond, params = [], []
+    # Los comercios que la cola vieja mostraba quedaron ocultos el 23/9, cuando
+    # Outbound paso a ser de Scalerics Fidelidad (services/fidelidad.py).
+    cond.append("b.archivado_en IS NULL")
     if crm_status == "sin_contactar":
         # Los leads de Meta no entran a la cola fria: tienen su propio panel.
         cond.append("(b.crm_status IS NULL OR b.crm_status = ?)")
@@ -1968,6 +2752,9 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
+    "description", "invitados", "repeticion", "excepciones",
+    "google_event_id", "google_sync", "google_error", "google_meet", "origen",
+    "tipo_proyecto", "tipo_otro", "presencial",
 }
 
 
@@ -2042,6 +2829,84 @@ def delete_meeting(db_path: str, meeting_id: int) -> None:
     try:
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Reuniones de otro asunto (sin cliente) ──────────────────────────────────
+
+_ASUNTO_COLUMNS = {
+    "title", "description", "start_at", "end_at", "meet_link", "invitados",
+    "repeticion", "excepciones", "status", "created_by",
+    "google_event_id", "google_sync", "google_error", "google_meet",
+    "tipo_proyecto", "tipo_otro", "presencial",
+}
+
+
+def create_reunion_asunto(db_path: str, **fields) -> int:
+    campos = {k: v for k, v in fields.items() if k in _ASUNTO_COLUMNS}
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"INSERT INTO reuniones_asunto ({', '.join(campos)}) "
+            f"VALUES ({', '.join('?' for _ in campos)})", list(campos.values()))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_reunion_asunto(db_path: str, asunto_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM reuniones_asunto WHERE id = ?",
+                           (asunto_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_reunion_asunto(db_path: str, asunto_id: int, **fields) -> None:
+    invalid = set(fields) - _ASUNTO_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid reuniones_asunto columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = asunto_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE reuniones_asunto SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_reunion_asunto(db_path: str, asunto_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM reuniones_asunto WHERE id = ?", (asunto_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_reuniones_asunto(db_path: str, desde: str = "", hasta: str = "") -> list[dict]:
+    """Las sueltas que empiezan en el rango, y todas las series que empezaron
+    antes de que el rango termine (las ocurrencias se calculan despues)."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT * FROM reuniones_asunto
+            WHERE COALESCE(status, '') != 'canceled'
+              AND ((COALESCE(repeticion, '') = ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) >= ?)
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?))
+                OR (COALESCE(repeticion, '') != ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?)))
+            ORDER BY start_at
+        """, (desde, desde, hasta, hasta, hasta, hasta)).fetchall()
+        return [dict(f) for f in filas]
     finally:
         conn.close()
 
@@ -2887,6 +3752,64 @@ def delete_wa_template(db_path: str, template_id: int) -> None:
         conn.close()
 
 
+# ─── Credenciales ─────────────────────────────────────────────────────────────
+# Solo admin (services/credenciales.py cifra/descifra `clave_cifrada`; esto
+# solo guarda y lee filas, nunca ve el texto plano).
+
+def listar_credenciales(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM credenciales ORDER BY servicio COLLATE NOCASE")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_credencial(db_path: str, cred_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM credenciales WHERE id = ?", (cred_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def crear_credencial(db_path: str, servicio: str, usuario: str, clave_cifrada: str,
+                     codigo_2fa: str = "", notas: str = "") -> int:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO credenciales (servicio, usuario, clave_cifrada, codigo_2fa, notas) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (servicio, usuario or None, clave_cifrada, codigo_2fa or None, notas or None))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_credencial(db_path: str, cred_id: int, servicio: str, usuario: str,
+                          clave_cifrada: str, codigo_2fa: str = "", notas: str = "") -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE credenciales SET servicio = ?, usuario = ?, clave_cifrada = ?, "
+            "codigo_2fa = ?, notas = ?, actualizado_en = CURRENT_TIMESTAMP WHERE id = ?",
+            (servicio, usuario or None, clave_cifrada, codigo_2fa or None, notas or None, cred_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_credencial(db_path: str, cred_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM credenciales WHERE id = ?", (cred_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ─── Call Logs ────────────────────────────────────────────────────────────────
 
 def add_call_log(db_path: str, lead_id: int, outcome: str, notes: str = "", created_by: str = "sistema") -> int:
@@ -3472,13 +4395,13 @@ _MOVIMIENTO_COLUMNS = {
     "tipo", "fecha", "periodo", "concepto", "categoria", "monto", "moneda",
     "tipo_cambio", "monto_usd", "client_id", "budget_id", "recurrente_id",
     "anulado", "notas", "created_by_id", "created_by_name",
-    "facturado", "iva_usd",
+    "facturado", "iva_usd", "iva_incluido",
 }
 
 _RECURRENTE_COLUMNS = {
     "tipo", "concepto", "categoria", "monto", "moneda", "tipo_cambio",
     "dia_del_mes", "desde", "hasta", "activo", "client_id", "notas",
-    "facturado",
+    "facturado", "tarjeta",
 }
 
 
@@ -3551,6 +4474,173 @@ def crear_movimiento(db_path: str, **fields) -> int:
 
 def actualizar_movimiento(db_path: str, mov_id: int, **fields) -> None:
     _update(db_path, "finanzas_movimientos", _MOVIMIENTO_COLUMNS, mov_id, fields)
+
+
+# ─── Cobros con tarjeta ──────────────────────────────────────────────────────
+
+def get_ajuste(db_path: str, clave: str) -> Optional[dict]:
+    """El ajuste guardado (JSON ya leído), o None si nunca se guardó."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT valor FROM finanzas_ajustes WHERE clave = ?",
+                            (clave,)).fetchone()
+    finally:
+        conn.close()
+    return json.loads(fila["valor"]) if fila else None
+
+
+def guardar_ajuste(db_path: str, clave: str, valor: dict) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO finanzas_ajustes (clave, valor, updated_at) "
+            "VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, "
+            "updated_at = CURRENT_TIMESTAMP",
+            (clave, json.dumps(valor)))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_COBRO_TARJETA_COLUMNS = {
+    "fecha", "client_id", "concepto", "tarjeta", "comision_pct", "moneda",
+    "tipo_cambio", "precio", "total", "deposito", "acreditacion_esperada",
+    "created_by_name",
+}
+
+
+# Un cobro idéntico (fecha, cliente, concepto, tarjeta, moneda y total) dentro
+# de esta ventana es un doble envío, no dos cobros: un doble clic, un reintento
+# de red o dos pestañas. Cada registro crea 3 movimientos, así que duplicarlo
+# infla ventas e IVA. Pasada la ventana, dos cobros iguales SÍ son posibles
+# (dos cuotas del mismo monto) y se aceptan.
+COBRO_DUPLICADO_SEGUNDOS = 60
+
+
+class CobroDuplicado(Exception):
+    """El cobro ya se registró hace instantes; `id` es el que quedó."""
+
+    def __init__(self, cobro_id: int):
+        super().__init__(f"cobro duplicado (ya existe el {cobro_id})")
+        self.id = cobro_id
+
+
+def crear_cobro_tarjeta(db_path: str, cobro: dict, ingreso: dict,
+                        comision: dict, plexo: dict | None) -> int:
+    """Crea los movimientos del cobro y la fila que los ata, todo o nada.
+
+    En una sola transacción a propósito: si el tercer INSERT fallara con los
+    dos primeros ya guardados, quedaría un ingreso sin su comisión y el IVA
+    del mes daría mal sin que nada avise.
+    """
+    for campos in (ingreso, comision, plexo or {}):
+        invalidos = set(campos) - _MOVIMIENTO_COLUMNS
+        if invalidos:
+            raise ValueError(f"finanzas_movimientos: columnas inválidas {invalidos}")
+    invalidos = set(cobro) - _COBRO_TARJETA_COLUMNS
+    if invalidos:
+        raise ValueError(f"finanzas_cobros_tarjeta: columnas inválidas {invalidos}")
+
+    def _ins(cur, tabla, campos):
+        cols = list(campos)
+        cur.execute(f"INSERT INTO {tabla} ({', '.join(cols)}) "
+                    f"VALUES ({', '.join('?' for _ in cols)})",
+                    [campos[c] for c in cols])
+        return cur.lastrowid
+
+    conn = _connect(db_path)
+    try:
+        # BEGIN IMMEDIATE toma el candado de escritura ANTES de mirar si ya está:
+        # con dos pedidos simultáneos (doble clic, dos pestañas) el segundo
+        # espera al primero y ve su fila; sin esto los dos miraban, no veían
+        # nada, y registraban los dos.
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        previo = cur.execute(
+            "SELECT id FROM finanzas_cobros_tarjeta "
+            "WHERE fecha = ? AND COALESCE(client_id, 0) = COALESCE(?, 0) "
+            "AND concepto = ? AND tarjeta = ? AND moneda = ? AND total = ? "
+            "AND created_at >= datetime('now', ?) ORDER BY id LIMIT 1",
+            (cobro["fecha"], cobro.get("client_id"), cobro["concepto"],
+             cobro["tarjeta"], cobro["moneda"], cobro["total"],
+             f"-{COBRO_DUPLICADO_SEGUNDOS} seconds")).fetchone()
+        if previo:
+            conn.rollback()
+            raise CobroDuplicado(previo["id"])
+        ids = {"ingreso_id": _ins(cur, "finanzas_movimientos", ingreso),
+               "comision_id": _ins(cur, "finanzas_movimientos", comision),
+               "plexo_id": _ins(cur, "finanzas_movimientos", plexo) if plexo else None}
+        cid = _ins(cur, "finanzas_cobros_tarjeta", {**cobro, **ids})
+        conn.commit()
+        return cid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def listar_cobros_tarjeta(db_path: str) -> list[dict]:
+    """Todos los cobros con tarjeta, los más nuevos primero, con el cliente."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT c.*, b.name AS client_name FROM finanzas_cobros_tarjeta c "
+            "LEFT JOIN businesses b ON b.id = c.client_id "
+            "ORDER BY c.fecha DESC, c.id DESC").fetchall()
+    finally:
+        conn.close()
+    return [dict(f) for f in filas]
+
+
+def get_cobro_tarjeta(db_path: str, cobro_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_cobros_tarjeta", cobro_id)
+
+
+def marcar_acreditado(db_path: str, cobro_id: int, fecha: str | None) -> None:
+    """Anota que el depósito llegó (o lo desmarca con None)."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE finanzas_cobros_tarjeta SET acreditado_fecha = ? "
+                     "WHERE id = ?", (fecha, cobro_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_cobro_tarjeta(db_path: str, cobro_id: int) -> None:
+    """Borra el cobro y sus movimientos, todo junto.
+
+    El ingreso que generó un fijo se ANULA en vez de borrarse, igual que en
+    `api_borrar_movimiento`: si se borrara, quedaría libre el par
+    (recurrente_id, periodo) y el fijo volvería a cobrar ese mes solo.
+    """
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT ingreso_id, comision_id, plexo_id FROM finanzas_cobros_tarjeta "
+            "WHERE id = ?", (cobro_id,)).fetchone()
+        if not fila:
+            return
+        for mid in (fila["ingreso_id"], fila["comision_id"], fila["plexo_id"]):
+            if not mid:
+                continue
+            de_fijo = conn.execute(
+                "SELECT recurrente_id FROM finanzas_movimientos WHERE id = ?",
+                (mid,)).fetchone()
+            if de_fijo and de_fijo["recurrente_id"]:
+                conn.execute("UPDATE finanzas_movimientos SET anulado = 1 WHERE id = ?",
+                             (mid,))
+            else:
+                conn.execute("DELETE FROM finanzas_movimientos WHERE id = ?", (mid,))
+        conn.execute("DELETE FROM finanzas_cobros_tarjeta WHERE id = ?", (cobro_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def borrar_movimiento(db_path: str, mov_id: int) -> None:
@@ -3632,6 +4722,39 @@ def listar_meses_abiertos(db_path: str) -> list[dict]:
     try:
         cur = conn.execute(
             "SELECT * FROM finanzas_meses_abiertos ORDER BY periodo DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+_DATO_BALANCE_COLUMNS = {
+    "clase", "rubro", "nombre", "monto_usd", "desde", "hasta", "en_blanco",
+    "notas", "created_by_name",
+}
+
+
+def crear_dato_balance(db_path: str, **fields) -> int:
+    return _insert(db_path, "finanzas_balance_datos", _DATO_BALANCE_COLUMNS, fields,
+                   ("clase", "rubro", "nombre", "monto_usd", "desde"))
+
+
+def actualizar_dato_balance(db_path: str, dato_id: int, **fields) -> None:
+    _update(db_path, "finanzas_balance_datos", _DATO_BALANCE_COLUMNS, dato_id, fields)
+
+
+def borrar_dato_balance(db_path: str, dato_id: int) -> None:
+    _delete(db_path, "finanzas_balance_datos", dato_id)
+
+
+def get_dato_balance(db_path: str, dato_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_balance_datos", dato_id)
+
+
+def listar_datos_balance(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM finanzas_balance_datos "
+                           "ORDER BY clase, desde, id")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -3800,6 +4923,32 @@ _EQUIPO_PRECARGA = (
 # Javier. La primera versión (15/9) tenía solo a Juan Tomasetti y Gonzalo:
 # `_sumar_personas_daily` suma lo nuevo una sola vez.
 _PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak", "Matías Domínguez")
+
+# Rol en Flujos de cada persona del organigrama (pedido de Juan, 16/9). None
+# es "no participa de Flujos". Solo por nombre exacto: si alguien no está,
+# queda NULL y se avisa en el log, no se adivina.
+_ROL_FLUJO_PRECARGA = (
+    ("Andrés Rosi", "Marketing"),
+    ("Juan Pereyra", "Comercial"),
+    ("Gonzalo Siuciak", "Project manager"),
+    ("Juan Tomasetti", "Desarrollo"),
+    ("Matías Domínguez", "Desarrollo"),
+    ("Guillermo Paredes", "Administración"),
+    ("Javier Tomasetti", None),
+)
+
+
+def _precargar_rol_flujo(conn: sqlite3.Connection) -> list[str]:
+    """Pone el rol en Flujos de la precarga. Devuelve los nombres que no
+    encontró (quedan en NULL)."""
+    faltan = []
+    for nombre, rol in _ROL_FLUJO_PRECARGA:
+        cur = conn.execute("UPDATE equipo_personas SET rol_flujo = ? WHERE nombre = ?", (rol, nombre))
+        if not cur.rowcount:
+            faltan.append(nombre)
+            logger.warning(f"rol_flujo: no encontré a '{nombre}' en Equipo, queda sin rol")
+    conn.commit()
+    return faltan
 _PROGRAMADORES_SUMADOS_16_9 = ("Matías Domínguez",)
 _ADMIN_DAILY_PRECARGA = ("Juan Pereyra", "Javier Tomasetti")
 _APODOS_PRECARGA = (("Juan Pereyra", "Juanchi"),)
@@ -3976,6 +5125,18 @@ def listar_personas_equipo(db_path: str, incluir_inactivas: bool = False) -> lis
 
 def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
     return _get_one(db_path, "equipo_personas", persona_id)
+
+
+def actualizar_rol_flujo_persona(db_path: str, persona_id: int, rol_flujo: Optional[str]) -> bool:
+    """Cambia el rol en Flujos de una persona (None: no participa). La
+    validación contra la lista cerrada la hace services/flujos.validar_rol_flujo."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("UPDATE equipo_personas SET rol_flujo = ? WHERE id = ?", (rol_flujo, persona_id))
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
 
 
 # ── Daily Programador ────────────────────────────────────────────────────────
@@ -4432,6 +5593,106 @@ def mover_paso_flujo(db_path: str, paso_id: int, posicion: int) -> int:
         _renumerar_flujo(conn, fila[0], ids)
         conn.commit()
         return destino
+    finally:
+        conn.close()
+
+
+# ─── Horarios de trabajo ─────────────────────────────────────────────────────
+# Día 0 = lunes ... 6 = domingo. Horas en 'HH:MM', 24 h.
+
+_L_V = (0, 1, 2, 3, 4)
+
+# (nombre en Equipo, ((día, desde, hasta), ...)). Pedido de Juan, 15/9:
+# "cuando digo dos es 14".
+_HORARIOS_PRECARGA = (
+    ("Gonzalo Siuciak", tuple((d, "12:00", "16:00") for d in _L_V)),
+    ("Juan Tomasetti", (
+        (0, "11:00", "15:00"),
+        (1, "10:00", "14:00"),
+        (2, "14:20", "18:30"),
+        (3, "14:30", "18:30"),
+        (4, "11:00", "15:00"),
+    )),
+)
+
+
+def _persona_para_horario(conn: sqlite3.Connection, nombre: str) -> Optional[int]:
+    """El id de la persona de Equipo para la precarga.
+
+    Primero por nombre exacto. Si no está (alguien lo renombró), por primer
+    nombre entre las activas que llevan horas, y solo si hay UNA sola: con dos
+    "Juan" no se adivina.
+    """
+    fila = conn.execute("SELECT id FROM equipo_personas WHERE nombre = ?", (nombre,)).fetchone()
+    if fila:
+        return fila[0]
+    primero = nombre.split()[0].lower()
+    candidatas = [f[0] for f in conn.execute(
+        "SELECT id, nombre FROM equipo_personas WHERE activo = 1 AND lleva_horas = 1")
+        if (f[1] or "").split() and f[1].split()[0].lower() == primero]
+    if len(candidatas) == 1:
+        logger.info(f"horarios: precarga de '{nombre}' por primer nombre (id={candidatas[0]})")
+        return candidatas[0]
+    return None
+
+
+def _sembrar_horarios(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de los horarios iniciales.
+
+    A cada persona se le carga una sola vez: queda anotada en
+    `horarios_precarga_hecha`, así un horario editado (aunque sea "no trabaja"
+    toda la semana) sobrevive a los reinicios. Si ya tuviera tramos cargados a
+    mano, tampoco se tocan. Si la persona no está, no se anota y se vuelve a
+    intentar en el próximo arranque. Devuelve cuántas personas cargó.
+    """
+    cargadas = 0
+    for nombre, tramos in _HORARIOS_PRECARGA:
+        if conn.execute("SELECT 1 FROM horarios_precarga_hecha WHERE nombre = ?",
+                        (nombre,)).fetchone():
+            continue
+        pid = _persona_para_horario(conn, nombre)
+        if pid is None:
+            logger.warning(f"horarios: no encontré a '{nombre}' en Equipo, sin precarga")
+            continue
+        ya_tiene = conn.execute("SELECT 1 FROM horarios_tramos WHERE persona_id = ? LIMIT 1",
+                                (pid,)).fetchone()
+        if not ya_tiene:
+            conn.executemany(
+                "INSERT INTO horarios_tramos (persona_id, dia, desde, hasta) VALUES (?,?,?,?)",
+                [(pid, dia, desde, hasta) for dia, desde, hasta in tramos])
+            cargadas += 1
+        conn.execute("INSERT INTO horarios_precarga_hecha (nombre, persona_id) VALUES (?,?)",
+                     (nombre, pid))
+    conn.commit()
+    return cargadas
+
+
+def listar_tramos_horario(db_path: str) -> list[dict]:
+    """Todos los tramos, ordenados por persona, día y hora."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT id, persona_id, dia, desde, hasta FROM horarios_tramos "
+                           "ORDER BY persona_id, dia, desde, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def reemplazar_horario_persona(db_path: str, persona_id: int,
+                               tramos: list[tuple[int, str, str]]) -> None:
+    """Reemplaza la semana entera de una persona por `tramos` (día, desde,
+    hasta), en una sola transacción: nunca queda media semana guardada."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM horarios_tramos WHERE persona_id = ?", (persona_id,))
+        conn.executemany(
+            "INSERT INTO horarios_tramos (persona_id, dia, desde, hasta) VALUES (?,?,?,?)",
+            [(persona_id, dia, desde, hasta) for dia, desde, hasta in tramos])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

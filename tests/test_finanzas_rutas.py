@@ -129,6 +129,50 @@ def test_crear_en_pesos_congela_el_monto_en_dolares(cli):
     assert cli.get("/api/finanzas/movimientos").get_json()[0]["monto_usd"] == 1000.0
 
 
+def test_crear_con_iva_incluido_separa_neto_e_iva_del_monto_tipeado(cli):
+    """Pedido de Juan (22/9): "a veces me dan los precios con IVA"."""
+    r = cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro con IVA incluido",
+        "categoria": "desarrollo_web", "monto": 122, "moneda": "USD",
+        "facturado": True, "iva_incluido": True})
+    assert r.status_code == 201
+
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["monto"] == 122, "lo tipeado no se toca"
+    assert mov["monto_usd"] == 100.0 and round(mov["iva_usd"], 2) == 22.0
+    assert mov["iva_incluido"] == 1
+
+
+def test_iva_incluido_sin_facturado_no_hace_nada(cli):
+    """"IVA incluido" solo tiene sentido si el movimiento lleva factura."""
+    cli.post("/api/finanzas/movimientos", json={
+        "tipo": "egreso", "fecha": f"{_mes()}-01", "concepto": "Sin factura",
+        "categoria": "servicios", "monto": 122, "moneda": "USD",
+        "iva_incluido": True})
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["monto_usd"] == 122.0 and mov["iva_usd"] == 0.0 and mov["iva_incluido"] == 0
+
+
+def test_editar_con_iva_incluido_no_duplica_el_impuesto(cli):
+    """Guardar de nuevo un movimiento con IVA incluido, sin tocar nada, tiene
+    que dar el mismo desglose: si se perdiera el flag, el edit volvería a
+    sumar el 22% sobre un monto que ya lo tenía adentro."""
+    cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 122, "moneda": "USD",
+        "facturado": True, "iva_incluido": True})
+    mid = cli.get("/api/finanzas/movimientos").get_json()[0]["id"]
+
+    r = cli.put(f"/api/finanzas/movimientos/{mid}", json={
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 122, "moneda": "USD",
+        "facturado": True, "iva_incluido": True})
+    assert r.status_code == 200
+
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["monto_usd"] == 100.0 and round(mov["iva_usd"], 2) == 22.0
+
+
 def test_pesos_sin_tipo_de_cambio_da_400(cli):
     r = cli.post("/api/finanzas/movimientos", json={
         "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",

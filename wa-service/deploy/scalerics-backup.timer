@@ -1,0 +1,13 @@
+[Unit]
+Description=Backup diario de Scalerics
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+# Si el servidor estuvo apagado a esa hora, corre al prender. Un backup que se
+# saltea porque la maquina estaba caida es justo el que despues hace falta.
+Persistent=true
+# Que no salgan todos exactamente a las 4:30.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

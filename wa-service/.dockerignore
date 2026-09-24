@@ -1,0 +1,11 @@
+# La sesion de WhatsApp y la base NO van en la imagen: viven en el volumen.
+# Meterlas aca las dejaria dentro de una capa de Docker, que se guarda en el
+# registry y se puede bajar.
+auth
+data
+.env
+node_modules
+test
+deploy
+*.log
+*.tmp.js

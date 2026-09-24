@@ -1,0 +1,11 @@
+-- Frontera de conversacion.
+--
+-- Al reiniciar un lead se le limpia el embudo, pero los mensajes quedan: son el
+-- historial que el equipo lee en el panel del CRM. El problema es que la IA
+-- tambien los lee para tener contexto, asi que el estado arrancaba de cero y el
+-- modelo seguia acordandose de todo — retomaba una conversacion que para el
+-- lead ya no existia.
+--
+-- Con esto, el panel sigue mostrando todo y la IA solo ve lo que pasó despues
+-- del reinicio. NULL = sin reinicios, ve todo.
+ALTER TABLE leads ADD COLUMN conversacion_desde TEXT;

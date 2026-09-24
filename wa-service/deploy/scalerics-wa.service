@@ -1,0 +1,41 @@
+[Unit]
+Description=Scalerics — bot de WhatsApp
+Documentation=https://github.com/Scalerics-org/scalerics-crm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scalerics
+Group=scalerics
+WorkingDirectory=/opt/scalerics-wa
+ExecStart=/usr/bin/node src/index.js
+
+# Que vuelva solo. Es la razon de existir de todo esto: en la laptop se moria y
+# nadie se enteraba hasta que un cliente no recibia respuesta.
+Restart=always
+RestartSec=5
+# Si se reinicia 5 veces en 10 minutos hay algo roto de verdad y no se arregla
+# reintentando: se deja caido y queda en el log.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/scalerics-wa/.env
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scalerics-wa
+
+# El proceso no tiene por que tocar nada fuera de lo suyo.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/scalerics-wa/data /opt/scalerics-wa/auth
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

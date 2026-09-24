@@ -23,7 +23,7 @@ from services.discovery_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
 from services.corridas import (marcar_corrida, puede_correr, siguiente_revision,
                                ultima_corrida)
 from services.discovery_respuestas import sincronizar_desde_gmail
-from services.email_service import (send_discovery_email,
+from services.email_service import (contexto_envio, send_discovery_email,
                                    send_discovery_queue_alert)
 
 logger = logging.getLogger(__name__)
@@ -348,10 +348,13 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
                            f"{comercio['id']} contacto {numero}: {e}")
             continue
 
-        estado = send_discovery_email(
-            comercio["email"], comercio["name"], comercio["category"],
-            f"{base_url.rstrip('/')}/baja/{token}", numero,
-        )
+        # El contexto solo le dice al registro de Email marketing a que
+        # comercio y a que contacto corresponde el mail.
+        with contexto_envio(business_id=comercio["id"], numero=numero):
+            estado = send_discovery_email(
+                comercio["email"], comercio["name"], comercio["category"],
+                f"{base_url.rstrip('/')}/baja/{token}", numero,
+            )
 
         if estado == "ok":
             res["enviados"] += 1

@@ -24,6 +24,7 @@ import time
 
 from flask import Blueprint, current_app, jsonify, request
 
+from services.email_marketing import registrar_evento
 from services.mails_vedados import vedar
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,16 @@ def webhook_resend():
 
     tipo = str(evento.get("type") or "")
     datos = evento.get("data") or {}
+    if not isinstance(datos, dict):
+        datos = {}
+
+    # Email marketing: entregado, abierto, clic, rebote o spam sobre la fila del
+    # envio. Va antes del vedado y aparte: si falla, vedar igual tiene que andar.
+    try:
+        registrar_evento(_db(), tipo, datos, evento.get("created_at"))
+    except Exception as e:
+        logger.error(f"Webhook de Resend: no se pudo registrar el evento {tipo} ({type(e).__name__})")
+
     motivo = _motivo_del_evento(tipo, datos)
     if not motivo:
         return jsonify({"ok": True, "vedados": 0}), 200

@@ -190,7 +190,10 @@ def datos(app):
     fijo = crear_recurrente(db, tipo="egreso", concepto="Fly", categoria="infraestructura",
                             monto=30, moneda="USD", desde="2026-01")
     pc = crear_por_cobrar(db, concepto="Saldo", monto_usd=50)
-    return {"mov": mov, "fijo": fijo, "pc": pc, "hoy": hoy}
+    from database import crear_dato_balance
+    dato = crear_dato_balance(db, clase="activo", rubro="maquinarias", nombre="Notebook",
+                              monto_usd=900, desde="2026-01-01")
+    return {"mov": mov, "fijo": fijo, "pc": pc, "dato": dato, "hoy": hoy}
 
 
 def _mov(hoy):
@@ -214,19 +217,57 @@ ESCRITURAS = [
     ("POST", "/api/finanzas/por-cobrar", "/api/finanzas/por-cobrar", "pendiente"),
     ("POST", "/api/finanzas/por-cobrar/<int:pc_id>/cobrar", "/api/finanzas/por-cobrar/{pc}/cobrar", "cobro"),
     ("DELETE", "/api/finanzas/por-cobrar/<int:pc_id>", "/api/finanzas/por-cobrar/{pc}", None),
+    # Datos para el Balance General (15/9): cargar bienes, deudas y capital es
+    # modificar Finanzas. Generar el balance no (es GET, está en LECTURAS).
+    ("POST", "/api/finanzas/balance-datos", "/api/finanzas/balance-datos", "dato"),
+    ("PUT", "/api/finanzas/balance-datos/<int:dato_id>", "/api/finanzas/balance-datos/{dato}", "dato"),
+    ("DELETE", "/api/finanzas/balance-datos/<int:dato_id>", "/api/finanzas/balance-datos/{dato}", None),
+    # Cobro con tarjeta (23/9): registrar un cobro, marcar que llegó el
+    # depósito o cambiar las comisiones es modificar Finanzas. La calculadora
+    # no (es GET, está en LECTURAS). El id no importa: el candado corta antes.
+    ("PUT", "/api/finanzas/tarjeta/ajustes", "/api/finanzas/tarjeta/ajustes", None),
+    ("POST", "/api/finanzas/cobros-tarjeta", "/api/finanzas/cobros-tarjeta", None),
+    ("PUT", "/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",
+     "/api/finanzas/cobros-tarjeta/1/acreditado", None),
+    ("DELETE", "/api/finanzas/cobros-tarjeta/<int:cobro_id>", "/api/finanzas/cobros-tarjeta/1", None),
 ]
 
 LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/finanzas/resumen",
             "/api/finanzas/pauta", "/api/finanzas/meses", "/api/finanzas/por-cobrar",
-            "/api/finanzas/iva", "/api/finanzas/categorias",
-            "/api/finanzas/balance?tipo=blanco", "/api/finanzas/balance?tipo=interno"]
+            "/api/finanzas/iva", "/api/finanzas/categorias", "/api/finanzas/balance-datos",
+            "/api/finanzas/balance?tipo=blanco", "/api/finanzas/balance?tipo=interno",
+            "/api/finanzas/balance-general?tipo=blanco", "/api/finanzas/balance-general?tipo=interno",
+            "/api/finanzas/tarjeta/ajustes", "/api/finanzas/cobros-tarjeta",
+            "/api/finanzas/tarjeta/desglose?modo=precio&monto=300&tarjeta=visa_credito"]
 
 
 def _pedir(cli, metodo, url, cuerpo, datos):
     json_cuerpo = {"mov": _mov(datos["hoy"]), "fijo": FIJO,
                    "pendiente": {"concepto": "Otro", "monto_usd": 20},
-                   "cobro": {"fecha": datos["hoy"]}, None: None}[cuerpo]
+                   "cobro": {"fecha": datos["hoy"]},
+                   "dato": {"clase": "pasivo", "rubro": "prestamos", "nombre": "BROU",
+                            "monto_usd": 100, "desde": "2026-01-01"},
+                   None: None}[cuerpo]
     return cli.open(url.format(**datos), method=metodo, json=json_cuerpo)
+
+
+def test_el_contador_genera_el_balance_general_y_ve_los_datos_pero_no_los_carga(app, contador, datos):
+    from database import get_dato_balance
+    cli, _ = contador
+    r = cli.get("/api/finanzas/balance-general?tipo=interno")
+    assert r.status_code == 200
+    assert r.get_json()["activo"]["total"] == r.get_json()["total_pasivo_patrimonio"]
+    assert [x["nombre"] for x in cli.get("/api/finanzas/balance-datos").get_json()["datos"]] == ["Notebook"]
+
+    for respuesta in (
+            cli.post("/api/finanzas/balance-datos",
+                     json={"clase": "capital", "monto_usd": 1, "desde": "2026-01-01"}),
+            cli.put(f"/api/finanzas/balance-datos/{datos['dato']}",
+                    json={"clase": "activo", "rubro": "otros", "monto_usd": 1, "desde": "2026-01-01"}),
+            cli.delete(f"/api/finanzas/balance-datos/{datos['dato']}")):
+        assert respuesta.status_code == 403
+        assert respuesta.get_json()["error"] == MENSAJE
+    assert get_dato_balance(app.config["_DB"], datos["dato"])["monto_usd"] == 900
 
 
 def test_la_lista_de_escrituras_cubre_todas_las_rutas_que_no_son_get(app):

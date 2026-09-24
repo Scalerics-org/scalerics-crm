@@ -17,6 +17,51 @@ from database import (listar_cobros_pasos_flujo, listar_flujos,
 ROLES = ("Marketing", "Comercial", "Project manager", "Desarrollo",
          "Administración", "Soporte")
 
+# El color y el nombre visible de cada rol, en un solo lugar (pedido de Juan,
+# 15/9). `color` es la familia CSS: tokens `--rol-<color>` y
+# `--rol-<color>-tinte`, clase `.eq-rol-<color>`. "Marketing" se sigue
+# guardando así en la base y se muestra como "Líder marketing digital": cambia
+# la etiqueta, no el valor, así la lista cerrada de ROLES y los pasos cargados
+# no se tocan.
+ROL_ESTILOS = {
+    "Marketing": {"color": "rojo", "etiqueta": "Líder marketing digital"},
+    "Comercial": {"color": "verde", "etiqueta": "Comercial"},
+    "Project manager": {"color": "naranja", "etiqueta": "Project manager"},
+    "Desarrollo": {"color": "azul", "etiqueta": "Desarrollo"},
+    "Administración": {"color": "violeta", "etiqueta": "Administración"},
+    "Soporte": {"color": "teal", "etiqueta": "Soporte"},
+}
+
+
+def estilos_roles() -> list[dict]:
+    """[{rol, color, etiqueta}] en el orden de ROLES, para la pantalla."""
+    return [{"rol": r, **ROL_ESTILOS[r]} for r in ROLES]
+
+
+# Quien no participa de Flujos (organigrama, pedido de Juan 16/9): un color que
+# no es de ningún rol. Tokens `--rol-rosa` y `--rol-rosa-tinte`.
+FUERA_DE_FLUJOS = {"color": "rosa", "etiqueta": "Fuera de Flujos"}
+
+
+def estilo_de_persona(rol_flujo) -> dict:
+    """{rol, color, etiqueta} de una persona según su rol en Flujos. Un rol que
+    no es de la lista cerrada cuenta como "fuera de Flujos"."""
+    if isinstance(rol_flujo, str) and rol_flujo in ROL_ESTILOS:
+        return {"rol": rol_flujo, **ROL_ESTILOS[rol_flujo]}
+    return {"rol": None, **FUERA_DE_FLUJOS}
+
+
+def validar_rol_flujo(datos):
+    """{'rol_flujo': uno de ROLES, o null / '' para "no participa"}."""
+    if not isinstance(datos, dict) or "rol_flujo" not in datos:
+        return None, "falta rol_flujo"
+    valor = datos.get("rol_flujo")
+    if valor is None or valor == "":
+        return {"rol_flujo": None}, None
+    if not isinstance(valor, str) or valor not in ROLES:
+        return None, "el rol en Flujos tiene que ser uno de: " + ", ".join(ROLES) + ", o ninguno"
+    return {"rol_flujo": valor}, None
+
 # Id de panel del CRM (`showPanel`): minúsculas y guion bajo.
 _PANTALLA = re.compile(r"^[a-z][a-z_]{0,39}$")
 

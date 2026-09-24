@@ -16,13 +16,25 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_edicion, require_panel
+from database import (actualizar_dato_balance, borrar_dato_balance,
+                      crear_dato_balance, get_dato_balance,
+                      listar_datos_balance)
+from services.finanzas import BALANCE_CLASES, balance_general
 from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
-                               balance, estado_de_cobro, fecha_valida,
+                               balance, desglosar_iva_incluido,
+                               estado_de_cobro, fecha_valida,
                                iva_sobre, materializar_recurrentes,
                                mes_editable, meses_con_datos, periodo_balance,
                                periodo_de, primer_movimiento,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
+
+from database import (CobroDuplicado, borrar_cobro_tarjeta, get_business, crear_cobro_tarjeta, get_ajuste,
+                      get_cobro_tarjeta, guardar_ajuste, listar_cobros_tarjeta,
+                      marcar_acreditado)
+from services.cobro_tarjeta import (MODOS, TARJETAS, armar_cobro, desglosar,
+                                    sumar_dias_habiles, unir_ajustes,
+                                    validar_ajustes)
 
 finanzas_bp = Blueprint("finanzas", __name__)
 
@@ -35,7 +47,7 @@ def _db() -> str:
 # Hoy el Balance se genera con GET y ya pasa solo; queda anotado acá para que
 # el día que generar o guardar un balance sea POST, el Contador lo siga
 # pudiendo hacer (pedido de Juan: "salvo la parte de balances").
-_PERMITIDAS_EN_SOLO_LECTURA = {"finanzas.api_balance"}
+_PERMITIDAS_EN_SOLO_LECTURA = {"finanzas.api_balance", "finanzas.api_balance_general"}
 
 
 @finanzas_bp.before_request
@@ -121,18 +133,28 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     if not concepto:
         return None, "concepto es obligatorio"
 
-    # El IVA se SUMA al monto cargado: se escribe el líquido, no el total.
-    # Se calcula acá y se guarda, no se deriva al leer: si la tasa cambia, lo
-    # ya facturado tiene que seguir mostrando lo que se cobró. Sobre
-    # `monto_usd` porque todo el módulo cuenta en dólares.
+    # El IVA por default se SUMA al monto cargado: se escribe el líquido, no
+    # el total. Con `iva_incluido` es al revés (pedido de Juan, 22/9: "a
+    # veces me dan los precios con IVA"): el monto que se escribe YA es el
+    # total, y de ahí se separan neto e IVA hacia atrás. Se calcula acá y se
+    # guarda, no se deriva al leer: si la tasa cambia, lo ya facturado tiene
+    # que seguir mostrando lo que se cobró. Sobre `monto_usd` porque todo el
+    # módulo cuenta en dólares; `monto` (lo que se tipeó, en su moneda
+    # original) no cambia en ningún caso, es la prueba de lo que se acordó.
     facturado = 1 if data.get("facturado") else 0
-    iva_usd = iva_sobre(monto_usd) if facturado else 0.0
+    iva_incluido = 1 if (facturado and data.get("iva_incluido")) else 0
+    if iva_incluido:
+        monto_usd, iva_usd = desglosar_iva_incluido(monto_usd)
+    elif facturado:
+        iva_usd = iva_sobre(monto_usd)
+    else:
+        iva_usd = 0.0
 
     campos = {
         "tipo": tipo, "fecha": fecha, "periodo": periodo_de(fecha),
         "concepto": concepto, "categoria": categoria, "monto": monto,
         "moneda": moneda, "tipo_cambio": tipo_cambio, "monto_usd": monto_usd,
-        "facturado": facturado, "iva_usd": iva_usd,
+        "facturado": facturado, "iva_usd": iva_usd, "iva_incluido": iva_incluido,
     }
     for campo in ("client_id", "budget_id"):
         if campo in data:
@@ -325,9 +347,27 @@ def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
         # materializa sin impuesto.
         campos["facturado"] = 1 if data["facturado"] else 0
     if "client_id" in data:
-        campos["client_id"] = data["client_id"] or None
+        try:
+            campos["client_id"] = int(data["client_id"] or 0) or None
+        except (TypeError, ValueError):
+            return None, "client_id inválido"
     if "notas" in data:
         campos["notas"] = (data["notas"] or "").strip() or None
+    if "tarjeta" in data:
+        # Cómo paga el cliente (24/9). Vacío es transferencia o efectivo.
+        tarjeta = data["tarjeta"] or None
+        if tarjeta:
+            if tarjeta not in TARJETAS:
+                return None, "tarjeta desconocida"
+            if tipo != "ingreso":
+                return None, "solo un ingreso se cobra con tarjeta"
+            if _ajustes_tarjeta()["comisiones"].get(tarjeta) is None:
+                return None, (f"falta cargar la comisión de {TARJETAS[tarjeta]} "
+                              "en Cobro con tarjeta → Ajustes")
+            # Un cobro con tarjeta siempre va facturado: la tarjeta liquida
+            # contra factura y la comisión trae su IVA.
+            campos["facturado"] = 1
+        campos["tarjeta"] = tarjeta
     return campos, None
 
 
@@ -339,13 +379,22 @@ def api_listar_recurrentes():
     cambio usable viene con `monto_usd = None`, y el panel lo deja afuera del
     total y lo marca, en vez de mostrarlo como si fuera un peso por dolar.
     """
+    db = _db()
+    nombres: dict = {}
     salida = []
-    for r in listar_recurrentes(_db()):
+    for r in listar_recurrentes(db):
         try:
             usd = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
         except (TypeError, ValueError):
             usd = None
-        salida.append({**r, "monto_usd": usd})
+        cid = r.get("client_id")
+        if cid and cid not in nombres:
+            nombres[cid] = (get_business(db, cid) or {}).get("name")
+        # El nombre del cliente y de la tarjeta, para que la lista diga
+        # "Diego Hinze · paga con Visa débito" sin otra consulta.
+        salida.append({**r, "monto_usd": usd,
+                       "client_name": nombres.get(cid) if cid else None,
+                       "tarjeta_nombre": TARJETAS.get(r.get("tarjeta") or "")})
     return jsonify(salida)
 
 
@@ -637,6 +686,281 @@ def api_balance():
                            generado_en=generado.strftime("%Y-%m-%d %H:%M")))
 
 
+@finanzas_bp.route("/api/finanzas/balance-general")
+def api_balance_general():
+    """Balance General (Activo = Pasivo + Patrimonio) a una fecha de corte.
+
+    `tipo` obligatorio ('blanco' | 'interno'); `fecha` vacía es hoy en
+    Montevideo. Es GET: el Contador (Finanzas en solo lectura) lo genera
+    igual. Materializa los fijos antes, como el resto.
+    """
+    from services.daily import MONTEVIDEO, hoy_montevideo
+
+    tipo = request.args.get("tipo") or ""
+    if tipo not in BALANCE_TIPOS:
+        return jsonify({"ok": False,
+                        "error": "tipo tiene que ser 'blanco' o 'interno'"}), 400
+    hoy = hoy_montevideo()
+    corte = (request.args.get("fecha") or "").strip() or hoy.isoformat()
+    if not fecha_valida(corte):
+        return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    db = _db()
+    materializar_recurrentes(db, hoy=hoy)
+    generado = datetime.now(timezone.utc).astimezone(MONTEVIDEO)
+    return jsonify(balance_general(db, tipo, corte,
+                                   generado_en=generado.strftime("%Y-%m-%d %H:%M")))
+
+
+def _validar_dato_balance(data: dict):
+    """(campos, None) o (None, error). Ver `finanzas_balance_datos`."""
+    clase = data.get("clase")
+    if clase not in BALANCE_CLASES:
+        return None, "clase tiene que ser activo, pasivo, capital o caja_inicial"
+    rubros = BALANCE_CLASES[clase]
+    rubro = data.get("rubro") or (next(iter(rubros)) if len(rubros) == 1 else None)
+    if rubro not in rubros:
+        return None, f"rubro inválido para {clase}: {rubro!r}"
+    try:
+        monto = float(data.get("monto_usd"))
+    except (TypeError, ValueError):
+        return None, "monto_usd tiene que ser un número"
+    if monto != monto or monto in (float("inf"), float("-inf")):
+        return None, "monto_usd tiene que ser un número"
+    if clase == "caja_inicial":
+        # Un saldo inicial puede ser negativo (arrancar en rojo con el banco).
+        if abs(monto) < 0.005:
+            return None, "el saldo inicial no puede ser cero"
+    elif monto <= 0:
+        return None, "monto_usd tiene que ser mayor que cero"
+    desde = (data.get("desde") or "").strip()
+    if not fecha_valida(desde):
+        return None, "desde tiene que ser 'YYYY-MM-DD'"
+    hasta = (data.get("hasta") or "").strip() or None
+    if hasta and not fecha_valida(hasta):
+        return None, "hasta tiene que ser 'YYYY-MM-DD'"
+    if hasta and hasta <= desde:
+        return None, "hasta tiene que ser posterior a desde"
+    nombre = (data.get("nombre") or "").strip() or rubros[rubro]
+    campos = {"clase": clase, "rubro": rubro, "nombre": nombre[:120],
+              "monto_usd": round(monto, 2), "desde": desde, "hasta": hasta,
+              "en_blanco": 1 if data.get("en_blanco", True) else 0}
+    if "notas" in data:
+        campos["notas"] = (data.get("notas") or "").strip() or None
+    return campos, None
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos", methods=["GET"])
+def api_listar_datos_balance():
+    return jsonify({"datos": listar_datos_balance(_db()), "clases": BALANCE_CLASES})
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos", methods=["POST"])
+def api_crear_dato_balance():
+    campos, error = _validar_dato_balance(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    uid, nombre = _quien()
+    db = _db()
+    did = crear_dato_balance(db, created_by_name=nombre, **campos)
+    log_activity(db, nombre, "finanzas_dato_balance_creado", "finanzas", did,
+                 campos["nombre"], f"{campos['clase']} USD {campos['monto_usd']}",
+                 user_id=uid)
+    return jsonify({"ok": True, "id": did}), 201
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos/<int:dato_id>", methods=["PUT"])
+def api_actualizar_dato_balance(dato_id):
+    db = _db()
+    if not get_dato_balance(db, dato_id):
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    campos, error = _validar_dato_balance(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    actualizar_dato_balance(db, dato_id, **campos)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_dato_balance_editado", "finanzas", dato_id,
+                 campos["nombre"], "", user_id=uid)
+    return jsonify({"ok": True})
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos/<int:dato_id>", methods=["DELETE"])
+def api_borrar_dato_balance(dato_id):
+    db = _db()
+    dato = get_dato_balance(db, dato_id)
+    if not dato:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    borrar_dato_balance(db, dato_id)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_dato_balance_borrado", "finanzas", dato_id,
+                 dato["nombre"], "", user_id=uid)
+    return jsonify({"ok": True})
+
+
 @finanzas_bp.route("/api/finanzas/categorias")
 def api_categorias():
     return jsonify(CATEGORIAS)
+
+
+# ── cobros con tarjeta (Plexo) ───────────────────────────────────────────────
+# Las cuentas viven en services/cobro_tarjeta.py. Acá se leen los ajustes
+# guardados, se valida y se guarda.
+
+_AJUSTE_TARJETA = "cobro_tarjeta"
+
+
+def _ajustes_tarjeta() -> dict:
+    return unir_ajustes(get_ajuste(_db(), _AJUSTE_TARJETA))
+
+
+def _si(valor) -> bool:
+    return str(valor).lower() in ("1", "true", "si", "on")
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/ajustes", methods=["GET"])
+def api_ajustes_tarjeta():
+    # Lista de pares y no un objeto: jsonify ordena las claves y las
+    # tarjetas saldrían en orden alfabético en vez de Visa, Master, OCA.
+    return jsonify({"ajustes": _ajustes_tarjeta(), "tarjetas": list(TARJETAS.items()),
+                    "modos": list(MODOS.items())})
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/ajustes", methods=["PUT"])
+def api_guardar_ajustes_tarjeta():
+    ajustes, error = validar_ajustes(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    db = _db()
+    guardar_ajuste(db, _AJUSTE_TARJETA, ajustes)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_ajustes_tarjeta", "finanzas", None,
+                 "Ajustes de cobro con tarjeta", "", user_id=uid)
+    return jsonify({"ok": True, "ajustes": _ajustes_tarjeta()})
+
+
+def _desglose_de(data) -> tuple[dict | None, str | None]:
+    try:
+        return desglosar(
+            modo=data.get("modo") or "quiero_llevarme",
+            monto=data.get("monto"),
+            tarjeta=data.get("tarjeta") or "",
+            ajustes=_ajustes_tarjeta(),
+            moneda=data.get("moneda") or "USD",
+            tipo_cambio=data.get("tipo_cambio") or None,
+            incluir_fijo=_si(data.get("incluir_fijo", True)),
+            clientes=data.get("clientes") or None,
+        ), None
+    except (TypeError, ValueError) as e:
+        return None, str(e)
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/desglose", methods=["GET"])
+def api_desglose_tarjeta():
+    """La calculadora. GET a propósito: no guarda nada, y así el Contador (que
+    tiene Finanzas en solo lectura) también la puede usar."""
+    d, error = _desglose_de(request.args)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    fecha = request.args.get("fecha") or ""
+    desde = date.fromisoformat(fecha) if fecha_valida(fecha) else date.today()
+    esperada = sumar_dias_habiles(desde, d["dias_habiles"])
+    return jsonify({"ok": True, **d, "acreditacion_esperada": esperada.isoformat()})
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta", methods=["GET"])
+def api_listar_cobros_tarjeta():
+    return jsonify(listar_cobros_tarjeta(_db()))
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta", methods=["POST"])
+def api_crear_cobro_tarjeta():
+    """Registra el cobro: el ingreso con IVA ventas, la comisión de la tarjeta
+    y lo que cobra Plexo (los dos con IVA compras), y el depósito esperado.
+
+    Los números se recalculan acá con los ajustes guardados en vez de tomar
+    los que mandó la pantalla: lo que queda en la caja no puede depender de
+    lo que diga el navegador.
+
+    La parte del fijo de Plexo NO se registra en el cobro: es una sola
+    factura por mes, que va como un gasto fijo. Si se cargara en cada cobro
+    se pagaría varias veces.
+    """
+    data = request.get_json(silent=True) or {}
+    d, error = _desglose_de({**data, "incluir_fijo": False})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    fecha = (data.get("fecha") or "").strip()
+    if not fecha_valida(fecha):
+        return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    concepto = (data.get("concepto") or "").strip()
+    if not concepto:
+        return jsonify({"ok": False, "error": "concepto es obligatorio"}), 400
+    categoria = data.get("categoria") or "mantenimiento"
+    if categoria not in CATEGORIAS["ingreso"]:
+        return jsonify({"ok": False, "error": f"categoría inválida: {categoria!r}"}), 400
+    periodo = periodo_de(fecha)
+    trabado = _mes_trabado(periodo)
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
+
+    # El <select> de la pantalla manda el id como texto ("7"). Se pasa a
+    # número acá: la base lo guarda como entero, y el control de doble envío
+    # compara contra esa columna, donde "7" y 7 no son iguales.
+    try:
+        client_id = int(data.get("client_id") or 0) or None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "client_id inválido"}), 400
+    db = _db()
+    negocio = get_business(db, client_id) if client_id else None
+    uid, nombre = _quien()
+    cobro, ingreso, comision, plexo = armar_cobro(
+        d, fecha=fecha, concepto=concepto, categoria=categoria,
+        client_id=client_id, cliente=(negocio or {}).get("name"),
+        plexo_por_cobro_uyu=_ajustes_tarjeta()["plexo_por_cobro_uyu"],
+        created_by_id=uid, created_by_name=nombre)
+    try:
+        cid = crear_cobro_tarjeta(db, cobro, ingreso, comision, plexo)
+    except CobroDuplicado as dup:
+        # Doble clic, reintento o segunda pestaña: el primero ya quedó. 409 y
+        # no 201, para que nadie crea que este pedido creó algo.
+        return jsonify({"ok": False, "duplicado": True, "id": dup.id,
+                        "error": "Ese cobro ya se registró hace un momento. "
+                                 "Revisá la lista antes de cargarlo de nuevo."}), 409
+    log_activity(db, nombre, "finanzas_cobro_tarjeta_creado", "finanzas", cid,
+                 concepto, f"{d['moneda']} {d['total']} {d['tarjeta']}", user_id=uid)
+    return jsonify({"ok": True, "id": cid, "desglose": d,
+                    "acreditacion_esperada": cobro["acreditacion_esperada"]}), 201
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",
+                   methods=["PUT"])
+def api_acreditar_cobro_tarjeta(cobro_id):
+    """Marca que el depósito llegó al banco (o lo desmarca)."""
+    db = _db()
+    if not get_cobro_tarjeta(db, cobro_id):
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    fecha = None
+    if data.get("llego", True):
+        fecha = (data.get("fecha") or "").strip() or date.today().isoformat()
+        if not fecha_valida(fecha):
+            return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    marcar_acreditado(db, cobro_id, fecha)
+    return jsonify({"ok": True, "acreditado_fecha": fecha})
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta/<int:cobro_id>", methods=["DELETE"])
+def api_borrar_cobro_tarjeta(cobro_id):
+    """Borra el cobro con sus movimientos. Solo si su mes está abierto."""
+    db = _db()
+    cobro = get_cobro_tarjeta(db, cobro_id)
+    if not cobro:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    trabado = _mes_trabado(periodo_de(cobro["fecha"]))
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
+    borrar_cobro_tarjeta(db, cobro_id)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_cobro_tarjeta_borrado", "finanzas", cobro_id,
+                 cobro["concepto"], "", user_id=uid)
+    return jsonify({"ok": True})

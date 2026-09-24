@@ -1,6 +1,7 @@
-"""Endpoints del bloque Flujos, al final de la pantalla Ausencias.
+"""Endpoints del panel Flujos, en Recursos Humanos.
 
-Leer: quien ve Organigrama o Ausencias (los paneles de Recursos Humanos).
+Leer: quien ve Flujos, Organigrama o Ausencias. Flujos era un bloque al final
+de Ausencias; al pasar a panel propio, nadie pierde lo que ya leía.
 Agregar, editar, reordenar o borrar pasos: solo un administrador, con la misma
 `is_admin` que usa `/api/me` para decidirlo en la pantalla.
 """
@@ -11,9 +12,12 @@ from database import (borrar_paso_flujo, crear_paso_flujo, editar_paso_flujo,
                       get_flujo, get_paso_flujo, log_activity, mover_paso_flujo)
 from routes.equipo import PANELES_RRHH
 from services.auth import is_admin, require_admin, require_panel, tiene_panel
-from services.flujos import ROLES, estado_flujos, validar_paso
+from services.flujos import ROLES, estado_flujos, estilos_roles, validar_paso
 
 flujos_bp = Blueprint("flujos", __name__)
+
+# Cualquiera de estos tres abre la lectura.
+PANELES_LECTURA = ("flujos",) + PANELES_RRHH
 
 
 def _db() -> str:
@@ -23,8 +27,8 @@ def _db() -> str:
 @flujos_bp.before_request
 def _candado():
     db, uid = _db(), session.get("user_id")
-    if not any(tiene_panel(db, uid, p) for p in PANELES_RRHH):
-        return require_panel(db, "ausencias")
+    if not any(tiene_panel(db, uid, p) for p in PANELES_LECTURA):
+        return require_panel(db, "flujos")
     if request.method != "GET":
         return require_admin(db)
     return None
@@ -38,7 +42,8 @@ def _quien() -> tuple[int | None, str]:
 def api_flujos():
     db = _db()
     return jsonify({"ok": True, "es_admin": is_admin(db, session.get("user_id")),
-                    "roles": list(ROLES), "flujos": estado_flujos(db)})
+                    "roles": list(ROLES), "estilos": estilos_roles(),
+                    "flujos": estado_flujos(db)})
 
 
 @flujos_bp.route("/api/flujos/<int:fid>/pasos", methods=["POST"])

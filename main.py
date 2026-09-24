@@ -59,6 +59,12 @@ def create_parser() -> argparse.ArgumentParser:
     multi_p.add_argument("--skip-branded", action="store_true", help="Saltear concesionarias oficiales de marcas conocidas (Hyundai, Toyota, etc.)")
     multi_p.add_argument("--con-web", action="store_true", help="Modo discovery: junta los negocios que SI tienen sitio web")
 
+    fid_p = subparsers.add_parser("scrape-fidelidad",
+                                  help="Restaurantes de Municipio CH y Carrasco para Scalerics Fidelidad")
+    fid_p.add_argument("--max-por-barrio", type=int, default=40)
+    fid_p.add_argument("--zona", choices=["Municipio CH", "Carrasco"], default=None,
+                       help="Solo una de las dos zonas")
+
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
     buscar_p = subparsers.add_parser("buscar-mails",
@@ -159,6 +165,28 @@ def cmd_scrape_multi(args):
     return total
 
 
+def cmd_scrape_fidelidad(args):
+    """Barrio por barrio y de a uno: Google corta rapido a quien le pega en
+    paralelo, y son pocos barrios. Los prospectos van a las tablas de
+    Fidelidad (con CRM_URL, al CRM de produccion), no al padron."""
+    from scraper import run
+    from services.fidelidad import BARRIOS
+    logger = logging.getLogger(__name__)
+    vistos: set[str] = set()
+    total = 0
+    for zona, barrios in BARRIOS.items():
+        if args.zona and zona != args.zona:
+            continue
+        for barrio in barrios:
+            depto = "Canelones" if barrio == "Barra de Carrasco" else "Montevideo"
+            n = run(f"restaurantes en {barrio}, {depto}", args.max_por_barrio, DB_PATH,
+                    ya_vistos=vistos, fidelidad_barrio=barrio)
+            logger.info(f"[{barrio}] {n} restaurantes nuevos")
+            total += n
+    logger.info(f"scrape-fidelidad completo: {total} restaurantes nuevos")
+    return total
+
+
 def cmd_run_all(args):
     count = cmd_scrape(args)
     if not count:
@@ -178,6 +206,7 @@ def main():
         "run-all": cmd_run_all,
         "dashboard": cmd_dashboard,
         "buscar-mails": cmd_buscar_mails,
+        "scrape-fidelidad": cmd_scrape_fidelidad,
     }
     commands[args.command](args)
 

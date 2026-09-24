@@ -220,6 +220,9 @@ def test_los_roles_existentes_reciben_el_panel(tmp_path):
     conn.close()
     assert filas
     for nombre, acceso in filas:
+        if nombre == "Vendedor Fidelidad":   # de afuera: solo sus dos pantallas
+            assert json.loads(acceso) == ["cola", "metrics"]
+            continue
         assert "equipo" in json.loads(acceso), nombre
         assert "ausencias" in json.loads(acceso), nombre
 
@@ -294,7 +297,8 @@ def test_el_menu_tiene_recursos_humanos_con_organigrama_y_ausencias():
     grupo = _entre(menu, '<div class="nav-section-label">RECURSOS HUMANOS</div>',
                    '<div class="nav-section-label">CAPTACIÓN</div>')
     items = re.findall(r'id="nav-(\w+)"[^>]*><i data-lucide="([\w-]+)" class="nav-icon"></i> ([^<]+)</div>', grupo)
-    assert items == [("equipo", "network", "Organigrama"), ("ausencias", "calendar-clock", "Ausencias")]
+    assert items == [("equipo", "network", "Organigrama"), ("ausencias", "calendar-clock", "Ausencias"),
+                     ("flujos", "workflow", "Flujos"), ("horarios", "clock-4", "Horarios")]
     operacion = _entre(menu, '<div class="nav-section-label">OPERACIÓN</div>',
                        '<div class="nav-section-label">RECURSOS HUMANOS</div>')
     assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "tasks", "daily", "daily_admin",

@@ -282,8 +282,8 @@ def api_crear_cliente():
 def api_listar_demos():
     client_id = request.args.get("client_id", type=int)
     limite = request.args.get("limite", type=int) or 200
-    return jsonify({"demos": listar_demos_realizadas(_db(), client_id=client_id,
-                                                     limite=limite)})
+    demos = listar_demos_realizadas(_db(), client_id=client_id, limite=limite)
+    return jsonify({"demos": demos})
 
 
 @preclientes_bp.route("/api/demos-realizadas", methods=["POST"])

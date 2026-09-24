@@ -6,8 +6,9 @@ los agregados del panel. Las rutas solo validan y serializan.
 """
 
 import logging
+import os
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from services.embudo import (EXCLUIDOS_DEL_FUNNEL, FUNNEL,  # noqa: F401
                              alcanzo)
@@ -26,7 +27,7 @@ MONEDAS = ("USD", "UYU")
 # categoría se parta en dos sin que nadie lo note.
 CATEGORIAS = {
     "egreso": ["infraestructura", "herramientas", "publicidad",
-               "retiros", "impuestos", "servicios", "otros"],
+               "retiros", "impuestos", "servicios", "comisiones", "otros"],
     "ingreso": ["desarrollo_web", "software_medida", "mantenimiento",
                 "marketing", "otros"],
 }
@@ -47,10 +48,11 @@ def iva_sobre(neto) -> float:
     """El IVA que se SUMA a ese monto. 100 -> 22, y el total es 122.
 
     El monto que se carga es el LIQUIDO, no el total: es como se acuerda un
-    precio y como se cargan los gastos acá. La primera version hacia lo
-    contrario —tomaba el monto como total y sacaba el impuesto de adentro, 100
-    -> 81,97 + 18,03— y estaba mal: nadie escribe el numero con el IVA ya
-    metido.
+    precio y como se cargan los gastos acá, por default. La primera version
+    hacia lo contrario —tomaba el monto como total y sacaba el impuesto de
+    adentro, 100 -> 81,97 + 18,03— y estaba mal como comportamiento UNICO:
+    nadie escribe el numero con el IVA ya metido, salvo cuando sí (ver
+    `desglosar_iva_incluido`, para cuando el precio viene asi de afuera).
 
     Se llama `iva_sobre` y no `desglosar_iva` a proposito: la funcion vieja
     devolvia una tupla con el sentido invertido, y un renombre hace que
@@ -58,6 +60,22 @@ def iva_sobre(neto) -> float:
     seguir calculando mal en silencio.
     """
     return float(neto or 0) * IVA_TASA
+
+
+def desglosar_iva_incluido(total) -> tuple[float, float]:
+    """Separa (neto, iva) de un monto que YA INCLUYE el IVA. 122 -> (100, 22).
+
+    Pedido de Juan (22/9): a veces el precio se lo dan con el IVA adentro
+    ("son 4.880 pesos con IVA"), y ahi cargar ese numero como liquido y
+    sumarle otro 22% encima estaria mal. Es la contracara de `iva_sobre()`,
+    para el otro caso: el monto que se escribe en el formulario no cambia
+    (se guarda tal cual, es prueba de lo que dijeron), lo que cambia es como
+    se separa entre `monto_usd` (neto) e `iva_usd`, para que sigan sumando
+    el mismo total.
+    """
+    total = float(total or 0)
+    neto = _r2(total / (1 + IVA_TASA))
+    return neto, _r2(total - neto)
 
 
 def a_usd(monto: float, moneda: str, tipo_cambio: float | None) -> float:
@@ -126,6 +144,14 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
             continue
 
         dia = min(max(int(fijo["dia_del_mes"] or 1), 1), 28)
+
+        if fijo.get("tarjeta") and fijo["tipo"] == "ingreso":
+            hechos = _materializar_con_tarjeta(db_path, fijo, fin, dia)
+            if hechos is not None:
+                creados += hechos
+                continue
+            # None: la tarjeta no se pudo usar (le falta la comisión). Se
+            # cobra como un ingreso fijo común para no perder la venta.
         # El IVA se calcula acá y no al leer: queda congelado en cada
         # movimiento, igual que los que se cargan a mano.
         #
@@ -171,6 +197,57 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
                 # Ya existía ese (recurrente_id, periodo). Es el camino normal:
                 # todas las corridas después de la primera pasan por acá.
 
+    return creados
+
+
+def _materializar_con_tarjeta(db_path: str, fijo: dict, fin: str, dia: int) -> int | None:
+    """Los meses que falten de un ingreso fijo que el cliente paga con tarjeta.
+
+    Cada mes es un cobro entero, igual que el botón "Registrar cobro": el
+    ingreso con IVA ventas, la comisión de la tarjeta y Plexo (con IVA
+    compras) y el depósito que tiene que llegar. Todo o nada por mes, en una
+    transacción, así que un mes nunca queda con el ingreso y sin la comisión.
+
+    La guarda contra duplicados es la misma de siempre: el ingreso lleva
+    (recurrente_id, periodo), y si ese mes ya existe el INSERT choca con el
+    índice único y la transacción entera se descarta.
+
+    Devuelve cuántos meses creó, o None si la tarjeta no se puede usar.
+    """
+    from database import (CobroDuplicado, crear_cobro_tarjeta, get_ajuste,
+                          get_business)
+    from services.cobro_tarjeta import armar_cobro, desglosar, unir_ajustes
+
+    ajustes = unir_ajustes(get_ajuste(db_path, "cobro_tarjeta"))
+    try:
+        d = desglosar("precio", fijo["monto"], fijo["tarjeta"], ajustes,
+                      moneda=fijo["moneda"], tipo_cambio=fijo["tipo_cambio"],
+                      incluir_fijo=False)
+    except ValueError as e:
+        logger.warning("fijo id=%s (%s) con tarjeta sin usar: %s",
+                       fijo["id"], fijo["concepto"], e)
+        return None
+    negocio = get_business(db_path, fijo["client_id"]) if fijo["client_id"] else None
+
+    creados = 0
+    for periodo in meses_entre(fijo["desde"], fin):
+        cobro, ingreso, comision, plexo = armar_cobro(
+            d, fecha=f"{periodo}-{dia:02d}", concepto=fijo["concepto"],
+            categoria=fijo["categoria"], client_id=fijo["client_id"],
+            cliente=(negocio or {}).get("name"),
+            plexo_por_cobro_uyu=ajustes["plexo_por_cobro_uyu"],
+            created_by_name="fijo", recurrente_id=fijo["id"])
+        try:
+            crear_cobro_tarjeta(db_path, cobro, ingreso, comision, plexo)
+            creados += 1
+        except CobroDuplicado:
+            pass
+        except sqlite3.IntegrityError as e:
+            es_duplicado = (
+                getattr(e, "sqlite_errorname", "") == "SQLITE_CONSTRAINT_UNIQUE"
+                or "UNIQUE constraint failed" in str(e))
+            if not es_duplicado:
+                raise
     return creados
 
 
@@ -627,6 +704,222 @@ def primer_movimiento(db_path: str) -> str | None:
     finally:
         conn.close()
     return fila[0] if fila and fila[0] else None
+
+
+# ─── Balance General ─────────────────────────────────────────────────────────
+
+# Juan rechazó el estado de resultados como "balance" (15/9): "Un balance desde
+# que tengo uso de la razon es asi", con la imagen de un Balance General
+# clásico. Activo = Pasivo + Patrimonio a una fecha de corte.
+#
+# Por qué cuadra solo con los movimientos. La caja se cuenta CON IVA (es la
+# plata que entró y salió de verdad) y el resultado SIN IVA. La diferencia
+# entre las dos es exactamente el saldo de IVA (débito - crédito), que va al
+# pasivo si es a pagar o al activo si es a favor:
+#     caja = resultado + saldo_iva
+# Por eso `cajaActual` del simulador no sirve acá: es sin IVA, y con el IVA
+# en el pasivo el balance no cerraría nunca.
+#
+# Lo que no cuadra solo son los datos cargados a mano (bienes, deudas,
+# capital, saldo inicial): no tienen contrapartida automática. Si el activo no
+# es igual a pasivo + patrimonio, NO se fuerza: aparece la línea "Diferencia a
+# revisar" con el monto.
+
+BALANCE_CLASES = {
+    "activo": {"mercaderia": "Mercadería", "maquinarias": "Maquinarias y equipos",
+               "inmuebles": "Edificio / inmuebles", "rodados": "Rodados",
+               "otros": "Otros activos"},
+    "pasivo": {"sueldos": "Sueldos por pagar", "prestamos": "Préstamos por pagar",
+               "proveedores": "Proveedores", "fiscales": "Deudas fiscales / BPS",
+               "otros": "Otros pasivos"},
+    "capital": {"capital": "Capital"},
+    "caja_inicial": {"caja_inicial": "Saldo inicial de caja"},
+}
+
+EMPRESA_POR_DEFECTO = "Scalerics"
+
+
+def empresa_nombre() -> str:
+    """El nombre del encabezado. No hay tabla de configuración: se puede
+    cambiar con la variable EMPRESA_NOMBRE."""
+    return (os.environ.get("EMPRESA_NOMBRE") or "").strip() or EMPRESA_POR_DEFECTO
+
+
+def fecha_mvd_de_timestamp(ts) -> str:
+    """'2026-01-01 02:00:00' (UTC, lo que guarda SQLite) -> '2025-12-31'."""
+    texto = str(ts or "")[:19]
+    try:
+        dt = datetime.fromisoformat(texto.replace(" ", "T"))
+    except ValueError:
+        return texto[:10]
+    return (dt - timedelta(hours=3)).date().isoformat()
+
+
+def dato_vigente(dato: dict, corte: str) -> bool:
+    """Existe desde `desde` inclusive y deja de existir el día `hasta`."""
+    desde = str(dato.get("desde") or "")[:10]
+    hasta = str(dato.get("hasta") or "")[:10]
+    return bool(desde) and desde <= corte and (not hasta or corte < hasta)
+
+
+def pendiente_a_la_fecha(p: dict, corte: str) -> bool:
+    """Se debía ese día: ya existía y no se había cobrado todavía."""
+    desde = str(p.get("desde") or "")[:10]
+    cobrado = str(p.get("cobrado_fecha") or "")[:10]
+    return bool(desde) and desde <= corte and (not cobrado or cobrado > corte)
+
+
+def _fila(clave: str, nombre: str, monto: float, **extra) -> dict:
+    return {"clave": clave, "nombre": nombre, "monto": _r2(monto), **extra}
+
+
+def calcular_balance_general(movimientos: list[dict], pendientes: list[dict],
+                             datos: list[dict], tipo: str, corte: str,
+                             empresa: str = EMPRESA_POR_DEFECTO,
+                             generado_en: str = "") -> dict:
+    """El Balance General al `corte` ('YYYY-MM-DD'). Pura, sin base.
+
+    - `movimientos`: los de Finanzas (se descartan anulados y posteriores).
+    - `pendientes`: por-cobrar con `desde` (día de alta, Montevideo) y
+      `cobrado_fecha` (fecha del ingreso que lo saldó, o None).
+    - `datos`: los cargados a mano (`finanzas_balance_datos`).
+
+    En blanco: movimientos contables (`es_en_blanco`), datos marcados en
+    blanco y SIN cuentas por cobrar: acá la factura se decide al cobrar, así
+    que un pendiente todavía no está facturado. Interno: todo.
+    """
+    if tipo not in BALANCE_TIPOS:
+        raise ValueError(f"tipo tiene que ser uno de {tuple(BALANCE_TIPOS)}")
+    if not fecha_valida(corte):
+        raise ValueError("la fecha de corte tiene que ser 'YYYY-MM-DD'")
+    interno = tipo == "interno"
+    inicio_ejercicio = f"{corte[:4]}-01-01"
+
+    del_corte = [m for m in movimientos
+                 if not m.get("anulado")
+                 and str(m.get("fecha") or "")[:10] <= corte
+                 and (interno or es_en_blanco(m))]
+    sin_cotizacion = sum(1 for m in del_corte if m.get("monto_usd") is None)
+    movs = [m for m in del_corte if m.get("monto_usd") is not None]
+
+    caja_movs = saldo_iva = utilidad = acumulados = 0.0
+    for m in movs:
+        signo = 1 if m["tipo"] == "ingreso" else -1
+        neto = float(m["monto_usd"])
+        iva = float(m.get("iva_usd") or 0)
+        caja_movs += signo * (neto + iva)
+        saldo_iva += signo * iva
+        if str(m["fecha"])[:10] >= inicio_ejercicio:
+            utilidad += signo * neto
+        else:
+            acumulados += signo * neto
+
+    vigentes = [d for d in datos
+                if dato_vigente(d, corte) and (interno or d.get("en_blanco"))]
+
+    def suma(clase, rubro=None):
+        return sum(float(d["monto_usd"] or 0) for d in vigentes
+                   if d["clase"] == clase and (rubro is None or d["rubro"] == rubro))
+
+    por_cobrar = (sum(float(p.get("monto_usd") or 0) for p in pendientes
+                      if pendiente_a_la_fecha(p, corte))
+                  if interno else 0.0)
+
+    activo = [_fila("caja", "Caja y Bancos", suma("caja_inicial") + caja_movs, auto=True)]
+    if abs(por_cobrar) >= 0.005:
+        activo.append(_fila("por_cobrar", "Cuentas por cobrar", por_cobrar, auto=True))
+    if saldo_iva <= -0.005:
+        activo.append(_fila("iva_credito", "IVA crédito fiscal", -saldo_iva, auto=True))
+    for rubro, nombre in BALANCE_CLASES["activo"].items():
+        monto = suma("activo", rubro)
+        if abs(monto) >= 0.005:
+            activo.append(_fila(f"activo:{rubro}", nombre, monto, auto=False))
+
+    pasivo = []
+    if saldo_iva >= 0.005:
+        pasivo.append(_fila("iva_a_pagar", "IVA a pagar", saldo_iva, auto=True))
+    for rubro, nombre in BALANCE_CLASES["pasivo"].items():
+        monto = suma("pasivo", rubro)
+        if abs(monto) >= 0.005:
+            pasivo.append(_fila(f"pasivo:{rubro}", nombre, monto, auto=False))
+
+    patrimonio = [_fila("capital", "Capital", suma("capital"), auto=False)]
+    if abs(acumulados) >= 0.005:
+        patrimonio.append(_fila("acumulados", "Resultados de ejercicios anteriores",
+                                acumulados, auto=True))
+    patrimonio.append(_fila("utilidad", "Utilidad del ejercicio" if utilidad >= 0
+                            else "Pérdida del ejercicio", utilidad, auto=True))
+    if abs(por_cobrar) >= 0.005:
+        # La contrapartida de las cuentas por cobrar: una venta acordada que
+        # todavía no es un ingreso en Finanzas (se registra al cobrar).
+        patrimonio.append(_fila("ventas_por_cobrar", "Ventas pendientes de cobro",
+                                por_cobrar, auto=True))
+
+    # Totales sobre las filas YA redondeadas: lo que se ve suma exacto.
+    total_activo = _r2(sum(f["monto"] for f in activo))
+    total_pasivo = _r2(sum(f["monto"] for f in pasivo))
+    explicado = _r2(sum(f["monto"] for f in patrimonio))
+    diferencia = _r2(total_activo - total_pasivo - explicado)
+    cuadra = abs(diferencia) < 0.005
+    if not cuadra:
+        patrimonio.append(_fila("diferencia", "Diferencia a revisar (patrimonio no explicado)",
+                                diferencia, auto=True, alerta=True))
+    total_patrimonio = _r2(explicado + (0 if cuadra else diferencia))
+
+    return {
+        "tipo": tipo,
+        "tipo_nombre": BALANCE_TIPOS[tipo],
+        "empresa": empresa,
+        "corte": corte,
+        "ejercicio_desde": inicio_ejercicio,
+        "moneda": "USD",
+        "expresado_en": "dólares estadounidenses",
+        "generado_en": generado_en,
+        "sin_cotizacion": sin_cotizacion,
+        "activo": {"filas": activo, "total": total_activo},
+        "pasivo": {"filas": pasivo, "total": total_pasivo},
+        "patrimonio": {"filas": patrimonio, "total": total_patrimonio},
+        "total_pasivo_patrimonio": _r2(total_pasivo + total_patrimonio),
+        "cuadra": cuadra,
+        "diferencia": 0.0 if cuadra else diferencia,
+        "detalle": {
+            "caja_movimientos": _r2(caja_movs), "caja_inicial": _r2(suma("caja_inicial")),
+            "saldo_iva": _r2(saldo_iva), "por_cobrar": _r2(por_cobrar),
+            "utilidad": _r2(utilidad), "acumulados": _r2(acumulados),
+            "capital": _r2(suma("capital")),
+        },
+    }
+
+
+def pendientes_para_balance(db_path: str) -> list[dict]:
+    """Todos los por-cobrar (también los cobrados), con el día de alta en
+    Montevideo y la fecha del ingreso que los saldó."""
+    from database import _connect
+
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT p.id, p.concepto, p.monto_usd, p.created_at, m.fecha AS cobrado_fecha "
+            "FROM finanzas_por_cobrar p "
+            "LEFT JOIN finanzas_movimientos m ON m.id = p.cobrado_movimiento_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [{**dict(f), "desde": fecha_mvd_de_timestamp(f["created_at"])} for f in filas]
+
+
+def balance_general(db_path: str, tipo: str, corte: str, generado_en: str = "") -> dict:
+    """Lee todo, arma el Balance General y le cuelga el estado de resultados
+    del ejercicio (1/1 al corte), que es de donde sale la Utilidad."""
+    from database import listar_datos_balance, listar_movimientos
+
+    movs = listar_movimientos(db_path, hasta=corte[:7])
+    bg = calcular_balance_general(movs, pendientes_para_balance(db_path),
+                                  listar_datos_balance(db_path), tipo, corte,
+                                  empresa=empresa_nombre(), generado_en=generado_en)
+    bg["estado_resultados"] = calcular_balance(movs, tipo, bg["ejercicio_desde"], corte,
+                                               generado_en=generado_en)
+    return bg
 
 
 # ─── Rendimiento de la pauta ─────────────────────────────────────────────────

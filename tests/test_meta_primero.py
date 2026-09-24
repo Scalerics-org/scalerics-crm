@@ -1,7 +1,7 @@
 """El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
-Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
-FINANZAS (Finanzas, Simulador financiero) · VENTAS (Seguimiento de leads,
+Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing, Email marketing, LinkedIn) ·
+FINANZAS (Finanzas, Simulador financiero, Métricas financieras) · VENTAS (Seguimiento de leads,
 WhatsApp, Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas,
 Daily Programador, Daily Admin, Actividad) · RECURSOS HUMANOS · CAPTACION
 (Outbound, Inteligencia comercial, SDR). La barra del celular sigue el mismo
@@ -32,12 +32,13 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 ORDEN = [
     ("CALENDARIO", ["cal"]),
-    ("MARKETING", ["meta", "marketing"]),
-    ("FINANZAS", ["finanzas", "simulador"]),
+    ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "sombra"]),
+    ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
     ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
-    ("RECURSOS HUMANOS", ["equipo", "ausencias"]),
-    ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
+    ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
+    ("CAPTACIÓN", ["cola", "metrics"]),   # SDR salio el 23/9
+    ("SEGURIDAD", ["credenciales"]),
 ]
 
 
@@ -129,13 +130,16 @@ def _primer_panel(access, existentes):
     (["pipeline", "clientes", "meta"], "meta"),           # meta va antes que clientes
     (["cola", "tasks"], "tasks"),
     (["cola", "ausencias"], "ausencias"),                 # Recursos Humanos va antes que Captación
+    (["cola", "flujos"], "flujos"),
+    (["cola", "horarios"], "horarios"),
+    (["horarios", "flujos"], "flujos"),                  # Flujos va antes que Horarios
     (["activity", "daily"], "daily"),                     # Daily va antes que Actividad
     (["activity", "daily_admin"], "daily_admin"),         # Daily Admin también
 ])
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
-                  "equipo", "ausencias", "seg_leads", "daily", "daily_admin"]
+                  "equipo", "ausencias", "flujos", "horarios", "seg_leads", "daily", "daily_admin"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")
