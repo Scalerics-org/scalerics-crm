@@ -38,6 +38,7 @@ from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
 from routes.fidelidad import fidelidad_bp
+from routes.plexo import PUBLICAS as PLEXO_PUBLICAS, plexo_bp
 from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
@@ -1063,6 +1064,137 @@ async function fidEventoBorrar(eid) {
   fidCerrarModal(); fidCargarAgenda();
 }
 // ========== FIN Fidelidad ==========
+"""
+
+# Cobro automático con Plexo (services/plexo.py). Crudo por las barras del JS.
+PLEXO_JS = r"""// ========== Plexo: cobro automático ==========
+// services/plexo.py hace todo; aca solo se pinta y se aprietan botones.
+const PLX_ESTADOS = {
+  sin_tarjeta: ['Sin tarjeta', ''],
+  esperando_tarjeta: ['Esperando que cargue la tarjeta', 'esp'],
+  activa: ['Tarjeta guardada', 'ok'],
+  rechazada: ['La tarjeta rebotó', 'mal'],
+  pausada: ['Pausado', ''],
+};
+let _plxDatos = null;
+
+function _plxMonto(n, moneda) {
+  return (moneda === 'UYU' ? '$ ' : 'USD ') + Number(n || 0).toLocaleString('es-UY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+async function plxCargar() {
+  const lista = document.getElementById('plx-lista');
+  if (!lista) return;
+  let d;
+  try {
+    const r = await fetch('/api/plexo/estado');
+    if (!r.ok) throw new Error('no se pudo cargar (' + r.status + ')');
+    d = await r.json();
+  } catch (e) { lista.innerHTML = '<div class="plx-err">' + esc(e.message) + '</div>'; return; }
+  _plxDatos = d;
+  const env = document.getElementById('plx-env');
+  env.className = 'plx-env ' + d.env;
+  env.textContent = d.env === 'produccion' ? 'Cobros reales' : 'Modo prueba';
+  const aviso = document.getElementById('plx-aviso');
+  aviso.innerHTML = !d.listo
+    ? '<div class="plx-err">Falta configurar Plexo: ' + esc((d.faltan || []).join(', ')) + '.</div>'
+    : (!d.automatico ? '<div class="plx-err">Los cobros automáticos están apagados (PLEXO_COBROS=off).</div>' : '');
+  if (!d.fijos.length) {
+    lista.innerHTML = '<div class="plx-vacio">Todavía no hay ingresos fijos cobrados con tarjeta. En la pestaña <b>Fijos</b>, al ingreso del cliente elegile la tarjeta y aparece acá.</div>';
+    return;
+  }
+  const solo = typeof _finSoloLectura === 'function' && _finSoloLectura();
+  lista.innerHTML = d.fijos.map(f => _plxFila(f, solo)).join('');
+}
+
+function _plxFila(f, solo) {
+  const est = PLX_ESTADOS[f.estado] || [f.estado, ''];
+  let pill = est[0];
+  if (f.estado === 'activa' && f.tarjeta) pill += ' ' + f.tarjeta + (f.vence ? ' · vence ' + f.vence : '');
+  const quien = f.cliente ? f.cliente + ' · ' : '';
+  let meta = _plxMonto(f.monto, f.moneda) + ' + IVA por mes · se cobra el día ' + f.dia;
+  if (f.cobrado_este_mes) meta += ' · <b>este mes ya está cobrado</b>';
+  let acc = '';
+  if (!solo) {
+    if (f.estado === 'sin_tarjeta' || f.estado === 'esperando_tarjeta' || f.estado === 'rechazada') {
+      acc += '<button class="plx-btn p" onclick="plxLink(' + f.fijo_id + ')">' + (f.link ? 'Ver link para el cliente' : 'Pedir tarjeta') + '</button>';
+    }
+    if (f.estado === 'esperando_tarjeta') acc += '<button class="plx-btn" onclick="plxVerificar(' + f.fijo_id + ')">Ya la cargó</button>';
+    if (f.estado === 'activa' || f.estado === 'rechazada') {
+      if (!f.cobrado_este_mes && window._isAdmin) acc += '<button class="plx-btn" onclick="plxCobrar(' + f.fijo_id + ')">Cobrar este mes ahora</button>';
+      acc += '<button class="plx-btn" onclick="plxLink(' + f.fijo_id + ')">Cambiar tarjeta</button>';
+      acc += '<button class="plx-btn" onclick="plxPausar(' + f.fijo_id + ', true)">Pausar</button>';
+    }
+    if (f.estado === 'pausada') acc += '<button class="plx-btn" onclick="plxPausar(' + f.fijo_id + ', false)">Reanudar</button>';
+  }
+  const hist = (f.cobros || []).slice(0, 4).map(c =>
+    '<span>' + esc(c.periodo) + ': ' + esc({aprobado: '✅ cobrado', rechazado: '❌ rebotó', error: '⚠️ error', enviando: '⏳ en curso'}[c.estado] || c.estado)
+    + (c.estado !== 'aprobado' && c.detalle ? ' (' + esc(c.detalle) + ')' : '') + '</span>').join('');
+  return '<div class="plx-fila" id="plx-f-' + f.fijo_id + '">'
+    + '<div class="plx-cab"><div><div class="plx-nm">' + esc(quien + f.concepto) + '</div><div class="plx-meta">' + meta + '</div></div>'
+    + '<span class="plx-pill ' + est[1] + '">' + esc(pill) + '</span></div>'
+    + (f.estado === 'rechazada' && f.ultimo_error ? '<div class="plx-err">' + esc(f.ultimo_error) + '. Se reintenta solo a los 3 días; si cambió la tarjeta, mandale el link.</div>' : '')
+    + '<div id="plx-link-' + f.fijo_id + '"></div>'
+    + (acc ? '<div class="plx-acc">' + acc + '</div>' : '')
+    + (hist ? '<div class="plx-hist">' + hist + '</div>' : '')
+    + '<div class="plx-err" id="plx-e-' + f.fijo_id + '"></div>'
+    + '</div>';
+}
+
+async function _plxPost(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && d.error) || ('Error ' + r.status));
+  return d;
+}
+
+async function plxLink(id) {
+  const f = (_plxDatos.fijos || []).find(x => x.fijo_id === id) || {};
+  const err = document.getElementById('plx-e-' + id); err.textContent = '';
+  let d;
+  try { d = await _plxPost('/api/plexo/fijos/' + id + '/link', {}); }
+  catch (e) { err.textContent = e.message; return; }
+  // Pasa a "esperando": se repinta la fila ANTES de mostrar el link, si no lo borra.
+  if (f.estado === 'sin_tarjeta') await plxCargar();
+  const nombre = (f.cliente || '').split(' ')[0];
+  const texto = 'Hola' + (nombre ? ' ' + nombre : '') + '! Para que el pago mensual de Scalerics se cobre automático con tu tarjeta, cargala una sola vez acá (es la página segura de Plexo): ' + d.link;
+  const tel = String(f.telefono || '').replace(/\D/g, '');
+  const wa = 'https://wa.me/' + (tel ? (tel.startsWith('598') ? tel : '598' + tel.replace(/^0/, '')) : '') + '?text=' + encodeURIComponent(texto);
+  document.getElementById('plx-link-' + id).innerHTML = '<div class="plx-link"><input readonly value="' + esc(d.link) + '" onclick="this.select()">'
+    + '<button class="plx-btn" onclick="navigator.clipboard.writeText(\'' + d.link.replace(/'/g, '') + '\');this.textContent=\'Copiado\'">Copiar</button>'
+    + '<a class="plx-btn wa" href="' + wa + '" target="_blank" rel="noopener">Mandar por WhatsApp</a></div>'
+    + '<div class="plx-meta" style="margin-top:4px">El link no vence: cada vez que el cliente lo abre, Plexo le muestra la página para cargar la tarjeta.</div>';
+}
+
+async function plxVerificar(id) {
+  const err = document.getElementById('plx-e-' + id); err.textContent = '';
+  try {
+    const d = await _plxPost('/api/plexo/fijos/' + id + '/verificar');
+    if (d.estado !== 'activa') { err.textContent = d.mensaje || 'Todavía no aparece la tarjeta.'; return; }
+  } catch (e) { err.textContent = e.message; return; }
+  plxCargar();
+}
+
+async function plxCobrar(id) {
+  const f = (_plxDatos.fijos || []).find(x => x.fijo_id === id) || {};
+  if (!confirm('¿Cobrarle ahora el mes a ' + (f.cliente || f.concepto) + '?' + (_plxDatos.env === 'produccion' ? ' Es un cobro REAL.' : ' (modo prueba)'))) return;
+  const err = document.getElementById('plx-e-' + id); err.textContent = '';
+  try {
+    const d = await _plxPost('/api/plexo/fijos/' + id + '/cobrar');
+    const txt = {aprobado: 'Cobrado ✅ ' + _plxMonto(d.total, d.moneda) + '. Quedó anotado en Finanzas.', rechazado: 'La tarjeta rebotó: ' + (d.detalle || ''),
+      ya_cobrado: 'Este mes ya estaba cobrado.', ya_anotado: 'Este mes ya está anotado en Finanzas, así que no se le cobra a la tarjeta. Si no lo pagó, borrá ese ingreso y volvé a intentar.', en_curso: 'Hay un cobro en curso.', sin_tarjeta: 'No tiene tarjeta guardada.'}[d.resultado] || (d.resultado + (d.detalle ? ': ' + d.detalle : ''));
+    alert(txt);
+  } catch (e) { err.textContent = e.message; return; }
+  plxCargar();
+  if (typeof loadCobroTarjeta === 'function') { /* la lista de cobros de abajo */ }
+}
+
+async function plxPausar(id, pausada) {
+  const err = document.getElementById('plx-e-' + id); err.textContent = '';
+  try { await _plxPost('/api/plexo/fijos/' + id + '/pausar', {pausada: pausada}); } catch (e) { err.textContent = e.message; return; }
+  plxCargar();
+}
+// ========== FIN Plexo: cobro automático ==========
 """
 
 WA_MEDIOS_JS = r"""
@@ -2563,6 +2695,30 @@ textarea.fid-in{resize:vertical;min-height:54px}
   .fid-fila .fid-pill{display:none}
   .fid-hb{grid-template-columns:90px 1fr 84px}
 }
+/* ── Plexo: cobro automático (Finanzas → Cobro con tarjeta, 24/9) ───────── */
+.plx-sub{color:var(--texto-debil);font-size:.8rem;margin:-4px 0 12px;line-height:1.45}
+.plx-env{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.plx-env.testing{background:var(--ambar-tinte);color:var(--ambar)}
+.plx-env.produccion{background:var(--verde-tinte);color:var(--verde-texto)}
+.plx-fila{border:1px solid var(--borde);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--superficie-honda)}
+.plx-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.plx-nm{font-weight:700;color:var(--texto-fuerte);font-size:.9rem}
+.plx-meta{color:var(--texto-debil);font-size:.76rem;margin-top:2px}
+.plx-pill{display:inline-flex;font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:99px;border:1px solid var(--borde-fuerte);color:var(--texto-tenue);white-space:nowrap}
+.plx-pill.ok{color:var(--verde-texto);border-color:var(--verde);background:var(--verde-tinte)}
+.plx-pill.esp{color:var(--ambar);border-color:var(--ambar-borde);background:var(--ambar-tinte)}
+.plx-pill.mal{color:var(--rojo-texto);border-color:var(--rojo-borde);background:var(--rojo-tinte)}
+.plx-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.plx-btn{padding:6px 12px;border-radius:8px;border:1px solid var(--borde-fuerte);background:transparent;color:var(--texto);font:600 .76rem 'Inter',sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.plx-btn:hover{background:var(--hover)}
+.plx-btn.p{background:var(--azul);border-color:var(--azul);color:#fff}
+.plx-btn.wa{background:#25d366;border-color:#25d366;color:#fff}
+.plx-link{margin-top:8px;display:flex;gap:6px;align-items:center}
+.plx-link input{flex:1;min-width:0;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:7px;color:var(--texto);font:12px 'Inter',sans-serif;padding:6px 8px}
+.plx-hist{margin-top:8px;font-size:.72rem;color:var(--texto-debil)}
+.plx-hist span{margin-right:10px}
+.plx-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
+.plx-vacio{color:var(--texto-debil);font-size:.8rem;padding:6px 0}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -4146,6 +4302,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
 
     <div id="fin-vista-tarjeta" style="display:none">
+      <!-- Cobro automático con Plexo (services/plexo.py, 24/9) -->
+      <div class="fin-card" id="plx-card">
+        <div class="fin-card-title">Cobro automático con tarjeta <span id="plx-env" class="plx-env"></span></div>
+        <div class="plx-sub">Cada cliente carga su tarjeta una sola vez en la página de Plexo y el CRM le cobra solo, todos los meses, el día que tiene el fijo. Cada cobro aprobado se anota en Finanzas: ingreso, comisión, Plexo y depósito.</div>
+        <div id="plx-aviso"></div>
+        <div id="plx-lista"><div class="plx-vacio">Cargando…</div></div>
+      </div>
       <div class="fin-card">
         <div class="fin-card-title">Calculadora de cobro con tarjeta</div>
         <div class="fin-toggle" style="margin-bottom:16px">
@@ -12384,6 +12547,7 @@ function _ftFecha(iso) {
 }
 
 async function loadCobroTarjeta() {
+  plxCargar();
   const solo = _finSoloLectura();
   document.getElementById('ft-registrar-card').style.display = solo ? 'none' : '';
   document.getElementById('ft-guardar-ajustes').style.display = solo ? 'none' : '';
@@ -14066,6 +14230,7 @@ async function plBorrar(id) {
 }
 
 /*FID_JS*/
+/*PLEXO_JS*/
 // ========== Seguimiento de leads ==========
 // La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
 // semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
@@ -20150,7 +20315,8 @@ async function loadActivity() {
 # por Jinja) ven un comentario en vez de un "{%" suelto que no compila.
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
-).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */")
+).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
+).replace("/*PLEXO_JS*/", PLEXO_JS)
 
 
 _calendly_sync_state = {"at": 0.0}
@@ -20263,7 +20429,7 @@ def create_app(db_path: str) -> Flask:
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
-                credenciales_bp, fidelidad_bp):
+                credenciales_bp, fidelidad_bp, plexo_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -20277,6 +20443,11 @@ def create_app(db_path: str) -> Flask:
         # Su autenticacion es la firma de Svix, verificada dentro del endpoint:
         # Resend lo llama sin credenciales nuestras.
         if request.path.startswith("/api/resend/webhook"):
+            return
+        # Plexo: el link que abre el cliente para cargar la tarjeta, la página
+        # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
+        # en lo que reciben (ver su docstring).
+        if request.path.startswith(PLEXO_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -21535,6 +21706,11 @@ loadBackups();
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
         from services.backup_db import start_backup_db
         start_backup_db(app)
+
+        # Cobro automático con tarjeta (services/plexo.py). PLEXO_COBROS=off
+        # lo apaga; la guarda contra cobrar dos veces es la tabla plexo_cobros.
+        from services.plexo import start_plexo_cobros
+        start_plexo_cobros(app)
 
     try:
         from database import get_all_users
