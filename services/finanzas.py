@@ -146,6 +146,11 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
         dia = min(max(int(fijo["dia_del_mes"] or 1), 1), 28)
 
         if fijo.get("tarjeta") and fijo["tipo"] == "ingreso":
+            # Con la tarjeta guardada en Plexo, el mes se anota cuando Plexo
+            # aprueba el cobro (services/plexo.py), no suponiendo que pagó.
+            from services.plexo import es_automatico
+            if es_automatico(db_path, fijo["id"]):
+                continue
             hechos = _materializar_con_tarjeta(db_path, fijo, fin, dia)
             if hechos is not None:
                 creados += hechos

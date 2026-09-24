@@ -2141,6 +2141,9 @@ def init_db(db_path: str) -> None:
                                         init_fidelidad)
         _add_column(conn, "businesses", "archivado_en", "TEXT")
         init_fidelidad(conn)
+        # Cobro automático con tarjeta (services/plexo.py, 24/9).
+        from services.plexo import init_plexo
+        init_plexo(conn)
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
