@@ -4145,15 +4145,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="fin-vista-tarjeta" style="display:none">
       <div class="fin-card">
         <div class="fin-card-title">Calculadora de cobro con tarjeta</div>
+        <div class="fin-toggle" style="margin-bottom:16px">
+          <button class="pill active" id="ft-q-cobro" style="font-size:.95rem;padding:10px 20px" onclick="ftPregunta('cobro')">¿Cuánto le cobro?</button>
+          <button class="pill" id="ft-q-queda" style="font-size:.95rem;padding:10px 20px" onclick="ftPregunta('queda')">¿Cuánto me queda?</button>
+        </div>
+        <input type="hidden" id="ft-modo" value="quiero_llevarme">
         <div class="fb-controles">
-          <label class="fb-label">Qué querés calcular
-            <select id="ft-modo" class="filter-select" onchange="ftCalcular()">
-              <option value="quiero_llevarme" selected>Quiero que me quede</option>
-              <option value="precio">Le cobro (sin IVA)</option>
-              <option value="total">Le cobro a la tarjeta (con IVA)</option>
-            </select>
-          </label>
-          <label class="fb-label">Monto <input type="number" id="ft-monto" class="fb-campo" step="0.01" min="0" value="300" oninput="ftCalcular()"></label>
+          <label class="fb-label"><span id="ft-monto-rotulo">Lo que querés que te quede</span> <input type="number" id="ft-monto" class="fb-campo" step="0.01" min="0" value="300" oninput="ftCalcular()"></label>
+          <label class="fbd-check" id="ft-con-iva-row" style="display:none"><input type="checkbox" id="ft-con-iva" onchange="_ftModoQueda()"> El monto ya incluye el IVA</label>
           <label class="fb-label">Moneda
             <select id="ft-moneda" class="filter-select" onchange="ftCalcular()">
               <option value="USD" selected>Dólares</option>
@@ -5571,6 +5570,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <label class="modal-label">Categoría</label>
     <select id="fin-fijo-categoria"></select>
+
+    <div id="fin-fijo-ingreso-extra" style="display:none">
+      <label class="modal-label">Cliente</label>
+      <select id="fin-fijo-cliente"><option value="">Sin cliente</option></select>
+      <label class="modal-label">¿Cómo paga?</label>
+      <select id="fin-fijo-tarjeta" onchange="_finFijoTarjeta()"><option value="">Transferencia o efectivo</option></select>
+      <div id="fin-fijo-tarjeta-nota" class="fin-kpi-var" style="margin:6px 0 4px;line-height:1.45"></div>
+    </div>
 
     <label class="modal-label">Monto</label>
     <div style="display:flex;gap:8px">
@@ -12437,6 +12444,25 @@ async function _ftCargarSelects() {
   }
 }
 
+// Dos preguntas en vez de un desplegable (pedido de Juan, 24/9: el
+// "cuanto me queda" existia pero nadie lo encontraba en el select).
+function ftPregunta(cual) {
+  const cobro = cual === 'cobro';
+  document.getElementById('ft-q-cobro').classList.toggle('active', cobro);
+  document.getElementById('ft-q-queda').classList.toggle('active', !cobro);
+  document.getElementById('ft-con-iva-row').style.display = cobro ? 'none' : '';
+  document.getElementById('ft-monto-rotulo').textContent =
+    cobro ? 'Lo que querés que te quede' : 'Lo que le cobrás';
+  _ftModoQueda();
+}
+
+function _ftModoQueda() {
+  const cobro = document.getElementById('ft-q-cobro').classList.contains('active');
+  document.getElementById('ft-modo').value = cobro ? 'quiero_llevarme'
+    : (document.getElementById('ft-con-iva').checked ? 'total' : 'precio');
+  ftCalcular();
+}
+
 function ftCalcular() {
   clearTimeout(_ftTimer);
   _ftTimer = setTimeout(_ftCalcularYa, 250);
@@ -13291,6 +13317,7 @@ function _finFijoPreviewIva() {
 
 function finFijoSetTipo(tipo) {
   _finFijoTipo = tipo;
+  document.getElementById('fin-fijo-ingreso-extra').style.display = tipo === 'ingreso' ? '' : 'none';
   document.getElementById('fin-fijo-tipo-egreso').classList.toggle('active', tipo === 'egreso');
   document.getElementById('fin-fijo-tipo-ingreso').classList.toggle('active', tipo === 'ingreso');
   document.getElementById('fin-fijo-categoria').innerHTML =
@@ -13314,6 +13341,7 @@ async function abrirFijo(fijo) {
   document.getElementById('fin-fijo-error').textContent = '';
   finFijoSetTipo(f.tipo || 'egreso');
   finFijoSetFacturado(!!f.facturado);
+  await _finFijoCargarExtras(f);
   // Sin esto, prenderle el IVA a un fijo que ya corre parece no hacer nada:
   // el movimiento del mes ya existe y materializar no lo reescribe.
   document.getElementById('fin-fijo-iva-nota').textContent = f.id
@@ -13322,6 +13350,56 @@ async function abrirFijo(fijo) {
   if (f.categoria) document.getElementById('fin-fijo-categoria').value = f.categoria;
   _finFijoTc();
   document.getElementById('fin-fijo-modal').classList.add('open');
+}
+
+// Cliente y forma de pago de un ingreso fijo (24/9). Con tarjeta, cada mes
+// el fijo genera el cobro entero: ingreso, comision, Plexo y el deposito.
+async function _finFijoCargarExtras(f) {
+  const cli = document.getElementById('fin-fijo-cliente');
+  const tar = document.getElementById('fin-fijo-tarjeta');
+  try {
+    if (cli.dataset.cargado !== '1') {
+      const r = await fetch('/api/leads?crm_group=clientes');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      cli.innerHTML = '<option value="">Sin cliente</option>'
+        + leads.map(b => '<option value="' + b.id + '">' + esc(b.name) + '</option>').join('');
+      cli.dataset.cargado = '1';
+    }
+    if (tar.dataset.cargado !== '1') {
+      const r = await fetch('/api/finanzas/tarjeta/ajustes');
+      const d = await r.json();
+      tar.innerHTML = '<option value="">Transferencia o efectivo</option>'
+        + d.tarjetas.map(t => {
+          const pct = d.ajustes.comisiones[t[0]];
+          const sin = pct === null || pct === undefined;
+          return '<option value="' + t[0] + '"' + (sin ? ' disabled' : '') + '>'
+            + esc(t[1] + (sin ? ' (falta cargar la comisión)' : ''))
+            + '</option>';
+        }).join('');
+      tar.dataset.cargado = '1';
+    }
+  } catch (e) { /* sin estas listas el fijo se guarda igual, sin cliente ni tarjeta */ }
+  cli.querySelectorAll('option[data-fin-sintetico]').forEach(o => o.remove());
+  if (f.client_id && !cli.querySelector('option[value="' + f.client_id + '"]')) {
+    const opt = document.createElement('option');
+    opt.value = f.client_id;
+    opt.dataset.finSintetico = '1';
+    opt.textContent = f.client_name || ('Cliente #' + f.client_id);
+    cli.appendChild(opt);
+  }
+  cli.value = f.client_id || '';
+  tar.value = f.tarjeta || '';
+  _finFijoTarjeta();
+}
+
+function _finFijoTarjeta() {
+  const tar = document.getElementById('fin-fijo-tarjeta');
+  const nota = document.getElementById('fin-fijo-tarjeta-nota');
+  if (!tar.value) { nota.textContent = ''; return; }
+  finFijoSetFacturado(true);
+  nota.textContent = 'Cada mes se carga solo el cobro entero: el ingreso con IVA, '
+    + 'la comisión de la tarjeta y Plexo. El depósito aparece en Cobro con tarjeta.';
 }
 
 function cerrarFijo() {
@@ -13344,6 +13422,12 @@ async function guardarFijo() {
     hasta: document.getElementById('fin-fijo-hasta').value || null,
     facturado: _finFijoFacturado,
   };
+  if (_finFijoTipo === 'ingreso') {
+    cuerpo.client_id = document.getElementById('fin-fijo-cliente').value || null;
+    cuerpo.tarjeta = document.getElementById('fin-fijo-tarjeta').value || null;
+  } else {
+    cuerpo.tarjeta = null;
+  }
   const r = await fetch(id ? `/api/finanzas/recurrentes/${id}` : '/api/finanzas/recurrentes',
                         {method: id ? 'PUT' : 'POST',
                          headers: {'Content-Type': 'application/json'},
@@ -13449,7 +13533,7 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.client_name ? ' · ' + esc(f.client_name) : ''}${f.tarjeta_nombre ? ' · paga con ' + esc(f.tarjeta_nombre) : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">

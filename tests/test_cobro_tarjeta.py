@@ -343,3 +343,88 @@ def test_doble_envio_con_cliente_elegido_desde_la_pantalla(app, cli):
     assert cli.post("/api/finanzas/cobros-tarjeta", json=cuerpo).status_code == 201
     assert cli.post("/api/finanzas/cobros-tarjeta", json=cuerpo).status_code == 409
     assert len(listar_movimientos(db)) == 3
+
+
+# ── ingresos fijos que se cobran con tarjeta (24/9) ──────────────────────────
+
+def _fijo_con_tarjeta(cli, cid, **extra):
+    hoy = date.today()
+    cuerpo = {"tipo": "ingreso", "concepto": "Mantenimiento mensual",
+              "categoria": "mantenimiento", "monto": 120, "moneda": "USD",
+              "dia_del_mes": 1, "desde": f"{hoy.year:04d}-{hoy.month:02d}",
+              "client_id": str(cid), "tarjeta": "visa_debito", **extra}
+    return cli.post("/api/finanzas/recurrentes", json=cuerpo)
+
+
+def test_un_fijo_con_tarjeta_genera_el_cobro_entero_cada_mes(app, cli):
+    from services.finanzas import materializar_recurrentes
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Diego Hinze", "phone": "+598700888"})
+    r = _fijo_con_tarjeta(cli, cid, facturado=False)
+    assert r.status_code == 201, r.get_json()
+
+    assert materializar_recurrentes(db) == 1
+    assert materializar_recurrentes(db) == 0, "correrlo de nuevo no duplica"
+
+    movs = sorted(listar_movimientos(db), key=lambda m: m["id"])
+    assert [m["tipo"] for m in movs] == ["ingreso", "egreso", "egreso"]
+    ingreso, comision, plexo = movs
+    # Con tarjeta siempre va facturado, aunque el alta dijera que no.
+    assert ingreso["facturado"] == 1 and ingreso["iva_usd"] == pytest.approx(26.4)
+    assert ingreso["recurrente_id"] and not comision["recurrente_id"]
+    # El nombre del cliente en los tres: "Plexo por cobro · Mantenimiento
+    # mensual" solo no dice de quién es.
+    for m in movs:
+        assert "Diego Hinze" in m["concepto"], m["concepto"]
+    assert comision["monto_usd"] == pytest.approx(1.54)   # 1,05% de 146,40
+
+    cobros = cli.get("/api/finanzas/cobros-tarjeta").get_json()
+    assert len(cobros) == 1 and cobros[0]["tarjeta"] == "visa_debito"
+
+
+def test_borrar_el_cobro_de_un_fijo_no_lo_vuelve_a_generar(app, cli):
+    from services.finanzas import materializar_recurrentes
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Cliente Fijo", "phone": "+598700889"})
+    _fijo_con_tarjeta(cli, cid)
+    materializar_recurrentes(db)
+    cobro = cli.get("/api/finanzas/cobros-tarjeta").get_json()[0]
+
+    assert cli.delete(f"/api/finanzas/cobros-tarjeta/{cobro['id']}").status_code == 200
+    assert listar_movimientos(db) == []
+    assert materializar_recurrentes(db) == 0, "el mes borrado no vuelve solo"
+    assert listar_movimientos(db) == []
+
+
+def test_un_fijo_no_se_cobra_con_una_tarjeta_sin_comision(app, cli):
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Otro", "phone": "+598700890"})
+    r = _fijo_con_tarjeta(cli, cid, tarjeta="oca_credito")
+    assert r.status_code == 400
+    assert "comisión" in r.get_json()["error"]
+
+
+def test_un_egreso_no_se_cobra_con_tarjeta(cli):
+    r = cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "Hosting", "categoria": "infraestructura",
+        "monto": 10, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "tarjeta": "visa_credito"})
+    assert r.status_code == 400
+
+
+def test_el_cobro_a_mano_tambien_lleva_el_nombre_del_cliente(app, cli):
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Panadería Sol", "phone": "+598700891"})
+    cli.post("/api/finanzas/cobros-tarjeta", json={
+        "modo": "precio", "monto": 100, "tarjeta": "visa_credito",
+        "fecha": _hoy(), "concepto": "Mantenimiento mensual", "client_id": cid})
+    for m in listar_movimientos(db):
+        assert "Panadería Sol" in m["concepto"], m["concepto"]
+
+
+def test_el_nombre_no_se_repite_si_el_concepto_ya_lo_dice():
+    from services.cobro_tarjeta import quien_paga
+    assert quien_paga("Mantenimiento", "Diego") == "Diego · Mantenimiento"
+    assert quien_paga("Mantenimiento Diego", "Diego") == "Mantenimiento Diego"
+    assert quien_paga("Mantenimiento", None) == "Mantenimiento"
+

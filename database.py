@@ -1138,6 +1138,12 @@ def init_db(db_path: str) -> None:
         # se descontó.
         _add_column(conn, "finanzas_recurrentes", "facturado",
                     "INTEGER NOT NULL DEFAULT 0")
+        # Cómo paga el cliente un ingreso fijo (pedido de Juan, 24/9). NULL es
+        # transferencia o efectivo, como hasta ahora. Con una tarjeta
+        # (services/cobro_tarjeta.TARJETAS), cada mes el fijo genera el cobro
+        # entero: ingreso, comisión de la tarjeta, Plexo y el depósito que
+        # tiene que llegar.
+        _add_column(conn, "finanzas_recurrentes", "tarjeta", "TEXT")
 
         # ── cobros con tarjeta (Plexo) ────────────────────────────────────────
         # Ajustes de Finanzas que se editan desde la pantalla: clave -> JSON.
@@ -4395,7 +4401,7 @@ _MOVIMIENTO_COLUMNS = {
 _RECURRENTE_COLUMNS = {
     "tipo", "concepto", "categoria", "monto", "moneda", "tipo_cambio",
     "dia_del_mes", "desde", "hasta", "activo", "client_id", "notas",
-    "facturado",
+    "facturado", "tarjeta",
 }
 
 
@@ -4604,7 +4610,12 @@ def marcar_acreditado(db_path: str, cobro_id: int, fecha: str | None) -> None:
 
 
 def borrar_cobro_tarjeta(db_path: str, cobro_id: int) -> None:
-    """Borra el cobro y sus movimientos, todo junto."""
+    """Borra el cobro y sus movimientos, todo junto.
+
+    El ingreso que generó un fijo se ANULA en vez de borrarse, igual que en
+    `api_borrar_movimiento`: si se borrara, quedaría libre el par
+    (recurrente_id, periodo) y el fijo volvería a cobrar ese mes solo.
+    """
     conn = _connect(db_path)
     try:
         fila = conn.execute(
@@ -4613,7 +4624,15 @@ def borrar_cobro_tarjeta(db_path: str, cobro_id: int) -> None:
         if not fila:
             return
         for mid in (fila["ingreso_id"], fila["comision_id"], fila["plexo_id"]):
-            if mid:
+            if not mid:
+                continue
+            de_fijo = conn.execute(
+                "SELECT recurrente_id FROM finanzas_movimientos WHERE id = ?",
+                (mid,)).fetchone()
+            if de_fijo and de_fijo["recurrente_id"]:
+                conn.execute("UPDATE finanzas_movimientos SET anulado = 1 WHERE id = ?",
+                             (mid,))
+            else:
                 conn.execute("DELETE FROM finanzas_movimientos WHERE id = ?", (mid,))
         conn.execute("DELETE FROM finanzas_cobros_tarjeta WHERE id = ?", (cobro_id,))
         conn.commit()

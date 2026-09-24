@@ -29,10 +29,10 @@ from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
 
-from database import (CobroDuplicado, borrar_cobro_tarjeta, crear_cobro_tarjeta, get_ajuste,
+from database import (CobroDuplicado, borrar_cobro_tarjeta, get_business, crear_cobro_tarjeta, get_ajuste,
                       get_cobro_tarjeta, guardar_ajuste, listar_cobros_tarjeta,
                       marcar_acreditado)
-from services.cobro_tarjeta import (MODOS, TARJETAS, desglosar,
+from services.cobro_tarjeta import (MODOS, TARJETAS, armar_cobro, desglosar,
                                     sumar_dias_habiles, unir_ajustes,
                                     validar_ajustes)
 
@@ -347,9 +347,27 @@ def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
         # materializa sin impuesto.
         campos["facturado"] = 1 if data["facturado"] else 0
     if "client_id" in data:
-        campos["client_id"] = data["client_id"] or None
+        try:
+            campos["client_id"] = int(data["client_id"] or 0) or None
+        except (TypeError, ValueError):
+            return None, "client_id inválido"
     if "notas" in data:
         campos["notas"] = (data["notas"] or "").strip() or None
+    if "tarjeta" in data:
+        # Cómo paga el cliente (24/9). Vacío es transferencia o efectivo.
+        tarjeta = data["tarjeta"] or None
+        if tarjeta:
+            if tarjeta not in TARJETAS:
+                return None, "tarjeta desconocida"
+            if tipo != "ingreso":
+                return None, "solo un ingreso se cobra con tarjeta"
+            if _ajustes_tarjeta()["comisiones"].get(tarjeta) is None:
+                return None, (f"falta cargar la comisión de {TARJETAS[tarjeta]} "
+                              "en Cobro con tarjeta → Ajustes")
+            # Un cobro con tarjeta siempre va facturado: la tarjeta liquida
+            # contra factura y la comisión trae su IVA.
+            campos["facturado"] = 1
+        campos["tarjeta"] = tarjeta
     return campos, None
 
 
@@ -361,13 +379,22 @@ def api_listar_recurrentes():
     cambio usable viene con `monto_usd = None`, y el panel lo deja afuera del
     total y lo marca, en vez de mostrarlo como si fuera un peso por dolar.
     """
+    db = _db()
+    nombres: dict = {}
     salida = []
-    for r in listar_recurrentes(_db()):
+    for r in listar_recurrentes(db):
         try:
             usd = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
         except (TypeError, ValueError):
             usd = None
-        salida.append({**r, "monto_usd": usd})
+        cid = r.get("client_id")
+        if cid and cid not in nombres:
+            nombres[cid] = (get_business(db, cid) or {}).get("name")
+        # El nombre del cliente y de la tarjeta, para que la lista diga
+        # "Diego Hinze · paga con Visa débito" sin otra consulta.
+        salida.append({**r, "monto_usd": usd,
+                       "client_name": nombres.get(cid) if cid else None,
+                       "tarjeta_nombre": TARJETAS.get(r.get("tarjeta") or "")})
     return jsonify(salida)
 
 
@@ -876,8 +903,6 @@ def api_crear_cobro_tarjeta():
     if trabado:
         return jsonify({"ok": False, "error": trabado}), 400
 
-    moneda, tc = d["moneda"], d["tipo_cambio"]
-    tc_mov = tc if moneda == "UYU" else None
     # El <select> de la pantalla manda el id como texto ("7"). Se pasa a
     # número acá: la base lo guarda como entero, y el control de doble envío
     # compara contra esa columna, donde "7" y 7 no son iguales.
@@ -885,40 +910,16 @@ def api_crear_cobro_tarjeta():
         client_id = int(data.get("client_id") or 0) or None
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "client_id inválido"}), 400
-    uid, nombre = _quien()
-    comunes = {"fecha": fecha, "periodo": periodo, "facturado": 1,
-               "created_by_id": uid, "created_by_name": nombre}
-
-    def _mov(tipo, cat, texto, monto, mon, tipo_cambio, cliente=None, notas=None):
-        usd = a_usd(monto, mon, tipo_cambio)
-        return {**comunes, "tipo": tipo, "categoria": cat, "concepto": texto,
-                "monto": monto, "moneda": mon, "tipo_cambio": tipo_cambio,
-                "monto_usd": usd, "iva_usd": iva_sobre(usd),
-                "client_id": cliente, "notas": notas}
-
-    pct = f"{d['comision_pct']:g}".replace(".", ",")
-    ingreso = _mov("ingreso", categoria, concepto, d["precio"], moneda, tc_mov,
-                   cliente=client_id, notas=f"Cobro con tarjeta: {d['tarjeta_nombre']}")
-    comision = _mov("egreso", "comisiones",
-                    f"Comisión {d['tarjeta_nombre']} {pct}% · {concepto}",
-                    d["comision"], moneda, tc_mov)
-    # Plexo cobra en pesos: su movimiento va siempre en pesos, con el tipo
-    # de cambio del cobro, aunque el cobro sea en dólares.
-    plexo_uyu = float(_ajustes_tarjeta()["plexo_por_cobro_uyu"])
-    plexo = (_mov("egreso", "comisiones", f"Plexo por cobro · {concepto}",
-                  plexo_uyu, "UYU", tc) if plexo_uyu > 0 else None)
-
-    esperada = sumar_dias_habiles(date.fromisoformat(fecha), d["dias_habiles"])
     db = _db()
+    negocio = get_business(db, client_id) if client_id else None
+    uid, nombre = _quien()
+    cobro, ingreso, comision, plexo = armar_cobro(
+        d, fecha=fecha, concepto=concepto, categoria=categoria,
+        client_id=client_id, cliente=(negocio or {}).get("name"),
+        plexo_por_cobro_uyu=_ajustes_tarjeta()["plexo_por_cobro_uyu"],
+        created_by_id=uid, created_by_name=nombre)
     try:
-        cid = crear_cobro_tarjeta(db, {
-            "fecha": fecha, "client_id": client_id, "concepto": concepto,
-            "tarjeta": d["tarjeta"], "comision_pct": d["comision_pct"],
-            "moneda": moneda, "tipo_cambio": tc, "precio": d["precio"],
-            "total": d["total"], "deposito": d["deposito"],
-            "acreditacion_esperada": esperada.isoformat(),
-            "created_by_name": nombre,
-        }, ingreso, comision, plexo)
+        cid = crear_cobro_tarjeta(db, cobro, ingreso, comision, plexo)
     except CobroDuplicado as dup:
         # Doble clic, reintento o segunda pestaña: el primero ya quedó. 409 y
         # no 201, para que nadie crea que este pedido creó algo.
@@ -926,9 +927,9 @@ def api_crear_cobro_tarjeta():
                         "error": "Ese cobro ya se registró hace un momento. "
                                  "Revisá la lista antes de cargarlo de nuevo."}), 409
     log_activity(db, nombre, "finanzas_cobro_tarjeta_creado", "finanzas", cid,
-                 concepto, f"{moneda} {d['total']} {d['tarjeta']}", user_id=uid)
+                 concepto, f"{d['moneda']} {d['total']} {d['tarjeta']}", user_id=uid)
     return jsonify({"ok": True, "id": cid, "desglose": d,
-                    "acreditacion_esperada": esperada.isoformat()}), 201
+                    "acreditacion_esperada": cobro["acreditacion_esperada"]}), 201
 
 
 @finanzas_bp.route("/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",

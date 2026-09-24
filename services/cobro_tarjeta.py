@@ -19,7 +19,7 @@ Plexo (que son en pesos) no se convierten; si se cobra en dólares, sí.
 
 from datetime import date, timedelta
 
-from services.finanzas import IVA_TASA, MONEDAS
+from services.finanzas import IVA_TASA, MONEDAS, a_usd, iva_sobre, periodo_de
 
 # Los aranceles del Plan Clásico que pasó OCA el 23/9 (foto de la tabla
 # "Aranceles y Comisiones"). OCA es el adquirente de Visa y Master acá; la
@@ -243,3 +243,73 @@ def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
         # tarjetas de un vistazo.
         "costo_pct": _r2((precio - te_queda) / precio * 100) if precio else 0.0,
     }
+
+
+def quien_paga(concepto: str, cliente: str | None) -> str:
+    """El texto que identifica el cobro en la lista de movimientos.
+
+    Pedido de Juan (24/9): "dice Plexo por cobro · Mantenimiento mensual y no
+    el nombre del cliente, no se entiende". Con cliente va primero su nombre;
+    si el concepto ya lo nombra, no se repite.
+    """
+    cliente = (cliente or "").strip()
+    if not cliente or cliente.lower() in concepto.lower():
+        return concepto
+    return f"{cliente} · {concepto}"
+
+
+def armar_cobro(d: dict, *, fecha: str, concepto: str, categoria: str,
+                client_id, cliente: str | None, plexo_por_cobro_uyu: float,
+                created_by_id=None, created_by_name=None,
+                recurrente_id=None) -> tuple[dict, dict, dict, dict | None]:
+    """Los movimientos de UN cobro con tarjeta, listos para
+    `database.crear_cobro_tarjeta`: (cobro, ingreso, comision, plexo).
+
+    Lo usan el botón "Registrar cobro" y los ingresos fijos que se cobran con
+    tarjeta, para que los dos carguen exactamente lo mismo. `d` es el
+    resultado de `desglosar` SIN el fijo de Plexo (ese va como gasto fijo).
+
+    `recurrente_id` va solo en el ingreso: el índice único
+    (recurrente_id, periodo) es el que impide que el fijo cobre dos veces el
+    mismo mes, y la comisión y Plexo del mismo cobro lo violarían.
+    """
+    periodo = periodo_de(fecha)
+    moneda, tc = d["moneda"], d["tipo_cambio"]
+    tc_mov = tc if moneda == "UYU" else None
+    comunes = {"fecha": fecha, "periodo": periodo, "facturado": 1,
+               "created_by_id": created_by_id, "created_by_name": created_by_name,
+               "client_id": client_id}
+
+    def _mov(tipo, cat, texto, monto, mon, tipo_cambio, **extra):
+        usd = a_usd(monto, mon, tipo_cambio)
+        return {**comunes, "tipo": tipo, "categoria": cat, "concepto": texto,
+                "monto": monto, "moneda": mon, "tipo_cambio": tipo_cambio,
+                "monto_usd": usd, "iva_usd": iva_sobre(usd), **extra}
+
+    texto = quien_paga(concepto, cliente)
+    pct = f"{d['comision_pct']:g}".replace(".", ",")
+    ingreso = _mov("ingreso", categoria, texto, d["precio"], moneda, tc_mov,
+                   notas=f"Cobro con tarjeta: {d['tarjeta_nombre']}")
+    if recurrente_id:
+        ingreso["recurrente_id"] = recurrente_id
+    comision = _mov("egreso", "comisiones",
+                    f"Comisión {d['tarjeta_nombre']} {pct}% · {texto}",
+                    d["comision"], moneda, tc_mov)
+    # Plexo cobra en pesos: su movimiento va siempre en pesos, con el tipo de
+    # cambio del cobro, aunque el cobro sea en dólares.
+    plexo = (_mov("egreso", "comisiones", f"Plexo por cobro · {texto}",
+                  float(plexo_por_cobro_uyu), "UYU", tc)
+             if float(plexo_por_cobro_uyu) > 0 else None)
+
+    from datetime import date as _date
+    esperada = sumar_dias_habiles(_date.fromisoformat(fecha), d["dias_habiles"])
+    cobro = {
+        "fecha": fecha, "client_id": client_id, "concepto": texto,
+        "tarjeta": d["tarjeta"], "comision_pct": d["comision_pct"],
+        "moneda": moneda, "tipo_cambio": tc, "precio": d["precio"],
+        "total": d["total"], "deposito": d["deposito"],
+        "acreditacion_esperada": esperada.isoformat(),
+        "created_by_name": created_by_name,
+    }
+    return cobro, ingreso, comision, plexo
+
