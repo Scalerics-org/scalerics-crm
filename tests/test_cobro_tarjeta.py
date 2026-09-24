@@ -428,3 +428,60 @@ def test_el_nombre_no_se_repite_si_el_concepto_ya_lo_dice():
     assert quien_paga("Mantenimiento Diego", "Diego") == "Mantenimiento Diego"
     assert quien_paga("Mantenimiento", None) == "Mantenimiento"
 
+
+# ── cambiar cómo paga un fijo rehace el mes en curso (24/9) ──────────────────
+
+def _cuerpo_fijo(cid, tarjeta):
+    hoy = date.today()
+    return {"tipo": "ingreso", "concepto": "Mantenimiento mensual",
+            "categoria": "mantenimiento", "monto": 120, "moneda": "USD",
+            "dia_del_mes": 1, "desde": f"{hoy.year:04d}-{hoy.month:02d}",
+            "facturado": True, "client_id": cid, "tarjeta": tarjeta}
+
+
+def test_ponerle_tarjeta_a_un_fijo_rehace_el_mes_en_curso(app, cli):
+    """Lo que le pasó a Juan con Diego: el mes ya estaba generado como
+    transferencia, le puso Visa débito y no se desglosaba nada."""
+    from services.finanzas import materializar_recurrentes
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Diego Hinze", "phone": "+598700900"})
+    rid = cli.post("/api/finanzas/recurrentes", json=_cuerpo_fijo(cid, None)).get_json()["id"]
+    materializar_recurrentes(db)
+    assert len(listar_movimientos(db)) == 1
+
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json=_cuerpo_fijo(cid, "visa_debito"))
+    assert r.get_json()["mes_rehecho"] is True
+    movs = listar_movimientos(db)
+    assert sorted(m["tipo"] for m in movs) == ["egreso", "egreso", "ingreso"]
+    assert len(cli.get("/api/finanzas/cobros-tarjeta").get_json()) == 1
+
+    # Y de vuelta a transferencia: se va el cobro entero, queda el ingreso solo.
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json=_cuerpo_fijo(cid, None))
+    assert r.get_json()["mes_rehecho"] is True
+    assert [m["tipo"] for m in listar_movimientos(db)] == ["ingreso"]
+    assert cli.get("/api/finanzas/cobros-tarjeta").get_json() == []
+
+
+def test_otros_cambios_del_fijo_no_rehacen_el_mes(app, cli):
+    from services.finanzas import materializar_recurrentes
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Otro Cliente", "phone": "+598700901"})
+    rid = cli.post("/api/finanzas/recurrentes", json=_cuerpo_fijo(cid, None)).get_json()["id"]
+    materializar_recurrentes(db)
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "monto": 150})
+    assert r.get_json()["mes_rehecho"] is False
+    assert listar_movimientos(db)[0]["monto"] == 120
+
+
+def test_un_mes_anulado_no_se_rehace(app, cli):
+    from services.finanzas import materializar_recurrentes
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Anulado", "phone": "+598700902"})
+    rid = cli.post("/api/finanzas/recurrentes", json=_cuerpo_fijo(cid, None)).get_json()["id"]
+    materializar_recurrentes(db)
+    mov = listar_movimientos(db)[0]
+    cli.delete(f"/api/finanzas/movimientos/{mov['id']}")   # queda anulado
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json=_cuerpo_fijo(cid, "visa_debito"))
+    assert r.get_json()["mes_rehecho"] is False
+    assert listar_movimientos(db) == []
+

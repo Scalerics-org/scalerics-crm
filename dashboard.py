@@ -13402,7 +13402,9 @@ function _finFijoTarjeta() {
   if (!tar.value) { nota.textContent = ''; return; }
   finFijoSetFacturado(true);
   nota.textContent = 'Cada mes se carga solo el cobro entero: el ingreso con IVA, '
-    + 'la comisión de la tarjeta y Plexo. El depósito aparece en Cobro con tarjeta.';
+    + 'la comisión de la tarjeta y Plexo. El depósito aparece en Cobro con tarjeta.'
+    + (document.getElementById('fin-fijo-id').value
+       ? ' Al guardar, el mes en curso se vuelve a generar así.' : '');
 }
 
 function cerrarFijo() {

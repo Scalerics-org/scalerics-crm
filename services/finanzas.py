@@ -200,6 +200,19 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
     return creados
 
 
+def rehacer_mes_en_curso(db_path: str, rec_id: int, hoy: date | None = None) -> bool:
+    """Vuelve a generar el mes en curso de un fijo al que le cambiaron cómo
+    paga el cliente. Solo el mes en curso: los anteriores están cerrados y no
+    se reescriben. Devuelve si rehízo algo."""
+    from database import borrar_generacion_de_fijo
+
+    hoy = hoy or date.today()
+    if not borrar_generacion_de_fijo(db_path, rec_id, f"{hoy.year:04d}-{hoy.month:02d}"):
+        return False
+    materializar_recurrentes(db_path, hoy)
+    return True
+
+
 def _materializar_con_tarjeta(db_path: str, fijo: dict, fin: str, dia: int) -> int | None:
     """Los meses que falten de un ingreso fijo que el cliente paga con tarjeta.
 
