@@ -144,6 +144,14 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
             continue
 
         dia = min(max(int(fijo["dia_del_mes"] or 1), 1), 28)
+
+        if fijo.get("tarjeta") and fijo["tipo"] == "ingreso":
+            hechos = _materializar_con_tarjeta(db_path, fijo, fin, dia)
+            if hechos is not None:
+                creados += hechos
+                continue
+            # None: la tarjeta no se pudo usar (le falta la comisión). Se
+            # cobra como un ingreso fijo común para no perder la venta.
         # El IVA se calcula acá y no al leer: queda congelado en cada
         # movimiento, igual que los que se cargan a mano.
         #
@@ -189,6 +197,57 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
                 # Ya existía ese (recurrente_id, periodo). Es el camino normal:
                 # todas las corridas después de la primera pasan por acá.
 
+    return creados
+
+
+def _materializar_con_tarjeta(db_path: str, fijo: dict, fin: str, dia: int) -> int | None:
+    """Los meses que falten de un ingreso fijo que el cliente paga con tarjeta.
+
+    Cada mes es un cobro entero, igual que el botón "Registrar cobro": el
+    ingreso con IVA ventas, la comisión de la tarjeta y Plexo (con IVA
+    compras) y el depósito que tiene que llegar. Todo o nada por mes, en una
+    transacción, así que un mes nunca queda con el ingreso y sin la comisión.
+
+    La guarda contra duplicados es la misma de siempre: el ingreso lleva
+    (recurrente_id, periodo), y si ese mes ya existe el INSERT choca con el
+    índice único y la transacción entera se descarta.
+
+    Devuelve cuántos meses creó, o None si la tarjeta no se puede usar.
+    """
+    from database import (CobroDuplicado, crear_cobro_tarjeta, get_ajuste,
+                          get_business)
+    from services.cobro_tarjeta import armar_cobro, desglosar, unir_ajustes
+
+    ajustes = unir_ajustes(get_ajuste(db_path, "cobro_tarjeta"))
+    try:
+        d = desglosar("precio", fijo["monto"], fijo["tarjeta"], ajustes,
+                      moneda=fijo["moneda"], tipo_cambio=fijo["tipo_cambio"],
+                      incluir_fijo=False)
+    except ValueError as e:
+        logger.warning("fijo id=%s (%s) con tarjeta sin usar: %s",
+                       fijo["id"], fijo["concepto"], e)
+        return None
+    negocio = get_business(db_path, fijo["client_id"]) if fijo["client_id"] else None
+
+    creados = 0
+    for periodo in meses_entre(fijo["desde"], fin):
+        cobro, ingreso, comision, plexo = armar_cobro(
+            d, fecha=f"{periodo}-{dia:02d}", concepto=fijo["concepto"],
+            categoria=fijo["categoria"], client_id=fijo["client_id"],
+            cliente=(negocio or {}).get("name"),
+            plexo_por_cobro_uyu=ajustes["plexo_por_cobro_uyu"],
+            created_by_name="fijo", recurrente_id=fijo["id"])
+        try:
+            crear_cobro_tarjeta(db_path, cobro, ingreso, comision, plexo)
+            creados += 1
+        except CobroDuplicado:
+            pass
+        except sqlite3.IntegrityError as e:
+            es_duplicado = (
+                getattr(e, "sqlite_errorname", "") == "SQLITE_CONSTRAINT_UNIQUE"
+                or "UNIQUE constraint failed" in str(e))
+            if not es_duplicado:
+                raise
     return creados
 
 
