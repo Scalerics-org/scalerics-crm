@@ -1966,6 +1966,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:var(--superficie);border:1px solid var(--borde);color:var(--texto);border-radius:16px;padding:28px;width:420px;max-width:90vw}
+/* Ventanas mas altas que la pantalla (el alta de un fijo con cliente y tarjeta):
+   deslizan por dentro. Sin esto, la rueda movia la pagina de atras (Juan, 24/9). */
+.modal.modal-alto{max-height:90vh;overflow-y:auto;overscroll-behavior:contain}
 .modal h3{font-size:1rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:6px}
 .modal p{font-size:.82rem;color:var(--rotulo);margin-bottom:18px}
 .modal textarea{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--texto);font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px}
@@ -5445,7 +5448,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="modal-overlay" id="fin-modal" onclick="if(event.target===this)cerrarMovimiento()">
-  <div class="modal" style="width:480px">
+  <div class="modal modal-alto" style="width:480px">
     <h3 id="fin-modal-title">Nuevo movimiento</h3>
     <input type="hidden" id="fin-mov-id">
     <input type="hidden" id="fin-mov-budget">
@@ -5556,7 +5559,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="modal-overlay" id="fin-fijo-modal" onclick="if(event.target===this)cerrarFijo()">
-  <div class="modal" style="width:480px">
+  <div class="modal modal-alto" style="width:480px">
     <h3 id="fin-fijo-title">Nuevo fijo</h3>
     <input type="hidden" id="fin-fijo-id">
 
@@ -13399,7 +13402,9 @@ function _finFijoTarjeta() {
   if (!tar.value) { nota.textContent = ''; return; }
   finFijoSetFacturado(true);
   nota.textContent = 'Cada mes se carga solo el cobro entero: el ingreso con IVA, '
-    + 'la comisión de la tarjeta y Plexo. El depósito aparece en Cobro con tarjeta.';
+    + 'la comisión de la tarjeta y Plexo. El depósito aparece en Cobro con tarjeta.'
+    + (document.getElementById('fin-fijo-id').value
+       ? ' Al guardar, el mes en curso se vuelve a generar así.' : '');
 }
 
 function cerrarFijo() {

@@ -26,7 +26,8 @@ from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                iva_sobre, materializar_recurrentes,
                                mes_editable, meses_con_datos, periodo_balance,
                                periodo_de, primer_movimiento,
-                               rendimiento_pauta, resumen, resumen_iva,
+                               rehacer_mes_en_curso, rendimiento_pauta,
+                               resumen, resumen_iva,
                                saldar_por_cobrar)
 
 from database import (CobroDuplicado, borrar_cobro_tarjeta, get_business, crear_cobro_tarjeta, get_ajuste,
@@ -414,16 +415,24 @@ def api_crear_recurrente():
 @finanzas_bp.route("/api/finanzas/recurrentes/<int:rec_id>", methods=["PUT"])
 def api_actualizar_recurrente(rec_id):
     db = _db()
-    if not get_recurrente(db, rec_id):
+    viejo = get_recurrente(db, rec_id)
+    if not viejo:
         return jsonify({"ok": False, "error": "no existe"}), 404
     campos, error = _validar_recurrente(request.get_json() or {})
     if error:
         return jsonify({"ok": False, "error": error}), 400
     actualizar_recurrente(db, rec_id, **campos)
+    # Cambiar cómo paga el cliente rehace el mes en curso (pedido de Juan,
+    # 24/9: le puso tarjeta al fijo de Diego y el mes no se desglosaba). El
+    # resto de los cambios sigue la regla de siempre: de acá en adelante.
+    rehecho = False
+    if "tarjeta" in campos and (viejo.get("tarjeta") or None) != campos["tarjeta"]:
+        rehecho = rehacer_mes_en_curso(db, rec_id)
     uid, nombre = _quien()
     log_activity(db, nombre, "finanzas_fijo_editado", "finanzas", rec_id,
-                 campos["concepto"], "", user_id=uid)
-    return jsonify({"ok": True})
+                 campos["concepto"], "mes en curso rehecho" if rehecho else "",
+                 user_id=uid)
+    return jsonify({"ok": True, "mes_rehecho": rehecho})
 
 
 @finanzas_bp.route("/api/finanzas/recurrentes/<int:rec_id>", methods=["DELETE"])

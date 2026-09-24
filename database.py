@@ -4643,6 +4643,44 @@ def borrar_cobro_tarjeta(db_path: str, cobro_id: int) -> None:
         conn.close()
 
 
+def borrar_generacion_de_fijo(db_path: str, rec_id: int, periodo: str) -> bool:
+    """Borra lo que un fijo generó en ese mes, para volver a generarlo.
+
+    Lo usa el cambio de "¿Cómo paga?" de un fijo (pedido de Juan, 24/9):
+    sin esto, el mes en curso quedaba como estaba y el desglose de la
+    tarjeta recién aparecía el mes siguiente. Si el mes era un cobro con
+    tarjeta, se van también la comisión, Plexo y el depósito esperado.
+
+    No toca un mes anulado (alguien lo borró a propósito) ni un cobro cuyo
+    depósito ya llegó: eso ya pasó en el banco. Devuelve si borró algo.
+    """
+    conn = _connect(db_path)
+    try:
+        mov = conn.execute(
+            "SELECT id, anulado FROM finanzas_movimientos "
+            "WHERE recurrente_id = ? AND periodo = ?", (rec_id, periodo)).fetchone()
+        if not mov or mov["anulado"]:
+            return False
+        cobro = conn.execute(
+            "SELECT id, comision_id, plexo_id, acreditado_fecha "
+            "FROM finanzas_cobros_tarjeta WHERE ingreso_id = ?", (mov["id"],)).fetchone()
+        if cobro and cobro["acreditado_fecha"]:
+            return False
+        if cobro:
+            for mid in (cobro["comision_id"], cobro["plexo_id"]):
+                if mid:
+                    conn.execute("DELETE FROM finanzas_movimientos WHERE id = ?", (mid,))
+            conn.execute("DELETE FROM finanzas_cobros_tarjeta WHERE id = ?", (cobro["id"],))
+        conn.execute("DELETE FROM finanzas_movimientos WHERE id = ?", (mov["id"],))
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def borrar_movimiento(db_path: str, mov_id: int) -> None:
     _delete(db_path, "finanzas_movimientos", mov_id)
 
