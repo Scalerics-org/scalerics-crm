@@ -533,6 +533,11 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `fix/discovery-cupo` (worktree `../crm-fix-discovery`). PR abierto, sin merge ni deploy.** Discovery no mandaba desde el 13/9 22:21 UY y Meta tenía huecos casi los mismos días.
+  - **Causa:** la marca deja correr a las 20 h, el cupo cuenta 24 h, y el hilo dormía 24 h después de cada intento. Un deploy entre la hora 20 y la 24 marcaba la corrida de discovery con el cupo lleno (0 envíos), y el día se perdía. Meta no marcaba, pero igual dormía hasta mañana.
+  - **Arreglo:** discovery mira el cupo antes de marcar, y los dos hilos revisan cada hora (`corridas.REVISAR_CADA_S`, 3610 s, grilla fija desde la primera revisión). La marca de 20 h, el tope rodante y los topes no cambiaron.
+  - **Si tocás los bucles:** Gmail y el aviso de cola baja viven adentro de `discovery_emails.tanda_diaria` y solo corren cuando la tanda corre; el salteo horario es DEBUG. Los dos hilos tienen que usar la misma grilla, o el desfase de 420 s con Resend se pierde.
+
 - **23/9 — Finanzas: "Cobro con tarjeta" (Plexo + OCA), pedido de Juan.**
   Rama `feat/cobro-tarjeta`, sale de `main`. Pestaña nueva en Finanzas con:
   calculadora en los dos sentidos ("quiero que me quede X" → cuánto cobrar, o

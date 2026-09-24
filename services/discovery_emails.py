@@ -20,7 +20,8 @@ import uuid
 from datetime import datetime, timezone
 
 from services.discovery_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
-from services.corridas import marcar_corrida, puede_correr, ultima_corrida
+from services.corridas import (marcar_corrida, puede_correr, siguiente_revision,
+                               ultima_corrida)
 from services.discovery_respuestas import sincronizar_desde_gmail
 from services.email_service import (contexto_envio, send_discovery_email,
                                    send_discovery_queue_alert)
@@ -45,7 +46,13 @@ _FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
 # la misma cuota y que un mal dia se comieron 80.
 _TOPE_DIARIO = 50
 _PAUSA_ENTRE_ENVIOS = 0.6
-_CADA_24_HORAS = 24 * 60 * 60
+# 600 s y no 180 como Meta, a proposito: los dos hilos arrancan en el mismo boot
+# y los dos pausan 0.6 s entre envios, asi que con el mismo retraso se pisan y
+# superan el limite de 2 peticiones por segundo de Resend. Un 429 se lee como
+# "fallo" y saltea un recordatorio de Meta —correo real, en produccion— sin que
+# nadie se entere. Con la revision horaria el desfase de 7 minutos se mantiene
+# porque los dos hilos usan la misma grilla (`corridas.REVISAR_CADA_S`).
+_RETRASO_INICIAL_S = 600
 
 
 def _ahora() -> str:
@@ -401,34 +408,79 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
 
 
 def tanda_diaria(db_path: str, base_url: str):
-    """La tanda de hoy, o None si ya corrio dentro del plazo.
+    """Una revision del hilo: la tanda de hoy, o None si no le toca.
 
-    Es el segundo guard, independiente del tope rodante de 24 horas. El hilo
-    arranca 600 segundos despues de CADA boot y Fly reinicia en cada deploy: el
-    26/8/2026 hubo cinco releases en 42 minutos. Ahi el tope hizo bien su
-    trabajo —la segunda tanda mando 24 en vez de 30 porque descontó lo ya
-    enviado— pero era lo unico que separaba un deploy de una tanda repetida.
+    La marca de corrida es el segundo guard, independiente del tope rodante de
+    24 horas. El hilo arranca 600 segundos despues de CADA boot y Fly reinicia
+    en cada deploy: el 26/8/2026 hubo cinco releases en 42 minutos. Ahi el tope
+    hizo bien su trabajo —la segunda tanda mando 24 en vez de 30 porque descontó
+    lo ya enviado— pero era lo unico que separaba un deploy de una tanda
+    repetida.
+
+    Se llama cada hora, asi que casi siempre devuelve None, y eso tiene que ser
+    barato y silencioso: la decision de si corre (marca + cupo) va primero, y
+    recien si corre se consulta Gmail, se manda y se avisa de la cola baja. Si
+    Gmail o el aviso fueran en cada vuelta, serian 24 consultas por dia y hasta
+    24 mails al admin.
 
     La marca se deja ANTES de mandar, no despues: si la tanda se muere en el
     medio, el reinicio siguiente no puede volver a intentarla entera.
     """
     if not puede_correr(db_path, "discovery"):
-        logger.info(
+        logger.debug(
             f"Discovery: ya corrio el {ultima_corrida(db_path, 'discovery')}, "
-            f"se saltea esta tanda (arranque por deploy)"
+            f"esta revision no manda"
         )
         return None
+    # El cupo se mira ANTES de marcar, igual que en Meta. El 14/9/2026 la tanda
+    # salio a las 01:21 UTC con 50 envios; un deploy a las 22:12 UTC paso la
+    # marca de 20 horas, marco la corrida, se encontro el cupo lleno y no mando
+    # nada. Con el hilo durmiendo 24 horas despues, eso era un dia perdido, y la
+    # marca nueva ademas frenaba a los deploys siguientes. Una revision que no
+    # puede mandar ni un mail no es una tanda: no se marca, y la de la hora
+    # siguiente vuelve a mirar.
+    if enviados_ultimas_24h(db_path) >= _TOPE_DIARIO:
+        logger.debug(
+            f"Discovery: el cupo de {_TOPE_DIARIO} en 24 horas esta lleno, no se "
+            f"marca la corrida; se vuelve a mirar en la proxima revision"
+        )
+        return None
+
+    # Primero las respuestas y despues los envios, no al reves: si alguien
+    # contesto ayer y su seguimiento vence hoy, hay que frenarlo ANTES de que
+    # salga, no despues. Si Gmail falla la tanda sale igual (el propio sync ya
+    # avisa a los admins del fallo).
+    try:
+        r = sincronizar_desde_gmail(db_path)
+        logger.info(f"Discovery respuestas: {r}")
+    except Exception as e:
+        logger.warning(f"Discovery respuestas: {e}")
+
     marcar_corrida(db_path, "discovery")
-    return enviar_discovery(db_path, base_url)
+    res = enviar_discovery(db_path, base_url)
+
+    # Despues de mandar, no antes: lo que importa es cuanto queda una vez
+    # descontada la tanda de hoy. Que el aviso reviente no puede tapar lo que
+    # la tanda ya mando.
+    try:
+        avisar_si_la_cola_esta_baja(db_path)
+    except Exception as e:
+        logger.warning(f"Discovery: no se pudo revisar si la cola esta baja: {e}")
+    return res
 
 
 def start_discovery_emails(app) -> None:
-    """Corre una vez por dia. Arranca SOLO con DISCOVERY_EMAILS=on.
+    """Revisa cada hora si toca la tanda. Arranca SOLO con DISCOVERY_EMAILS=on.
 
     El default es apagado por la misma razon que en Meta: el hilo corre 600
     segundos despues de CADA boot, y Fly reinicia la maquina para aplicar un
     secret, asi que un default encendido convierte cualquier deploy en una
     tanda de correo en frio que nadie pidio.
+
+    Revisar cada hora no manda mas: la marca de 20 horas y el tope rodante de
+    24 siguen decidiendo, y dejan una tanda por ventana de 24 horas. Gmail y el
+    aviso de cola baja viven adentro de `tanda_diaria` y solo corren cuando la
+    tanda corre.
 
     Ojo: este interruptor es independiente del de Meta. Apagar uno no apaga el
     otro, y un `secrets set` reinicia la maquina y dispara el hilo de los dos.
@@ -438,39 +490,27 @@ def start_discovery_emails(app) -> None:
         return
 
     def _loop():
-        # 600 s y no 180 como Meta, a proposito: los dos hilos arrancan en el
-        # mismo boot y los dos pausan 0.6 s entre envios, asi que con el mismo
-        # retraso se pisan y superan el limite de 2 peticiones por segundo de
-        # Resend. Un 429 se lee como "fallo" y saltea un recordatorio de Meta
-        # —correo real, en produccion— sin que nadie se entere.
-        time.sleep(600)
+        time.sleep(_RETRASO_INICIAL_S)
+        # La grilla se cuenta desde esta primera revision y no desde el final
+        # de cada vuelta: asi el desfase con Meta no se va corriendo.
+        turno = time.monotonic()
         while True:
             try:
                 with app.app_context():
-                    # Primero las respuestas y despues los envios, no al reves:
-                    # si alguien contesto ayer y su seguimiento vence hoy, hay
-                    # que frenarlo ANTES de que salga, no despues.
-                    try:
-                        r = sincronizar_desde_gmail(app.config["DB_PATH"])
-                        logger.info(f"Discovery respuestas: {r}")
-                    except Exception as e:
-                        logger.warning(f"Discovery respuestas: {e}")
-
                     tanda_diaria(
                         app.config["DB_PATH"],
                         os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
                     )
-                    # Despues de mandar, no antes: lo que importa es cuanto
-                    # queda una vez descontada la tanda de hoy.
-                    avisar_si_la_cola_esta_baja(app.config["DB_PATH"])
             except Exception as e:
                 logger.warning(f"Discovery: {e}")
-            time.sleep(_CADA_24_HORAS)
+            turno = siguiente_revision(turno, time.monotonic())
+            time.sleep(max(0.0, turno - time.monotonic()))
 
     threading.Thread(target=_loop, daemon=True, name="discovery-emails").start()
     logger.info(
-        f"Discovery ACTIVO por DISCOVERY_EMAILS=on: una corrida por dia, hasta "
-        f"{_TOPE_DIARIO} mails, la primera 600s despues de este arranque"
+        f"Discovery ACTIVO por DISCOVERY_EMAILS=on: revisa cada hora, una tanda de "
+        f"hasta {_TOPE_DIARIO} mails por ventana de 24 horas, la primera revision "
+        f"{_RETRASO_INICIAL_S}s despues de este arranque"
     )
 
 
