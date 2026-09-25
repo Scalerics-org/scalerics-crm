@@ -562,7 +562,16 @@ def api_calendar_events():
         if start and end:
             _sync_gcal_to_db(db, start, end)
 
-        return jsonify({"events": _eventos_locales(db, start, end)})
+        eventos = _eventos_locales(db, start, end)
+        # La agenda de Fidelidad también se ve acá (25/9). Si algo de Fidelidad
+        # falla, el calendario de la agencia se dibuja igual.
+        try:
+            from services.fidelidad import eventos_para_calendario
+            eventos += eventos_para_calendario(db, start, end)
+        except Exception as e:
+            import logging; logging.getLogger(__name__).warning(f"No pude sumar la agenda de Fidelidad al calendario: {e}")
+        eventos.sort(key=lambda e: (e["date"], e["time"]))
+        return jsonify({"events": eventos})
 
     # POST — se guarda en la base del CRM y despues se crea el evento en Google
     # Calendar, que les manda la invitacion al cliente y a los invitados

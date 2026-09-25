@@ -3,8 +3,9 @@
 Scalerics Fidelidad es el sistema de puntos que se le vende a restaurantes: el
 cliente suma puntos por compra y los canjea por promos, y además ve la carta
 digital. Lo vende un socio aparte, y Outbound + Inteligencia comercial pasan a
-ser SU espacio de trabajo: los prospectos son restaurantes de Municipio CH y
-Carrasco, no los comercios del padrón.
+ser SU espacio de trabajo: los prospectos son restaurantes y peluquerías (en
+Montevideo, de Municipio CH y Carrasco; desde el 25/9 también de Buenos Aires),
+no los comercios del padrón.
 
 Por eso vive en tablas propias (`fid_*`) y no en `businesses`: allá hay leads de
 Meta, clientes y el padrón de las campañas de mail, y nada de eso tiene que
@@ -48,8 +49,16 @@ PROBABILIDAD = {"contactado": 0.05, "reunion_agendada": 0.2,
                 "reunion_hecha": 0.45, "piloto": 0.7}
 
 ZONAS = ["Municipio CH", "Carrasco"]
+# La lista única (25/9): se filtra por ciudad y por rubro. En Montevideo sigue
+# valiendo el territorio del socio (ZONAS); en Buenos Aires la zona es el barrio.
+CIUDADES = ["Montevideo", "Buenos Aires"]
+RUBROS = {"restaurante": "Restaurantes", "peluqueria": "Peluquerías"}
+# Se busca al principio de cada palabra: "spa" no tiene que agarrar "España".
+_PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas", "nail",
+               "hair", "coiffeur", "estetica", "belleza", "spa", "masaje", "depilacion",
+               "pestanas", "cejas")
 # Lo que recorre `main.py scrape-fidelidad`, barrio por barrio: Google Maps
-# devuelve mejor "restaurantes en Pocitos" que "restaurantes en Municipio CH".
+# devuelve mejor "pizzería en Pocitos" que "pizzería en Municipio CH".
 BARRIOS = {
     "Municipio CH": ["Pocitos", "Punta Carretas", "Villa Biarritz", "Parque Batlle",
                      "Villa Dolores", "Tres Cruces", "La Blanqueada", "Buceo"],
@@ -62,14 +71,49 @@ _COMIDA = ("restaur", "parrill", "pizz", "sushi", "hambur", "burger", "cafe", "b
            "vegan", "asador", "cervec", "empanad", "rotiser", "delivery", "confiter", "almuerz")
 
 
+def rubro_de(tipo: str | None, nombre: str | None = None) -> str:
+    t = " " + normalizar(f"{tipo or ''} {nombre or ''}")
+    return "peluqueria" if any(" " + c in t for c in _PELUQUERIA) else "restaurante"
+
+
+def normalizar_ciudad(ciudad: str | None) -> str:
+    t = normalizar(ciudad)
+    return "Buenos Aires" if ("buenos aires" in t or "caba" in t.split()) else "Montevideo"
+
+
 def es_de_comida(categoria_maps: str | None) -> bool:
     t = normalizar(categoria_maps)
     return not t or any(c in t for c in _COMIDA)
 
 
-def prospecto_desde_maps(data: dict, barrio: str) -> dict:
+# Qué se le pide a Google Maps (investigación del 25/9). "restaurantes en…" era
+# lo que llenaba la lista de alta cocina y lugares turísticos: se busca por el
+# tipo de local que encaja con un sistema de puntos.
+BUSQUEDAS = {
+    "restaurante": {"Montevideo": ["pizzería", "hamburguesería", "empanadas", "chivitería", "rotisería",
+                                   "cafetería"],
+                    "Buenos Aires": ["pizzería", "hamburguesería", "empanadas", "lomitería", "rotisería",
+                                     "milanesas", "cafetería"]},
+    "peluqueria": {"Montevideo": ["barbería", "peluquería", "salón de uñas"],
+                   "Buenos Aires": ["barbería", "peluquería", "salón de uñas"]},
+}
+# CABA: barrios de comercio de barrio con clientela que vuelve, en orden de
+# prioridad. Palermo va al final: mucho local de paso y turístico.
+BARRIOS_BSAS = ["Caballito", "Villa Crespo", "Almagro", "Villa Urquiza", "Belgrano", "Colegiales",
+                "Núñez", "Saavedra", "Villa Devoto", "Villa del Parque", "Flores", "Boedo",
+                "Villa Pueyrredón", "Coghlan", "Villa Ortúzar", "Chacarita", "Palermo"]
+
+
+def es_del_rubro(categoria_maps: str | None, rubro: str) -> bool:
+    if rubro == "peluqueria":
+        return bool(categoria_maps) and rubro_de(categoria_maps) == "peluqueria"
+    return es_de_comida(categoria_maps) and rubro_de(categoria_maps) == "restaurante"
+
+
+def prospecto_desde_maps(data: dict, barrio: str, ciudad: str = "Montevideo", rubro: str | None = None) -> dict:
     """La ficha que junta el scraper, en el formato de `crear_prospecto`."""
-    return {"nombre": data.get("name"), "barrio": barrio, "zona": normalizar_zona(None, barrio),
+    return {"nombre": data.get("name"), "barrio": barrio, "ciudad": ciudad, "rubro": rubro,
+            "zona": normalizar_zona(None, barrio) if ciudad == "Montevideo" else barrio,
             "tipo": data.get("category"), "direccion": data.get("address"), "telefono": data.get("phone"),
             "rating": data.get("rating"), "resenas": data.get("review_count"), "maps_url": data.get("maps_url"),
             "notas": f"Traído de Google Maps buscando en {barrio}: verificá el barrio."}
@@ -318,11 +362,20 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_eventos_inicio ON fid_eventos(inicio)")
-    for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT")):
+    for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
+                      ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
             pass  # ya existe
+    try:
+        # Lo que hace falta para deshacer una llamada tocada por error.
+        conn.execute("ALTER TABLE fid_llamadas ADD COLUMN antes TEXT")
+    except sqlite3.OperationalError:
+        pass
+    conn.execute("UPDATE fid_prospectos SET ciudad = 'Montevideo' WHERE ciudad IS NULL")
+    for pid, tipo, nombre in conn.execute("SELECT id, tipo, nombre FROM fid_prospectos WHERE rubro IS NULL").fetchall():
+        conn.execute("UPDATE fid_prospectos SET rubro = ? WHERE id = ?", (rubro_de(tipo, nombre), pid))
     # El rol del socio. Solo ve estas dos pantallas; el candado real está en
     # `solo_fidelidad` (dashboard.require_login), no en el menú.
     conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
@@ -371,7 +424,7 @@ def set_config(db: str, cambios: dict) -> dict:
 
 CAMPOS_EDITABLES = ("nombre", "zona", "barrio", "tipo", "direccion", "telefono", "rating",
                     "resenas", "maps_url", "notas", "facilidad", "contacto", "proximo_paso",
-                    "mensual_usd")
+                    "mensual_usd", "ciudad", "rubro", "contacto_tel")
 
 
 def _limpiar_campos(datos: dict) -> dict:
@@ -397,6 +450,10 @@ def _limpiar_campos(datos: dict) -> dict:
                 v = None
         elif k == "facilidad":
             v = v if v in ("Alta", "Media", "Baja") else None
+        elif k == "ciudad":
+            v = normalizar_ciudad(v)
+        elif k == "rubro":
+            v = v if v in RUBROS else None
         else:
             v = (str(v).strip() or None) if v is not None else None
             if k == "telefono" and v in ("—", "-"):
@@ -427,7 +484,12 @@ def crear_prospecto(db: str, datos: dict, fuente: str = "manual") -> tuple[int |
     campos = _limpiar_campos(datos)
     if not campos.get("nombre"):
         return None, "sin_nombre"
-    zona = normalizar_zona(campos.get("zona"), campos.get("barrio"))
+    campos["ciudad"] = normalizar_ciudad(campos.get("ciudad"))
+    campos["rubro"] = campos.get("rubro") or rubro_de(campos.get("tipo"), campos.get("nombre"))
+    if campos["ciudad"] == "Buenos Aires":
+        zona = campos.get("zona") or campos.get("barrio") or "Buenos Aires"
+    else:
+        zona = normalizar_zona(campos.get("zona"), campos.get("barrio"))
     archivado = 0
     if not zona:
         # Fuera de CH y Carrasco. No se descarta: queda guardado y oculto, igual
@@ -760,6 +822,404 @@ def armar_pipeline(db: str, zona: str | None = None, cat: str | None = None,
     return {"columnas": cols, "precio_usd": cfg["precio_usd"]}
 
 
+# ── target (25/9) ────────────────────────────────────────────────────────────
+# Qué tan parecido es un comercio al cliente ideal de un sistema de puntos:
+# el cliente vuelve seguido (pizza, hamburguesa, barbería), ticket bajo y
+# parecido, público del barrio y dueño que atiende. Sale de la investigación de
+# mercado del 25/9 (Square, Paytronix, LoyaltyPass, notas de UY/AR). Base 20, se
+# suma la mejor palabra clave, la peor negativa, teléfono, reseñas, rating y
+# barrio. Las cadenas quedan en 0. Los números son una estimación: se ajustan acá.
+#
+# Además pesa el público joven (pedido de Juan, 25/9): sumar puntos desde el
+# celular lo adopta primero la gente joven, así que suben los locales a los que
+# va (hamburguesa, sushi, brunch, bubble tea, barbería, uñas) y los barrios de
+# estudiantes y jóvenes, y bajan los de público mayor (bodegón, confitería,
+# salón de señoras).
+
+_CLAVES = {
+    "restaurante": [
+        (("hamburgues", "burger", "smash"), 34),
+        (("pizzeria", "pizza", "muzzarella", "fugazza"), 30),
+        (("sushi", "poke", "bubble tea", "acai", "brunch", "bagel", "burrito", "wrap",
+          "cafe de especialidad", "specialty coffee", "coffee"), 26),
+        (("tacos", "mexican", "shawarma", "kebab", "arabe", "wok", "ramen", "asiatic"), 22),
+        (("empanada",), 22),
+        (("chivit", "lomiteria", "sandwicher", "milanes"), 20),
+        (("comida rapida", "fast food"), 20),
+        (("cafeteria", "cafe"), 16),
+        (("rotiseria", "comida para llevar", "comidas caseras", "minutas"), 14),
+        (("heladeria",), 12),
+        (("cerveceria", "pub"), 10),
+        (("pastas",), 8),
+        (("panaderia",), 6),
+        (("bar",), 3),
+        (("parrill", "asador"), 0),
+        (("confiteria", "tradicional", "de antano"), -8),
+        (("bodegon",), -10),
+        (("marisqueria", "mariscos", "tenedor libre", "buffet"), -12),
+        (("bistro", "cocina de autor", "tapas", "vinoteca", "wine bar", "steakhouse"), -20),
+        (("alta cocina", "gourmet", "fine dining", "degustacion"), -40),
+        (("hotel", "hostel", "salon de fiestas", "eventos", "catering", "boliche", "discoteca"), -40),
+    ],
+    "peluqueria": [
+        (("barberia", "barber", "fade"), 34),
+        (("manicur", "salon de unas", "nails", "nail", "esmaltado", "unas"), 28),
+        (("cejas", "pestanas", "lifting", "brow", "lash"), 22),
+        (("peluqueria unisex", "hair", "studio"), 22),
+        (("peluqueria", "peluquero"), 16),
+        (("depilacion",), 12),
+        (("salon de belleza", "estetica"), 8),
+        (("senoras", "peinados"), -10),
+        (("canina", "mascotas", "grooming"), 12),
+        (("spa", "masajes"), -10),
+        (("tatuaje", "tattoo", "piercing"), -10),
+        (("medicina estetica", "clinica", "dermatolog"), -25),
+    ],
+}
+# Estos no son un comercio al que venderle (o no lo decide el que atiende).
+_DESCARTE = ("supermercado", "autoservicio", "kiosco", "almacen", "academia", "escuela",
+             "instituto", "distribuidora", "productos de belleza", "perfumeria")
+# Cadenas de UY y AR: decide una casa central, no el que atiende el teléfono.
+_CADENAS = (
+    "mcdonald", "burger king", "subway", "starbucks", "mostaza", "domino s", "dominos", "kfc",
+    "kentucky", "la pasiva", "don peperone", "il mondo della pizza", "havanna", "cafe martinez",
+    "bonafide", "freddo", "grido", "lucciano", "dean dennys", "wendy s", "popeyes",
+    "le pain quotidien", "tea connection", "tostado cafe club", "club de la milanesa",
+    "la continental", "ugi s", "pizza hut", "almacen de pizzas", "el noble repulgue", "rapanui",
+    "persicco", "kansas", "green eat", "big pons", "cerini", "roberto giordano", "giordano",
+    "cuggini", "mala peluqueria",
+)
+_CADENAS_CHICAS = ("chivitos marcos",)
+_LUGAR_MALO = ("shopping", "mall", "patio de comidas", "terminal", "aeropuerto", "hotel")
+# Barrios: comercio de barrio con clientela que vuelve suma; turismo y oficinas resta.
+# Los de 14 son barrios de estudiantes y jóvenes (facultades, departamentos
+# chicos, vida nocturna); los de 10, comercio de barrio con clientela que vuelve.
+_BARRIOS = {
+    "Montevideo": {14: ("cordon", "parque rodo", "pocitos", "punta carretas", "tres cruces", "centro",
+                        "palermo"),
+                   10: ("buceo", "malvin", "parque batlle", "blanqueada", "punta gorda", "union",
+                        "la comercial", "larranaga", "jacinto vera", "brazo oriental", "atahualpa", "prado",
+                        "aguada", "villa dolores", "villa biarritz"),
+                   5: ("carrasco", "colon", "sayago", "villa espanola"),
+                   -10: ("ciudad vieja",)},
+    "Buenos Aires": {14: ("palermo", "villa crespo", "almagro", "colegiales", "belgrano", "caballito",
+                          "nunez", "chacarita", "villa urquiza", "boedo"),
+                     10: ("saavedra", "devoto", "villa del parque", "flores", "pueyrredon", "coghlan",
+                          "villa ortuzar", "parque chas", "floresta", "santa rita"),
+                     8: ("vicente lopez", "olivos", "florida", "munro", "martinez", "san isidro",
+                         "villa adelina", "ramos mejia", "castelar"),
+                     5: ("recoleta", "liniers", "mataderos", "parque patricios"),
+                     -15: ("puerto madero", "san telmo", "san nicolas", "microcentro", "retiro", "la boca")},
+}
+# Muchas reseñas es también señal de público joven (es el que reseña), hasta
+# que ya es turístico o cadena.
+_RESENAS = {"restaurante": ((30, -10), (80, 5), (1501, 15), (4001, 5), (None, -20)),
+            "peluqueria": ((15, -10), (40, 5), (601, 15), (1501, 5), (None, -15))}
+# Lo que ya se avanzó con ese comercio sube la chance de compra.
+_POR_ETAPA = {"contactado": 5, "reunion_agendada": 20, "reunion_hecha": 25, "piloto": 35}
+
+
+def _tiene(texto: str, clave: str) -> bool:
+    return f" {clave}" in f" {texto}"
+
+
+def es_celular(tel: str | None) -> bool:
+    """Un celular suele ser el WhatsApp del dueño. UY: 09x xxx xxx. AR: +54 9,
+    o el 15 viejo (15 xxxx xxxx, 11 15 xxxx xxxx)."""
+    d = re.sub(r"\D", "", tel or "")
+    if d.startswith("549"):
+        return True
+    for prefijo in ("598", "54", "0"):
+        if d.startswith(prefijo):
+            d = d[len(prefijo):]
+    return (len(d) == 8 and d.startswith("9")) or (len(d) == 10 and d.startswith("15")) \
+        or (len(d) == 12 and d[2:4] == "15")
+
+
+def es_cadena(nombre: str | None) -> bool:
+    n = normalizar(nombre)
+    return any(_tiene(n, c) for c in _CADENAS)
+
+
+def target(p: dict, repetidos: set | None = None) -> int:
+    """0 a 99. `repetidos`: nombres normalizados que aparecen 3 o más veces en la
+    base, que es como se nota una cadena local que no está en la lista."""
+    if p.get("estado") == "cerrado":
+        return 100
+    rubro = p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))
+    texto = normalizar(f"{p.get('tipo') or ''} {p.get('nombre') or ''}")
+    if es_cadena(p.get("nombre")) or any(_tiene(texto, d) for d in _DESCARTE):
+        return 0
+    s = 20.0
+    puntos = [v for claves, v in _CLAVES.get(rubro, []) if any(_tiene(texto, k) for k in claves)]
+    s += max([v for v in puntos if v > 0], default=0) + min([v for v in puntos if v < 0], default=0)
+    if any(_tiene(normalizar(p.get("nombre")), c) for c in _CADENAS_CHICAS):
+        s -= 15
+    if repetidos and normalizar(p.get("nombre")) in repetidos:
+        s -= 40
+    tel = p.get("contacto_tel") or p.get("telefono")
+    if not digitos(tel):
+        s -= 30
+    elif es_celular(tel):
+        s += 10
+    if any(_tiene(normalizar(p.get("direccion")), x) for x in _LUGAR_MALO):
+        s -= 25
+    res = p.get("resenas")
+    if res is not None:
+        for tope, v in _RESENAS[rubro]:
+            if tope is None or res < tope:
+                s += v
+                break
+    rt = p.get("rating")
+    if rt:
+        if rt > 4.7 and (res or 0) < 50:
+            pass  # rating inflado por pocas reseñas
+        elif rt >= 4.2:
+            s += 10
+        elif rt >= 3.9:
+            s += 3
+        elif rt < 3.8:
+            s -= 15
+    barrio = normalizar(f"{p.get('barrio') or ''} {p.get('zona') or ''}")
+    for v, lista in _BARRIOS.get(p.get("ciudad") or "Montevideo", {}).items():
+        if any(_tiene(barrio, b) for b in lista):
+            s += v
+            break
+    s += _POR_ETAPA.get(p.get("estado"), 0)
+    s += {"Alta": 8, "Media": 3}.get(p.get("facilidad") or "", 0)
+    if p.get("contacto"):
+        s += 3
+    s -= 4 * min(4, p.get("n_no_atendio") or 0)
+    return int(max(1, min(99, round(s))))
+
+
+def repetidos_en(filas: list[dict]) -> set:
+    cuenta = Counter(normalizar(f.get("nombre")) for f in filas)
+    return {n for n, k in cuenta.items() if n and k >= 3}
+
+
+# ── lista única (25/9) ───────────────────────────────────────────────────────
+# Juan pidió sacar las cinco pestañas: una sola lista con todo, vencidas en rojo
+# arriba, las de hoy en verde, y el resto ordenado por qué tan target es cada
+# comercio. Cada fila tiene cinco botones que valen en cualquier etapa.
+#
+# La llamada se registra apenas se toca el botón. Si el botón pide fecha, se
+# guarda con una fecha propuesta y el vendedor la corrige después
+# (`editar_llamada`). Si tocó el botón equivocado, `deshacer_llamada` deja el
+# prospecto como estaba: por eso cada llamada guarda en `antes` lo que pisó.
+
+DIAS_NO_INTERESA = 365
+
+ACCIONES = {
+    "no_atendio": {"label": "No atendió", "pide": "fecha"},
+    "otro_dia": {"label": "Otro día", "pide": "fecha", "efectivo": True},
+    "reunion": {"label": "Reunión", "pide": "reunion", "estado": "reunion_agendada", "efectivo": True},
+    "cerro": {"label": "Cerró", "estado": "cerrado", "efectivo": True},
+    "no_interesa": {"label": "No interesa", "estado": "descartado", "efectivo": True},
+}
+EFECTIVOS = EFECTIVOS | {k for k, a in ACCIONES.items() if a.get("efectivo")}
+_COLS_ANTES = ("estado", "proxima_llamada", "fecha_reunion", "motivo_descarte", "cerrado_en",
+               "piloto_inicio", "primera_llamada", "mensual_usd")
+
+
+def fecha_propuesta(accion: str, cuando: datetime) -> datetime | None:
+    """La fecha con la que se guarda la llamada antes de que el vendedor elija."""
+    if accion == "no_atendio":
+        return proxima_llamada("no_atendio", cuando)
+    if accion in ("otro_dia", "reunion"):
+        return datetime.combine(_sumar_habiles(cuando.date(), 1), datetime.min.time()).replace(hour=11)
+    if accion == "no_interesa":
+        return datetime.combine(_habil(cuando.date() + timedelta(days=DIAS_NO_INTERESA)),
+                                datetime.min.time()).replace(hour=15)
+    return None
+
+
+def registrar_accion(db: str, pid: int, accion: str, usuario: str, fecha: str | None = None,
+                     nota: str = "", cuando: datetime | None = None) -> tuple[dict | None, int | None, str | None]:
+    """Un toque en la lista. Devuelve (prospecto, id de la llamada, error)."""
+    a = ACCIONES.get(accion)
+    if not a:
+        return None, None, "acción inválida"
+    cuando = cuando or ahora()
+    elegida = parse_dt(fecha)
+    if elegida and elegida < cuando - timedelta(minutes=5):
+        return None, None, "la fecha no puede quedar en el pasado"
+    prox = elegida or fecha_propuesta(accion, cuando)
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None, None, "el prospecto no existe"
+        p = dict(f)
+        antes = {k: p.get(k) for k in _COLS_ANTES}
+        cambios = {}
+        if not p.get("primera_llamada"):
+            cambios["primera_llamada"] = fmt(cuando)
+        nuevo = a.get("estado")
+        if not nuevo:
+            nuevo = "contactado" if p["estado"] in ("sin_contactar", "descartado") else p["estado"]
+            if accion == "no_atendio" and p["estado"] == "sin_contactar":
+                nuevo = "sin_contactar"  # no habló con nadie: sigue sin contactar
+        cambios.update(_cambiar_estado(c, p, nuevo, cuando, usuario))
+        if a.get("pide") == "reunion":
+            cambios["fecha_reunion"] = fmt(prox)
+            cambios["proxima_llamada"] = None
+        elif nuevo == "cerrado":
+            cambios["proxima_llamada"] = None
+        else:
+            cambios["proxima_llamada"] = fmt(prox)
+        if accion == "no_interesa":
+            cambios["motivo_descarte"] = "No le interesa"
+        if nuevo == "cerrado" and not p.get("mensual_usd"):
+            cambios["mensual_usd"] = get_config_conn(c)["precio_usd"]
+        cur = c.execute(
+            "INSERT INTO fid_llamadas (prospecto_id, hecha_en, resultado, efectivo, nota, proxima, usuario, antes) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (pid, fmt(cuando), accion, 1 if accion in EFECTIVOS else 0, (nota or "").strip()[:2000] or None,
+             cambios.get("proxima_llamada") or cambios.get("fecha_reunion"), usuario, json.dumps(antes)))
+        c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                  list(cambios.values()) + [pid])
+        c.commit()
+        lid = cur.lastrowid
+    finally:
+        c.close()
+    return get_prospecto(db, pid), lid, None
+
+
+def editar_llamada(db: str, lid: int, fecha: str | None = None, nota: str | None = None,
+                   cuando: datetime | None = None) -> tuple[dict | None, str | None]:
+    """Corrige la fecha y la nota de la llamada recién registrada."""
+    cuando = cuando or ahora()
+    c = _conn(db)
+    try:
+        ll = c.execute("SELECT * FROM fid_llamadas WHERE id = ?", (lid,)).fetchone()
+        if not ll:
+            return None, "la llamada no existe"
+        ll = dict(ll)
+        a = ACCIONES.get(ll["resultado"], {})
+        cambios_ll, cambios_p = {}, {}
+        if nota is not None:
+            cambios_ll["nota"] = nota.strip()[:2000] or None
+        if fecha:
+            dt = parse_dt(fecha)
+            if not dt:
+                return None, "fecha inválida"
+            if dt < cuando - timedelta(minutes=5):
+                return None, "la fecha no puede quedar en el pasado"
+            if not a.get("pide"):
+                return None, "esa llamada no lleva fecha"
+            cambios_ll["proxima"] = fmt(dt)
+            cambios_p["fecha_reunion" if a["pide"] == "reunion" else "proxima_llamada"] = fmt(dt)
+        if cambios_ll:
+            c.execute(f"UPDATE fid_llamadas SET {', '.join(k + ' = ?' for k in cambios_ll)} WHERE id = ?",
+                      list(cambios_ll.values()) + [lid])
+        if cambios_p:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios_p)} WHERE id = ?",
+                      list(cambios_p.values()) + [ll["prospecto_id"]])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, ll["prospecto_id"]), None
+
+
+def deshacer_llamada(db: str, lid: int) -> tuple[dict | None, str | None]:
+    """Borra la llamada y deja el prospecto como estaba antes de ella. Solo la
+    última de ese prospecto: deshacer una del medio dejaría la historia rota."""
+    c = _conn(db)
+    try:
+        ll = c.execute("SELECT * FROM fid_llamadas WHERE id = ?", (lid,)).fetchone()
+        if not ll:
+            return None, "la llamada no existe"
+        ll = dict(ll)
+        ultima = c.execute("SELECT id FROM fid_llamadas WHERE prospecto_id = ? ORDER BY hecha_en DESC, id DESC "
+                           "LIMIT 1", (ll["prospecto_id"],)).fetchone()[0]
+        if ultima != lid or not ll.get("antes"):
+            return None, "solo se puede deshacer la última llamada"
+        antes = json.loads(ll["antes"])
+        c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in antes)} WHERE id = ?",
+                  list(antes.values()) + [ll["prospecto_id"]])
+        c.execute("DELETE FROM fid_cambios WHERE prospecto_id = ? AND en = ? AND a != ?",
+                  (ll["prospecto_id"], ll["hecha_en"], antes["estado"]))
+        c.execute("DELETE FROM fid_llamadas WHERE id = ?", (lid,))
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, ll["prospecto_id"]), None
+
+
+def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q: str | None = None,
+                cuando: datetime | None = None, limite: int = 150) -> dict:
+    """La lista única. Grupos, en este orden:
+    0 vencidas (rojo): la llamada o la reunión quedó en un día que ya pasó;
+    1 hoy (verde): llamada o reunión de hoy;
+    2 el resto, del más target al menos (incluye los agendados para después);
+    3 clientes y descartados, al final.
+    Dentro de cada grupo manda el target: primero el que más chance tiene."""
+    cuando = cuando or ahora()
+    hoy = cuando.strftime("%Y-%m-%d")
+    ciudad = normalizar_ciudad(ciudad) if ciudad else None
+    cond, params = ["archivado = 0"], []
+    if ciudad:
+        cond.append("COALESCE(ciudad, 'Montevideo') = ?")
+        params.append(ciudad)
+    if rubro in RUBROS:
+        cond.append("COALESCE(rubro, 'restaurante') = ?")
+        params.append(rubro)
+    c = _conn(db)
+    try:
+        filas = [dict(f) for f in c.execute(
+            f"SELECT {_COLS_LISTA}, notas, contacto_tel, ciudad, rubro, direccion FROM fid_prospectos "
+            f"WHERE {' AND '.join(cond)}", params)]
+        rep = repetidos_en([{"nombre": f[0]} for f in c.execute("SELECT nombre FROM fid_prospectos")])
+        ult = _ultimo_resultado(c)
+        notas, hoy_ll = {}, {}
+        for f in c.execute("SELECT id, prospecto_id, hecha_en, resultado, nota, proxima FROM fid_llamadas "
+                           "ORDER BY hecha_en, id"):
+            if f["nota"]:
+                notas[f["prospecto_id"]] = f["nota"]
+            if f["hecha_en"][:10] == hoy:
+                hoy_ll[f["prospecto_id"]] = dict(f)
+        llam_hoy = c.execute("SELECT COUNT(*) FROM fid_llamadas WHERE substr(hecha_en, 1, 10) = ?",
+                             (hoy,)).fetchone()[0]
+    finally:
+        c.close()
+    cfg = get_config(db)
+    if q:
+        nq = normalizar(q)
+        filas = [f for f in filas if nq in normalizar(" ".join(str(f.get(k) or "") for k in (
+            "nombre", "barrio", "tipo", "contacto", "contacto_tel", "telefono", "direccion", "notas"))
+            + " " + (notas.get(f["id"]) or ""))]
+    for f in filas:
+        u = ult.get(f["id"], {})
+        f["n_no_atendio"] = u.get("n_no_atendio", 0)
+        f["ultimo_resultado"] = u.get("ultimo")
+        f["ultima_nota"] = notas.get(f["id"])
+        f["llamada_hoy"] = hoy_ll.get(f["id"])
+        f["target"] = target(f, rep)
+        cuando_txt = f["fecha_reunion"] if f["estado"] == "reunion_agendada" else f["proxima_llamada"]
+        f["cuando"] = cuando_txt
+        if f["estado"] in ("cerrado", "descartado"):
+            f["grupo"] = 3
+        elif cuando_txt and cuando_txt[:10] < hoy:
+            f["grupo"] = 0
+        elif cuando_txt and cuando_txt[:10] == hoy:
+            f["grupo"] = 1
+        else:
+            f["grupo"] = 2
+    # En "hoy", lo que ya es hora va antes que lo agendado para más tarde.
+    ahora_txt = fmt(cuando)
+    filas.sort(key=lambda f: (f["grupo"], f["grupo"] == 1 and (f["cuando"] or "") > ahora_txt,
+                              -f["target"], f["nombre"]))
+    return {
+        "items": filas[:max(1, limite)], "total": len(filas),
+        "kpis": {"vencidas": sum(1 for f in filas if f["grupo"] == 0),
+                 "hoy": sum(1 for f in filas if f["grupo"] == 1),
+                 "llamadas_hoy": llam_hoy, "meta_llamadas_dia": int(cfg["meta_llamadas_dia"])},
+        "acciones": {k: v["label"] for k, v in ACCIONES.items()},
+        "ciudades": CIUDADES, "rubros": RUBROS,
+    }
+
+
 # ── agenda ───────────────────────────────────────────────────────────────────
 # El calendario del vendedor. Muestra SOLO lo de Fidelidad: sus reuniones, sus
 # llamadas agendadas y sus eventos. El calendario de la agencia (Google, las
@@ -919,6 +1379,27 @@ def armar_agenda(db: str, desde: str, hasta: str, con_llamadas: bool = True) -> 
         x["choca_con"] = [y["titulo"] for y in firmes
                           if y is not x and y["inicio"] < x["fin"] and x["inicio"] < y["fin"]]
     return {"desde": d0, "hasta": d1, "items": items}
+
+
+def eventos_para_calendario(db: str, desde: str, hasta: str) -> list[dict]:
+    """Lo de Fidelidad que se ve en el calendario general (pedido de Juan, 25/9):
+    las reuniones con comercios y lo que el vendedor agenda. Se lee en vivo de
+    las tablas de Fidelidad, así que agendar, mover o borrar acá se ve allá sin
+    copiar nada. Las llamadas no van: son decenas por día y taparían todo.
+    Allá son de solo lectura; se editan desde el Outbound."""
+    if not desde or not hasta:
+        return []
+    out = []
+    for x in armar_agenda(db, desde, hasta, con_llamadas=False)["items"]:
+        a, b = parse_dt(x["inicio"]), parse_dt(x["fin"])
+        out.append({"id": "fid-" + x["id"], "tipo": "fidelidad", "origen": "fidelidad",
+                    "title": "Fidelidad · " + x["titulo"], "date": x["inicio"][:10], "time": x["inicio"][11:16],
+                    "duration_min": int((b - a).total_seconds() // 60), "prospecto_id": x.get("prospecto_id"),
+                    "description": x.get("lugar") or "", "client_id": None, "client_name": "",
+                    "meeting_url": "", "invitados": [], "serie": False, "repeticion": None, "ocurrencia": "",
+                    "tipo_proyecto": "", "tipo_otro": "", "tipo_texto": "",
+                    "google": {"estado": "", "error": "", "meet": "", "puede_enviar": False}})
+    return out
 
 
 def listar_reuniones(db: str, cuando: datetime | None = None) -> dict:

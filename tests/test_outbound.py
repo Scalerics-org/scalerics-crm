@@ -79,7 +79,7 @@ def test_los_paneles_siguen_con_su_nombre_por_dentro():
 
 
 def test_lo_del_panel_sigue_y_la_pagina_abre(tmp_path, monkeypatch):
-    for id_ in ("fid-i-cuerpo", "fid-cola", "fid-kan", "fid-tabla", "fid-reu-prox"):
+    for id_ in ("fid-i-cuerpo", "fid-lista", "fid-q", "fid-seg-ciudad", "fid-seg-rubro"):
         assert f'id="{id_}"' in HTML, id_
 
     monkeypatch.setenv("SECRET_KEY", "test")

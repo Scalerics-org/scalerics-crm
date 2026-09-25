@@ -276,10 +276,8 @@ const FID_ESTADOS = [['sin_contactar','Sin contactar'],['contactado','Contactado
   ['reunion_hecha','Reunión hecha'],['piloto','Piloto'],['cerrado','Cerrado'],['descartado','Descartado']];
 const FID_LABEL = Object.fromEntries(FID_ESTADOS);
 const FID_CATS = ['Parrilla','Pizza','Sushi','Hamburguesas','Café','Bar','Heladería','Restaurante'];
-const FID_MOTIVOS = ['Precio','Ya tiene sistema','No ve el valor','Lo decide otro','Cierra el local','Otro'];
-const FID_DEMO = 'https://trouville.scalerics.workers.dev';
 const FID_DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
-const _fid = {vista:'hoy', hoy:null, sel:null, ficha:null, rid:null, pag:1, periodo:'mes', cfg:null, listo:false, buscarT:null, cola:[]};
+const _fid = {vista:'lista', periodo:'mes', cfg:null, listo:false};
 
 function _fidDt(t) {
   if (!t) return null;
@@ -309,7 +307,6 @@ function _fidWa(tel) {
   const d = String(tel||'').replace(/\D/g,'');
   return d ? 'https://wa.me/'+(d.startsWith('598') ? d : '598'+d.replace(/^0/,'')) : '';
 }
-const _FID_TEL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
 
 async function _fidJson(url, opts) {
   const r = await fetch(url, opts);
@@ -324,29 +321,43 @@ function _fidCats() {
   document.querySelectorAll('.fid-cat').forEach(s => {
     s.innerHTML = '<option value="">Tipo de local: todos</option>' + FID_CATS.map(c => '<option>'+c+'</option>').join('');
   });
-  const fe = document.getElementById('fid-f-estado');
-  if (fe) fe.innerHTML = '<option value="">Todas las etapas</option>' + FID_ESTADOS.map(e => '<option value="'+e[0]+'">'+e[1]+'</option>').join('');
 }
+
+// ── Lista única (25/9) ──────────────────────────────────────────────────────
+// Una sola lista con todo: vencidas en rojo arriba, las de hoy en verde y el
+// resto del más target al menos (el orden lo arma fidelidad.armar_lista). Cada
+// botón registra la llamada apenas se toca; los que llevan fecha abren una
+// cajita debajo de la fila para corregirla y dejar una nota rápida.
+const FID_ACC = [['no_atendio','No atendió'],['otro_dia','Otro día'],['reunion','Reunión'],['cerro','Cerró'],['no_interesa','No interesa']];
+const FID_CON_FECHA = {no_atendio:'¿Cuándo lo volvés a intentar?', otro_dia:'¿Cuándo lo volvés a llamar?', reunion:'¿Cuándo es la reunión?'};
+// Las llamadas de antes del 25/9 tienen otros resultados.
+const FID_RES_LABEL = Object.assign({llamar_despues:'Pidió que llame', info_whatsapp:'Info por WhatsApp', no_es_dueno:'No era el dueño',
+  piloto:'Arrancó piloto', lo_piensa:'Lo piensa', reprogramar:'Reprogramó', seguimiento:'Seguimiento', no_sigue:'No sigue'}, Object.fromEntries(FID_ACC));
+const _fl = {ciudad:'Montevideo', rubro:'restaurante', q:'', limite:150, items:[], total:0, kpis:null, abierto:null, duA:null, resaltar:null, buscarT:null};
+try {
+  const g = JSON.parse(localStorage.getItem('fid_filtros') || '{}');
+  if (g.ciudad) _fl.ciudad = g.ciudad;
+  if (g.rubro) _fl.rubro = g.rubro;
+} catch(e) {}
 
 function fidLoad() {
   _fidCats();
   if (!_fid.cfg) _fidJson('/api/fidelidad/config').then(c => { _fid.cfg = c; }).catch(() => {});
   const f = document.getElementById('fid-fecha');
-  if (f) f.textContent = new Date().toLocaleDateString('es-UY', {weekday:'long', day:'numeric', month:'long'}) + ' · Restaurantes de Municipio CH y Carrasco';
+  if (f) f.textContent = new Date().toLocaleDateString('es-UY', {weekday:'long', day:'numeric', month:'long'});
+  _fidSegs();
   fidVista(_fid.vista);
 }
 
 function fidVista(v) {
   _fid.vista = v;
-  ['hoy','pipe','todos','agenda','reu'].forEach(k => {
-    document.getElementById('fid-v-'+k).style.display = k === v ? '' : 'none';
-    document.getElementById('fid-t-'+k).classList.toggle('on', k === v);
-  });
-  if (v === 'hoy') fidCargarHoy();
-  if (v === 'pipe') fidCargarPipe();
-  if (v === 'todos') fidCargarTodos(_fid.pag);
-  if (v === 'reu') fidCargarReuniones();
-  if (v === 'agenda') fidCargarAgenda();
+  document.getElementById('fid-v-lista').style.display = v === 'lista' ? '' : 'none';
+  document.getElementById('fid-v-agenda').style.display = v === 'agenda' ? '' : 'none';
+  const b = document.getElementById('fid-t-agenda');
+  b.classList.toggle('on', v === 'agenda');
+  b.textContent = v === 'agenda' ? '← Volver a la lista' : 'Agenda';
+  if (v === 'lista') fidCargarLista();
+  else fidCargarAgenda();
 }
 
 function fidAviso(html, tipo) {
@@ -355,157 +366,106 @@ function fidAviso(html, tipo) {
   a.innerHTML = html ? '<div class="fid-card" style="margin-bottom:14px;border-color:var(--'+(tipo==='error'?'rojo':'verde')+')">'+html+'</div>' : '';
 }
 
-// ── Mi dia ──────────────────────────────────────────────────────────────────
-async function fidCargarHoy(abrirId) {
+function _fidSegs() {
+  document.querySelectorAll('#fid-seg-ciudad button').forEach(b => b.classList.toggle('on', b.dataset.v === _fl.ciudad));
+  document.querySelectorAll('#fid-seg-rubro button').forEach(b => b.classList.toggle('on', b.dataset.v === _fl.rubro));
+  const q = document.getElementById('fid-q');
+  if (q && q.value !== _fl.q) q.value = _fl.q;
+}
+
+async function fidFiltro(k, v) {
+  await _fidCerrarAbierto();
+  _fl[k] = v; _fl.limite = 150; _fl.resaltar = null;
+  try { localStorage.setItem('fid_filtros', JSON.stringify({ciudad:_fl.ciudad, rubro:_fl.rubro})); } catch(e) {}
+  _fidSegs();
+  fidCargarLista();
+}
+
+function fidBuscar(v) {
+  _fl.q = v;
+  clearTimeout(_fl.buscarT);
+  _fl.buscarT = setTimeout(() => { _fl.limite = 150; _fl.resaltar = null; fidCargarLista(); }, 250);
+}
+
+function fidVerMas() { _fl.limite += 150; fidCargarLista(); }
+
+async function fidCargarLista() {
+  const q = new URLSearchParams({ciudad:_fl.ciudad, rubro:_fl.rubro, q:_fl.q, limite:_fl.limite});
   let d;
-  try { d = await _fidJson('/api/fidelidad/hoy'); }
-  catch(e) { document.getElementById('fid-cola').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
-  _fid.hoy = d;
-  const k = d.kpis;
-  const pend = k.vencidas + k.para_hoy;
-  document.getElementById('fid-n-hoy').textContent = pend || '';
-  const tasa = k.tasa_efectivo_hoy;
-  const comp = (tasa != null && k.tasa_efectivo_hist != null)
-    ? (tasa >= k.tasa_efectivo_hist ? ' · <span class="fid-up">▲ '+(tasa-k.tasa_efectivo_hist)+' pts</span>' : ' · <span class="fid-dn">▼ '+(k.tasa_efectivo_hist-tasa)+' pts</span>')+' vs tu promedio' : '';
-  document.getElementById('fid-kpis-hoy').innerHTML =
-    '<div class="fid-kpi"><div class="l">Llamadas hoy</div><div class="v">'+k.llamadas_hoy+' <small>/ '+k.meta_llamadas_dia+' meta</small></div><div class="fid-barra"><div style="width:'+Math.min(100, Math.round(100*k.llamadas_hoy/Math.max(1,k.meta_llamadas_dia)))+'%"></div></div></div>'
-    + '<div class="fid-kpi"><div class="l">Hablé con el dueño</div><div class="v">'+k.efectivos_hoy+'</div><div class="d">'+(tasa != null ? tasa+'% de las llamadas'+comp : 'Todavía no llamaste hoy')+'</div></div>'
-    + '<div class="fid-kpi"><div class="l">Reuniones agendadas hoy</div><div class="v">'+k.reuniones_hoy+'</div><div class="d">Semana: '+k.reuniones_semana+' de '+k.meta_reuniones_semana+' meta</div></div>'
-    + '<div class="fid-kpi"><div class="l">Pendientes de hoy</div><div class="v">'+pend+'</div><div class="d">'+(k.vencidas ? '<span class="fid-dn">'+k.vencidas+' vencidas</span> · ' : '')+k.para_hoy+' para hoy · '+k.sin_contactar+' sin tocar</div></div>';
-  const g = d.grupos;
-  _fid.cola = [].concat(g.vencidas, g.post_reunion, g.hoy, g.sugeridos);
-  let html = '';
-  if (d.reuniones_hoy.length) {
-    html += '<div class="fid-grp v">● Reuniones de hoy · '+d.reuniones_hoy.length+'</div>'
-      + d.reuniones_hoy.map(p => _fidFila(p, (p.fecha_reunion||'').slice(11,16), '<span class="fid-pill v">Reunión</span>')).join('');
+  try { d = await _fidJson('/api/fidelidad/lista?'+q); }
+  catch(e) { document.getElementById('fid-lista').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  _fl.items = d.items; _fl.total = d.total; _fl.kpis = d.kpis;
+  _fidPintarLista();
+  if (_fl.resaltar) { const el = document.getElementById('fl-'+_fl.resaltar); if (el) el.scrollIntoView({block:'center'}); }
+}
+
+function _fidPintarLista() {
+  const k = _fl.kpis;
+  if (k) {
+    document.getElementById('fid-kpis-lista').innerHTML = '<span class="fid-pill r">'+k.vencidas+' vencidas</span><span class="fid-pill g">'+k.hoy+' para hoy</span>'
+      + '<span><b>'+k.llamadas_hoy+'</b> / '+k.meta_llamadas_dia+' llamadas hoy</span>';
   }
-  if (g.vencidas.length) html += '<div class="fid-grp r">● Vencidas · '+g.vencidas.length+'</div>' + g.vencidas.map(p => _fidFila(p, _fidCuandoCorto(p.proxima_llamada))).join('');
-  if (g.post_reunion.length) html += '<div class="fid-grp v">● Reuniones sin resultado · '+g.post_reunion.length+'</div>' + g.post_reunion.map(p => _fidFila(p, _fidCuandoCorto(p.fecha_reunion), '<span class="fid-pill v">¿Cómo salió?</span>')).join('');
-  if (g.hoy.length) html += '<div class="fid-grp a">● Para hoy · '+g.hoy.length+'</div>' + g.hoy.map(p => _fidFila(p, (p.proxima_llamada||'').slice(11,16))).join('');
-  if (g.sugeridos.length) html += '<div class="fid-grp b">● Nuevos sugeridos · para llenar los huecos</div>' + g.sugeridos.map(p => _fidFila(p, '<span class="fid-hr pt">'+p.puntaje+'<small>puntaje</small></span>', null, true)).join('');
-  if (!html) html = '<div class="fid-vacio">No hay nada pendiente. Cargá prospectos con «Importar Excel» o «+ Prospecto».</div>';
-  document.getElementById('fid-cola').innerHTML = html;
-  const quiero = abrirId || _fid.sel || (_fid.cola[0] && _fid.cola[0].id);
-  if (quiero && window.innerWidth > 900) fidAbrir(quiero, true);
-  else if (!quiero) document.getElementById('fid-ficha-inline').innerHTML = '<div class="fid-vacio">No hay restaurantes en la cola.</div>';
+  const rubro = _fl.rubro === 'peluqueria' ? 'peluquerías' : 'restaurantes';
+  let h = _fl.items.map(_fidFilaLista).join('');
+  if (!h) h = '<div class="fid-vacio">'+(_fl.q ? 'Ningún comercio coincide con «'+esc(_fl.q)+'».' : 'Todavía no hay '+rubro+' de '+esc(_fl.ciudad)+'. Cargalos con «Importar Excel» o «+ Comercio».')+'</div>';
+  if (_fl.total > _fl.items.length) h += '<button class="fid-btn fl-mas" onclick="fidVerMas()">Mostrar más ('+(_fl.total - _fl.items.length)+' restantes)</button>';
+  document.getElementById('fid-lista').innerHTML = h;
 }
 
-function _fidCuandoCorto(t) {
-  const d = _fidDt(t); if (!d) return '';
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const x = new Date(d); x.setHours(0,0,0,0);
-  const dia = x.getTime() === hoy.getTime() ? 'Hoy' : (FID_DIAS[d.getDay()].charAt(0).toUpperCase() + FID_DIAS[d.getDay()].slice(1) + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
-  return dia + '<small>' + String(t).slice(11,16) + '</small>';
+function _fidEstadoPill(p) {
+  const reu = p.estado === 'reunion_agendada';
+  const hora = p.cuando && p.cuando.length > 10 ? ' '+p.cuando.slice(11, 16) : '';
+  if (p.estado === 'cerrado') return '<span class="fid-pill g">Cliente</span>';
+  if (p.estado === 'descartado') return '<span class="fid-pill">No interesa'+(p.cuando ? ' · vuelve '+esc(fidFecha(p.cuando, false)) : '')+'</span>';
+  if (p.grupo === 0) return '<span class="fid-pill r">'+(reu ? 'Reunión '+esc(fidFecha(p.cuando))+' · ¿cómo salió?' : 'Vencida · '+esc(fidFecha(p.cuando, false)))+'</span>';
+  if (p.grupo === 1) return '<span class="fid-pill g">'+(reu ? 'Reunión hoy' : 'Llamar hoy')+hora+'</span>';
+  if (p.cuando) return '<span class="fid-pill">'+(reu ? 'Reunión ' : 'Llamar ')+esc(fidFecha(p.cuando))+'</span>';
+  return '<span class="fid-pill">Sin llamar</span>';
 }
 
+// Lo usa el buscador de la agenda.
 function _fidPillEstado(p) {
-  const u = p.ultimo_resultado;
   if (p.estado === 'descartado') return '<span class="fid-pill">Reactivar</span>';
-  if (u === 'no_atendio') return '<span class="fid-pill r">No atendió ×'+(p.n_no_atendio||1)+'</span>';
-  if (u === 'no_es_dueno') return '<span class="fid-pill a">No era el dueño</span>';
-  if (u === 'llamar_despues' || u === 'lo_piensa') return '<span class="fid-pill a">Pidió que llame</span>';
-  if (u === 'info_whatsapp') return '<span class="fid-pill b">Info por WhatsApp</span>';
-  if (p.estado === 'piloto') return '<span class="fid-pill g">Piloto</span>';
-  if (p.estado === 'reunion_hecha') return '<span class="fid-pill v">Post reunión</span>';
+  if (p.estado === 'cerrado' || p.estado === 'piloto') return '<span class="fid-pill g">'+esc(FID_LABEL[p.estado])+'</span>';
   return '<span class="fid-pill">'+esc(FID_LABEL[p.estado] || p.estado)+'</span>';
 }
 
-function _fidFila(p, cuando, pill, nuevo) {
-  const meta = [p.barrio, p.tipo].filter(Boolean).map(esc).join(' · ')
-    + (p.rating ? ' · <span class="fid-star">★</span> '+p.rating+(p.resenas ? ' ('+Number(p.resenas).toLocaleString('es-UY')+')' : '') : '')
-    + (nuevo && p.parecido ? ' · parecido a los que cerraste' : '');
-  const tel = _fidTelLink(p.telefono);
-  return '<div class="fid-fila'+(_fid.sel === p.id ? ' sel' : '')+'" data-id="'+p.id+'" onclick="fidAbrir('+p.id+')">'
-    + '<div class="fid-hr">'+(cuando||'')+'</div>'
-    + '<div><div class="fid-nm">'+esc(p.nombre)+'</div><div class="fid-meta">'+meta+'</div></div>'
-    + (pill || _fidPillEstado(p))
-    + (tel ? '<a class="fid-tel" href="'+tel+'" title="Llamar '+esc(p.telefono)+'" onclick="event.stopPropagation();fidAbrir('+p.id+')">'+_FID_TEL_SVG+'</a>' : '<span class="fid-pill r">Sin tel.</span>')
-    + '</div>';
-}
-
-// ── Ficha ───────────────────────────────────────────────────────────────────
-function _fidInline() { return _fid.vista === 'hoy' && window.innerWidth > 900; }
-
-async function fidAbrir(id, soloInline) {
-  _fid.sel = id; _fid.rid = null;
-  document.querySelectorAll('.fid-fila').forEach(f => f.classList.toggle('sel', Number(f.dataset.id) === id));
-  let p;
-  try { p = await _fidJson('/api/fidelidad/prospectos/'+id); } catch(e) { fidAviso(esc(e.message), 'error'); return; }
-  _fid.ficha = p;
-  const html = fidFichaHTML(p);
-  if (_fidInline()) {
-    document.getElementById('fid-ficha-inline').innerHTML = html;
-  } else if (!soloInline) {
-    const dr = document.getElementById('fid-drawer');
-    dr.innerHTML = '<button class="fid-x" onclick="fidCerrarDrawer()" aria-label="Cerrar">×</button>' + html;
-    dr.classList.add('open'); document.getElementById('fid-drawer-bd').classList.add('open');
-  }
-}
-function fidCerrarDrawer() {
-  document.getElementById('fid-drawer').classList.remove('open');
-  document.getElementById('fid-drawer-bd').classList.remove('open');
-}
-function _fidRefrescarFicha() {
-  const html = fidFichaHTML(_fid.ficha);
-  if (_fidInline()) document.getElementById('fid-ficha-inline').innerHTML = html;
-  else document.getElementById('fid-drawer').innerHTML = '<button class="fid-x" onclick="fidCerrarDrawer()" aria-label="Cerrar">×</button>' + html;
-}
-
-function _fidGuion(p) {
-  const precio = (_fid.cfg && _fid.cfg.precio_usd) || 150;
-  if (p.estado === 'reunion_agendada') return '<b>En la reunión:</b> preguntá cuántos clientes vuelven por semana y qué promo les gustaría dar. Cerrá con el piloto de 30 días. · <b>Demo:</b> <a href="'+FID_DEMO+'" target="_blank" rel="noopener">trouville.scalerics.workers.dev</a>';
-  if (p.estado === 'piloto') return '<b>Antes de llamar:</b> mirá cuántos clientes se registraron y cuántos canjearon. Con eso en la mano, pedí el cierre a USD '+precio+' por mes.';
-  const res = p.resenas ? 'Con '+Number(p.resenas).toLocaleString('es-UY')+' reseñas ya tienen clientela fiel: ' : 'La idea es simple: ';
-  return '<b>Para arrancar:</b> «'+res+'que vuelvan más seguido. Cada compra suma puntos en el celular y los canjean por promos del local; además ven la carta digital. Sin app para descargar, USD '+precio+' por mes.» · <b>Demo:</b> <a href="'+FID_DEMO+'" target="_blank" rel="noopener">trouville.scalerics.workers.dev</a>';
-}
-
-function fidFichaHTML(p) {
-  const tel = _fidTelLink(p.telefono), wa = _fidWa(p.telefono);
-  const estadoCls = {cerrado:'g', piloto:'g', reunion_agendada:'b', reunion_hecha:'v', descartado:'r', contactado:'a'}[p.estado] || '';
-  let h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
-    + '<div><h2>'+esc(p.nombre)+'</h2><div class="fid-meta" style="margin-top:3px">'+esc([p.direccion, p.barrio].filter(Boolean).join(' · '))+'</div></div>'
-    + '<select class="fid-sel" title="Cambiar etapa" onchange="fidMover('+p.id+', this.value)">'
-    + FID_ESTADOS.map(e => '<option value="'+e[0]+'"'+(e[0]===p.estado?' selected':'')+'>'+e[1]+'</option>').join('') + '</select></div>';
-  if (p.estado === 'reunion_agendada' && p.fecha_reunion) h += '<div style="margin-top:8px"><span class="fid-pill b">Reunión: '+esc(fidFecha(p.fecha_reunion))+'</span></div>';
-  if (p.estado === 'piloto' && p.piloto_inicio) {
-    const dia = Math.floor((new Date() - _fidDt(p.piloto_inicio)) / 864e5) + 1;
-    h += '<div style="margin-top:8px"><span class="fid-pill g">Piloto: día '+dia+' de 30</span></div>';
-  }
-  if (p.estado === 'descartado' && p.motivo_descarte) h += '<div style="margin-top:8px"><span class="fid-pill r">Descartado: '+esc(p.motivo_descarte)+'</span></div>';
-  h += '<div class="fid-facts">'
-    + '<div><label>Teléfono</label>'+(tel ? '<a href="'+tel+'">'+esc(p.telefono)+'</a> · <a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>' : '<input class="fid-in" placeholder="Agregar teléfono" onchange="fidEditar('+p.id+',\'telefono\',this.value)">')+'</div>'
-    + '<div><label>Dueño / contacto</label><input class="fid-in" value="'+esc(p.contacto||'')+'" placeholder="Nombre, IG o celular" onchange="fidEditar('+p.id+',\'contacto\',this.value)"></div>'
-    + '<div><label>Google</label>'+(p.rating ? '<span class="fid-star">★</span> '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY')+' reseñas' : '—')+(p.maps_url ? ' · <a href="'+esc(p.maps_url)+'" target="_blank" rel="noopener">Maps</a>' : '')+'</div>'
-    + '<div><label>Facilidad</label><select class="fid-in" onchange="fidEditar('+p.id+',\'facilidad\',this.value)"><option value="">Sin clasificar</option>'
-    + ['Alta','Media','Baja'].map(x => '<option'+(p.facilidad===x?' selected':'')+'>'+x+'</option>').join('')+'</select></div>'
-    + '<div><label>Tipo</label>'+esc(p.tipo||'—')+'</div>'
-    + '<div><label>Mensual (USD)</label><input class="fid-in" type="number" min="0" value="'+(p.mensual_usd!=null?p.mensual_usd:'')+'" placeholder="'+((_fid.cfg&&_fid.cfg.precio_usd)||150)+'" onchange="fidEditar('+p.id+',\'mensual_usd\',this.value)"></div>'
-    + '<div style="grid-column:1/-1"><label>Notas del local</label><textarea class="fid-in" rows="2" onchange="fidEditar('+p.id+',\'notas\',this.value)">'+esc(p.notas||'')+'</textarea></div>'
-    + '</div>';
-  h += '<div class="fid-guion">'+_fidGuion(p)+'</div>';
+function _fidFilaLista(p) {
+  const ab = _fl.abierto && _fl.abierto.id === p.id ? _fl.abierto : null;
+  const lh = p.llamada_hoy;
+  const tel = _fidTelLink(p.telefono), celDueno = _fidTelLink(p.contacto_tel), wa = _fidWa(p.contacto_tel || p.telefono);
+  const nota = p.ultima_nota || (p.notas && !/^Traído de Google Maps/.test(p.notas) ? p.notas : '');
+  const meta = [esc([p.barrio, p.tipo].filter(Boolean).join(' · '))];
+  if (p.rating) meta.push('<span class="fid-star">★</span> '+p.rating+(p.resenas ? ' ('+Number(p.resenas).toLocaleString('es-UY')+')' : ''));
+  if (tel) meta.push('<a href="'+tel+'">'+esc(p.telefono)+'</a>');
+  else meta.push('<span class="fid-dn">Sin teléfono</span>');
+  if (p.contacto || p.contacto_tel) meta.push('Dueño: '+esc(p.contacto || '')+(celDueno ? ' <a href="'+celDueno+'">'+esc(p.contacto_tel)+'</a>' : ''));
+  if (wa) meta.push('<a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>');
+  let h = '<div class="fl-fila g'+p.grupo+(_fl.resaltar === p.id ? ' res' : '')+'" id="fl-'+p.id+'">'
+    + '<div class="fl-top"><span class="fid-nm">'+esc(p.nombre)+'</span>'+_fidEstadoPill(p)
+    + (lh ? '<span class="fid-pill b">✓ Llamado '+esc(lh.hecha_en.slice(11, 16))+' · '+esc(FID_RES_LABEL[lh.resultado] || lh.resultado)+'</span>' : '')
+    + (p.n_no_atendio > 1 ? '<span class="fid-pill">No atendió ×'+p.n_no_atendio+'</span>' : '')
+    + '<span class="fl-target" title="Qué tan parecido es al cliente ideal de Fidelidad">'+p.target+'% target</span></div>'
+    + '<div class="fid-meta fl-meta">'+meta.join(' · ')+'</div>'
+    + (nota ? '<div class="fl-nota">«'+esc(nota)+'»</div>' : '');
   if (p.estado !== 'cerrado') {
-    h += '<div class="fid-ct" style="margin:16px 0 4px">'+(p.estado === 'reunion_agendada' ? '¿Cómo salió la reunión?' : p.estado === 'piloto' ? '¿Cómo va el piloto?' : '¿Cómo salió la llamada?')+'</div><div class="fid-res">'
-      + (p.resultados||[]).map(r => '<button class="fid-rb'+(_fid.rid===r.id?' on':'')+'" onclick="fidElegir(\''+r.id+'\')"><b>'+esc(r.label)+'</b><span>'+esc(r.desc)+'</span></button>').join('')
-      + '</div><div id="fid-extra" class="fid-extra"></div>'
-      + '<textarea class="fid-in" id="fid-nota" style="margin-top:10px" placeholder="Qué te dijo (opcional)"></textarea>'
-      + '<div class="fid-next gris" id="fid-next"><div>Elegí cómo salió para ver cuándo vuelve a tu cola.</div><button class="fid-btn p" id="fid-guardar" disabled onclick="fidGuardar()">Guardar y siguiente →</button></div>'
-      + '<div class="fid-err" id="fid-err"></div>';
-  } else {
-    h += '<div class="fid-next" style="margin-top:14px"><div>Cliente desde <b>'+esc(fidFecha(p.cerrado_en, false))+'</b> · '+_fidUsd(p.mensual_usd)+' por mes</div></div>';
+    h += '<div class="fl-acc">' + FID_ACC.map(a => '<button class="fl-b'+(ab && ab.accion === a[0] ? ' on' : '')+'" onclick="fidAccion('+p.id+',\''+a[0]+'\')">'+a[1]+'</button>').join('')
+      + '<button class="fl-b" onclick="fidDuenoAbrir('+p.id+')">'+(p.contacto || p.contacto_tel ? 'Editar dueño' : '+ Dueño')+'</button></div>';
   }
-  const hist = [].concat(
-    (p.llamadas||[]).map(l => ({en:l.hecha_en, t:'<b>'+esc(fidFecha(l.hecha_en))+'</b> — '+esc(_fidResLabel(l.resultado))+(l.nota ? ' · «'+esc(l.nota)+'»' : '')+(l.usuario ? ' · '+esc(l.usuario) : '')})),
-    (p.cambios||[]).map(c => ({en:c.en, t:'<b>'+esc(fidFecha(c.en))+'</b> — pasó a '+esc(FID_LABEL[c.a]||c.a)}))
-  ).sort((a,b) => (b.en||'').localeCompare(a.en||''));
-  hist.push({t:'<b>'+esc(fidFecha(p.creado_en, false))+'</b> — '+(p.fuente === 'excel' ? 'importado del Excel' : p.fuente === 'scraper' ? 'traído de Google Maps' : 'cargado a mano')});
-  h += '<div class="fid-tl">'+hist.slice(0, 15).map(x => '<div>'+x.t+'</div>').join('')+'</div>';
-  return h;
-}
-
-function _fidResLabel(id) {
-  const todos = (_fid.hoy && _fid.hoy.resultados) ? Object.values(_fid.hoy.resultados).flat() : [];
-  const r = todos.find(x => x.id === id) || (_fid.ficha && (_fid.ficha.resultados||[]).find(x => x.id === id));
-  return r ? r.label.replace(' ✓','') : id;
+  if (_fl.duA === p.id) {
+    h += '<div class="fl-box"><input class="fid-in" id="fl-du-nom" placeholder="Nombre del dueño o encargado" value="'+esc(p.contacto || '')+'">'
+      + '<input class="fid-in fl-cel" id="fl-du-tel" placeholder="Celular" value="'+esc(p.contacto_tel || '')+'">'
+      + '<button class="fid-btn p" onclick="fidDuenoGuardar('+p.id+')">Guardar</button><button class="fid-btn" onclick="_fl.duA=null;_fidPintarLista()">Cancelar</button></div>';
+  }
+  if (ab && FID_CON_FECHA[ab.accion]) {
+    h += '<div class="fl-box"><span class="fl-ok">✓ Llamada registrada. '+FID_CON_FECHA[ab.accion]+'</span>'
+      + '<div class="fid-chips">'+_fidOpcionesFecha(ab.accion).map(o => '<button class="fid-chip'+(o[1] === ab.fecha ? ' on' : '')+'" onclick="fidElegirFecha(\''+o[1]+'\')">'+o[0]+'</button>').join('')+'</div>'
+      + '<input type="datetime-local" class="fid-in fl-fecha" id="fl-fecha" value="'+esc(ab.fecha || '')+'" onchange="_fl.abierto.fecha=this.value">'
+      + '<input class="fid-in" id="fl-nota" placeholder="Nota rápida: qué te dijo, a qué hora llamar…" value="'+esc(ab.nota || '')+'" oninput="_fl.abierto.nota=this.value" onkeydown="if(event.key===\'Enter\')fidGuardarAbierto()">'
+      + '<button class="fid-btn p" onclick="fidGuardarAbierto()">Guardar</button><button class="fid-btn" onclick="fidDeshacer()">Deshacer</button>'
+      + '<div class="fid-err" id="fl-err"></div></div>';
+  }
+  return h + '</div>';
 }
 
 function _fidHabil(d, n) {
@@ -513,171 +473,115 @@ function _fidHabil(d, n) {
   while (n > 0) { d.setDate(d.getDate()+1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; }
   return d;
 }
-function _fidSemana(d) { d = new Date(d); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate()+1); return d; }
-function _fidPrevia(rid) {
-  const ahora = new Date();
-  const hora = (d, h) => { d.setHours(h, 0, 0, 0); return d; };
-  if (rid === 'no_atendio' || rid === 'no_es_dueno') return hora(_fidHabil(ahora, 1), ahora.getHours() < 14 ? 16 : 11);
-  if (rid === 'info_whatsapp') return hora(_fidHabil(ahora, 2), Math.max(10, Math.min(ahora.getHours(), 18)));
-  if (rid === 'piloto') { const d = new Date(ahora); d.setDate(d.getDate()+14); return hora(_fidSemana(d), 15); }
-  if (rid === 'no_interesa' || rid === 'no_sigue') { const d = new Date(ahora); d.setDate(d.getDate()+90); return hora(_fidSemana(d), 15); }
-  return null;
+function _fidOpcionesFecha(accion) {
+  const a = new Date(), hora = (d, h) => { d.setHours(h, 0, 0, 0); return _fidTxt(d); };
+  const semana = n => { const d = new Date(a.getTime() + n*7*864e5); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate()+1); return hora(d, 11); };
+  const op = [];
+  if (accion === 'no_atendio' && a.getHours() < 19) op.push(['Hoy más tarde', hora(new Date(a), a.getHours() + 2)]);
+  op.push(['Mañana', hora(_fidHabil(a, 1), accion === 'no_atendio' && a.getHours() < 14 ? 16 : 11)], ['En 2 días', hora(_fidHabil(a, 2), 11)], ['En 1 semana', semana(1)]);
+  if (accion !== 'no_atendio') op.push(['En 2 semanas', semana(2)]);
+  return op;
+}
+function fidElegirFecha(txt) {
+  if (!_fl.abierto) return;
+  _fl.abierto.fecha = txt;
+  _fidPintarLista();
 }
 
-function _fidChips(inputId) {
-  const a = new Date();
-  const op = [['Mañana 11:00', hora(_fidHabil(a,1), 11)], ['Mañana 16:00', hora(_fidHabil(a,1), 16)],
-    ['En 2 días', hora(_fidHabil(a,2), 11)], ['En 1 semana', hora(_fidSemana(new Date(a.getTime()+7*864e5)), 11)]];
-  function hora(d, h) { d.setHours(h,0,0,0); return d; }
-  return '<div class="fid-chips">' + op.map(o => '<button class="fid-chip" onclick="document.getElementById(\''+inputId+'\').value=\''+_fidTxt(o[1])+'\';fidPrevia()">'+o[0]+'</button>').join('') + '</div>';
-}
-
-function fidElegir(rid) {
-  _fid.rid = rid;
-  const r = (_fid.ficha.resultados||[]).find(x => x.id === rid);
-  document.querySelectorAll('.fid-rb').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').indexOf("'"+rid+"'") >= 0));
-  let ex = '';
-  if (r.pide === 'fecha') ex = '<label class="fid-meta">¿Cuándo lo volvés a llamar?</label><input class="fid-in" type="datetime-local" id="fid-fecha-in" oninput="fidPrevia()">' + _fidChips('fid-fecha-in');
-  if (r.pide === 'reunion') ex = '<label class="fid-meta">Fecha y hora de la reunión</label><input class="fid-in" type="datetime-local" id="fid-reu-in" oninput="fidPrevia()">' + _fidChips('fid-reu-in');
-  if (r.pide === 'motivo') ex = '<label class="fid-meta">¿Por qué no?</label><select class="fid-in" id="fid-motivo-in" onchange="fidPrevia()"><option value="">Elegí el motivo</option>'+FID_MOTIVOS.map(m => '<option>'+m+'</option>').join('')+'</select>';
-  if (rid === 'no_es_dueno') ex = '<label class="fid-meta">¿Con quién hay que hablar?</label><input class="fid-in" id="fid-quien-in" placeholder="Nombre, horario, celular">';
-  document.getElementById('fid-extra').innerHTML = ex;
-  fidPrevia();
-}
-
-function fidPrevia() {
-  const rid = _fid.rid; if (!rid) return;
-  const r = (_fid.ficha.resultados||[]).find(x => x.id === rid);
-  const nx = document.getElementById('fid-next'), btn = document.getElementById('fid-guardar');
-  let txt = '', ok = true;
-  if (r.pide === 'fecha') { const v = (document.getElementById('fid-fecha-in')||{}).value; ok = !!v; txt = v ? 'Próxima llamada: <b>'+esc(fidFecha(v))+'</b>' : 'Elegí cuándo volver a llamar'; }
-  else if (r.pide === 'reunion') { const v = (document.getElementById('fid-reu-in')||{}).value; ok = !!v; txt = v ? 'Reunión: <b>'+esc(fidFecha(v))+'</b>' : 'Elegí la fecha de la reunión'; }
-  else if (r.pide === 'motivo') { const v = (document.getElementById('fid-motivo-in')||{}).value; ok = !!v; const d = _fidPrevia(rid); txt = v ? 'Vuelve a tu cola el <b>'+esc(fidFecha(_fidTxt(d)))+'</b>, por si cambió algo' : 'Elegí el motivo'; }
-  else if (r.estado === 'cerrado') txt = '<b>Pasa a Cerrado</b> y suma al MRR';
-  else { const d = _fidPrevia(rid); txt = d ? 'Próxima llamada: <b>'+esc(fidFecha(_fidTxt(d)))+'</b> (automático)' : ''; }
-  nx.classList.toggle('gris', !ok);
-  nx.firstElementChild.innerHTML = txt;
-  btn.disabled = !ok;
-}
-
-async function fidGuardar() {
-  const p = _fid.ficha, rid = _fid.rid; if (!p || !rid) return;
-  const btn = document.getElementById('fid-guardar'); btn.disabled = true;
-  let nota = (document.getElementById('fid-nota')||{}).value || '';
-  const quien = (document.getElementById('fid-quien-in')||{}).value;
-  if (quien) nota = ('Hablar con: ' + quien + (nota ? ' · ' + nota : ''));
-  const body = {resultado: rid, nota: nota,
-    fecha: (document.getElementById('fid-fecha-in')||{}).value || null,
-    fecha_reunion: (document.getElementById('fid-reu-in')||{}).value || null,
-    motivo: (document.getElementById('fid-motivo-in')||{}).value || null};
+async function fidAccion(id, accion) {
+  const p = _fl.items.find(x => x.id === id);
+  if (!p) return;
+  const ab = _fl.abierto;
+  if (ab && ab.id === id && ab.accion === accion) return;
+  let corrige = false;
   try {
-    await _fidJson('/api/fidelidad/prospectos/'+p.id+'/llamadas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if (quien && !p.contacto) fidEditar(p.id, 'contacto', quien, true);
-  } catch(e) { document.getElementById('fid-err').textContent = e.message; btn.disabled = false; return; }
-  if (_fid.vista === 'hoy') {
-    // El siguiente de la cola, no el primero: el que se acaba de guardar puede
-    // seguir estando (lo reagendaron para hoy mas tarde).
-    const i = _fid.cola.findIndex(x => x.id === p.id);
-    const sig = _fid.cola.slice(i + 1).find(x => x.id !== p.id);
-    _fid.sel = sig ? sig.id : null;
-    if (!_fidInline()) fidCerrarDrawer();
-    fidCargarHoy(sig && sig.id);
-  } else {
-    fidAbrir(p.id);
-    fidVista(_fid.vista);
-  }
-}
-
-async function fidEditar(id, campo, valor, silencioso) {
-  try {
-    const d = await _fidJson('/api/fidelidad/prospectos/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({[campo]: valor})});
-    if (_fid.ficha && _fid.ficha.id === id) { Object.assign(_fid.ficha, d.prospecto); if (campo === 'telefono' && !silencioso) _fidRefrescarFicha(); }
+    if (ab && ab.id === id) {
+      // Tocó otro botón en la misma fila: la llamada anterior fue un error.
+      await _fidJson('/api/fidelidad/llamadas/'+ab.lid, {method:'DELETE'});
+      corrige = true;
+    } else {
+      await _fidCerrarAbierto();
+    }
+    _fl.abierto = null;
+    const d = await _fidJson('/api/fidelidad/prospectos/'+id+'/accion', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({accion: accion})});
+    const n = d.prospecto;
+    ['estado','proxima_llamada','fecha_reunion','contacto','contacto_tel'].forEach(k => { p[k] = n[k]; });
+    p.cuando = p.estado === 'reunion_agendada' ? p.fecha_reunion : p.proxima_llamada;
+    const hoy = _fidTxt(new Date()).slice(0, 10), dia = (p.cuando || '').slice(0, 10);
+    p.grupo = ['cerrado','descartado'].includes(p.estado) ? 3 : !dia ? 2 : dia < hoy ? 0 : dia === hoy ? 1 : 2;
+    p.llamada_hoy = {hecha_en: n.llamadas[0].hecha_en, resultado: accion};
+    if (!corrige && _fl.kpis) _fl.kpis.llamadas_hoy++;
+    if (FID_CON_FECHA[accion]) {
+      _fl.abierto = {id: id, accion: accion, lid: d.llamada_id, fecha: (p.cuando || '').replace(' ', 'T'), nota: ''};
+      fidAviso('');
+    } else {
+      fidAviso('<b>'+esc(p.nombre)+'</b>: '+(accion === 'cerro' ? 'pasó a cliente.' : 'no le interesa, vuelve a la lista en un año.')
+        + ' <a href="#" onclick="fidDeshacer('+d.llamada_id+');return false">Deshacer</a>');
+      fidCargarLista();
+      return;
+    }
   } catch(e) { fidAviso(esc(e.message), 'error'); }
+  _fidPintarLista();
 }
 
-async function fidMover(id, estado) {
-  const body = {estado: estado};
-  if (estado === 'descartado') {
-    const m = prompt('¿Por qué se descarta? (' + FID_MOTIVOS.join(', ') + ')', 'Precio');
-    if (m === null) { fidVista(_fid.vista); if (_fid.ficha) _fidRefrescarFicha(); return; }
-    body.motivo = m;
-  }
-  if (estado === 'reunion_agendada') {
-    const f = prompt('Fecha y hora de la reunión (AAAA-MM-DD HH:MM). Podés dejarlo vacío.', '');
-    if (f) body.fecha_reunion = f;
-  }
+// Si el vendedor pasa a otra fila sin tocar Guardar, se guarda lo que dejó.
+async function _fidCerrarAbierto() {
+  const ab = _fl.abierto;
+  if (!ab) return;
+  _fl.abierto = null;
   try {
-    const d = await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if (_fid.ficha && _fid.ficha.id === id) { d.prospecto.resultados = null; fidAbrir(id, _fid.vista === 'hoy'); }
-    if (_fid.vista !== 'hoy') fidVista(_fid.vista);
-  } catch(e) { fidAviso(esc(e.message), 'error'); }
+    await _fidJson('/api/fidelidad/llamadas/'+ab.lid, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fecha: ab.fecha || null, nota: ab.nota || ''})});
+  } catch(e) {}
 }
 
-// ── Pipeline ────────────────────────────────────────────────────────────────
-async function fidCargarPipe() {
-  const q = new URLSearchParams({zona: document.getElementById('fid-p-zona').value, categoria: document.getElementById('fid-p-cat').value});
-  let d; try { d = await _fidJson('/api/fidelidad/pipeline?'+q); } catch(e) { document.getElementById('fid-kan').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
-  document.getElementById('fid-kan').innerHTML = d.columnas.map(c => {
-    let sub = c.estado === 'sin_contactar' ? 'Ordenados por puntaje'
-      : c.estado === 'cerrado' ? '<span class="fid-up">'+_fidUsd(c.potencial_usd)+' MRR</span>'
-      : c.estado === 'descartado' ? 'Vuelven a los 90 días'
-      : _fidUsd(c.potencial_usd)+' potencial'+(c.probabilidad ? ' · prob. '+Math.round(c.probabilidad*100)+'%' : '');
-    return '<div class="fid-col" data-estado="'+c.estado+'" ondragover="event.preventDefault();this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="fidSoltar(event,this)">'
-      + '<div class="fid-colh"><b>'+c.label+'</b><span>'+c.total+'</span></div><div class="fid-colm">'+sub+'</div>'
-      + (c.items.length ? c.items.map(p => _fidTarjeta(p)).join('') : '<div class="fid-mas">Vacío</div>')
-      + (c.total > c.items.length ? '<div class="fid-mas">+ '+(c.total - c.items.length)+' más · ver en «Todos»</div>' : '')
-      + '</div>';
-  }).join('');
-}
-function _fidTarjeta(p) {
-  let pie = '';
-  if (p.estado === 'sin_contactar') pie = p.rating ? '<span class="fid-pill">★ '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY')+'</span>' : '';
-  else if (p.estado === 'reunion_agendada' && p.fecha_reunion) {
-    const paso = _fidDt(p.fecha_reunion) < new Date();
-    pie = '<span class="fid-pill '+(paso ? 'r' : 'b')+'">'+(paso ? 'Falta el resultado · ' : '')+esc(fidFecha(p.fecha_reunion))+'</span>';
-  }
-  else if (p.estado === 'piloto' && p.piloto_inicio) pie = '<span class="fid-pill g">Día '+(Math.floor((new Date() - _fidDt(p.piloto_inicio)) / 864e5) + 1)+' de 30</span>';
-  else if (p.estado === 'cerrado') pie = '<span class="fid-pill g">Desde '+esc(fidFecha(p.cerrado_en, false))+'</span>';
-  else if (p.estado === 'descartado') pie = '<span class="fid-meta">'+esc(p.motivo_descarte||'')+'</span>';
-  else if (p.proxima_llamada) {
-    const venc = p.proxima_llamada.slice(0,10) < _fidTxt(new Date()).slice(0,10);
-    pie = '<span class="fid-pill '+(venc ? 'r' : 'a')+'">'+(venc ? 'Vencida' : esc(fidFecha(p.proxima_llamada)))+'</span>';
-  }
-  return '<div class="fid-kc" draggable="true" ondragstart="event.dataTransfer.setData(\'text/plain\',\''+p.id+'\')" onclick="fidAbrir('+p.id+')">'
-    + '<div class="fid-nm">'+esc(p.nombre)+'</div><div class="fid-meta">'+esc([p.barrio, p.tipo].filter(Boolean).join(' · '))+'</div>'
-    + (pie ? '<div class="ft">'+pie+'</div>' : '') + '</div>';
-}
-function fidSoltar(ev, col) {
-  ev.preventDefault(); col.classList.remove('drop');
-  const id = Number(ev.dataTransfer.getData('text/plain'));
-  if (id) fidMover(id, col.dataset.estado);
+async function fidGuardarAbierto() {
+  const ab = _fl.abierto;
+  if (!ab) return;
+  const err = document.getElementById('fl-err');
+  if (!ab.fecha) { err.textContent = 'Elegí cuándo.'; return; }
+  try {
+    await _fidJson('/api/fidelidad/llamadas/'+ab.lid, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fecha: ab.fecha, nota: ab.nota || ''})});
+  } catch(e) { err.textContent = e.message; return; }
+  _fl.abierto = null;
+  fidCargarLista();
 }
 
-// ── Todos ───────────────────────────────────────────────────────────────────
-function fidBuscar() { clearTimeout(_fid.buscarT); _fid.buscarT = setTimeout(() => fidCargarTodos(1), 250); }
-async function fidCargarTodos(pag) {
-  _fid.pag = pag || 1;
-  const q = new URLSearchParams({pagina: _fid.pag, q: document.getElementById('fid-q').value,
-    estado: document.getElementById('fid-f-estado').value, zona: document.getElementById('fid-f-zona').value,
-    categoria: document.getElementById('fid-f-cat').value});
-  let d; try { d = await _fidJson('/api/fidelidad/prospectos?'+q); } catch(e) { document.getElementById('fid-tabla').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
-  document.getElementById('fid-n-todos').textContent = d.total;
-  if (!d.items.length) { document.getElementById('fid-tabla').innerHTML = '<div class="fid-vacio">No hay prospectos con ese filtro.</div>'; return; }
-  document.getElementById('fid-tabla').innerHTML = '<table class="fid-tabla"><thead><tr><th>Restaurante</th><th>Barrio</th><th>Tipo</th><th>Teléfono</th><th class="r">Google</th><th class="r">Puntaje</th><th>Etapa</th><th>Próxima</th></tr></thead><tbody>'
-    + d.items.map(p => '<tr class="cl" onclick="fidAbrir('+p.id+')"><td><b>'+esc(p.nombre)+'</b></td><td>'+esc(p.barrio||'')+'</td><td>'+esc(p.tipo||'')+'</td><td>'+esc(p.telefono||'—')+'</td>'
-      + '<td class="r">'+(p.rating ? '★ '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY') : '—')+'</td><td class="r">'+p.puntaje+'</td>'
-      + '<td>'+esc(FID_LABEL[p.estado]||p.estado)+'</td><td>'+esc(p.estado === 'reunion_agendada' ? fidFecha(p.fecha_reunion) : p.proxima_llamada ? fidFecha(p.proxima_llamada) : '—')+'</td></tr>').join('')
-    + '</tbody></table>'
-    + (d.paginas > 1 ? '<div class="fid-pag"><button class="fid-btn" '+(d.pagina<=1?'disabled':'')+' onclick="fidCargarTodos('+(d.pagina-1)+')">←</button> Página '+d.pagina+' de '+d.paginas+' <button class="fid-btn" '+(d.pagina>=d.paginas?'disabled':'')+' onclick="fidCargarTodos('+(d.pagina+1)+')">→</button></div>' : '');
+async function fidDeshacer(lid) {
+  lid = lid || (_fl.abierto && _fl.abierto.lid);
+  if (!lid) return;
+  try { await _fidJson('/api/fidelidad/llamadas/'+lid, {method:'DELETE'}); }
+  catch(e) { fidAviso(esc(e.message), 'error'); return; }
+  _fl.abierto = null;
+  fidAviso('');
+  fidCargarLista();
 }
 
-// ── Reuniones ───────────────────────────────────────────────────────────────
-async function fidCargarReuniones() {
-  let d; try { d = await _fidJson('/api/fidelidad/reuniones'); } catch(e) { return; }
-  document.getElementById('fid-n-reu').textContent = d.proximas.length || '';
-  const fila = p => _fidFila(p, _fidCuandoCorto(p.fecha_reunion), '<span class="fid-pill b">'+esc(p.direccion || p.barrio || '')+'</span>');
-  document.getElementById('fid-reu-prox').innerHTML = d.proximas.length ? d.proximas.map(fila).join('') : '<div class="fid-vacio">No hay reuniones agendadas. Se agendan desde la ficha: «Agendar reunión».</div>';
-  document.getElementById('fid-reu-pend').innerHTML = d.sin_resultado.length ? d.sin_resultado.map(fila).join('') : '<div class="fid-vacio">Todas las reuniones tienen resultado cargado.</div>';
+function fidDuenoAbrir(id) {
+  _fl.duA = _fl.duA === id ? null : id;
+  _fidPintarLista();
+  const i = document.getElementById('fl-du-nom');
+  if (i) i.focus();
+}
+async function fidDuenoGuardar(id) {
+  const body = {contacto: document.getElementById('fl-du-nom').value, contacto_tel: document.getElementById('fl-du-tel').value};
+  try {
+    const d = await _fidJson('/api/fidelidad/prospectos/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const p = _fl.items.find(x => x.id === id);
+    if (p) { p.contacto = d.prospecto.contacto; p.contacto_tel = d.prospecto.contacto_tel; }
+  } catch(e) { fidAviso(esc(e.message), 'error'); return; }
+  _fl.duA = null;
+  _fidPintarLista();
+}
+
+// Desde la agenda o Inteligencia comercial: lleva a la fila del comercio.
+async function fidAbrir(id) {
+  let p;
+  try { p = await _fidJson('/api/fidelidad/prospectos/'+id); } catch(e) { fidAviso(esc(e.message), 'error'); return; }
+  if (document.getElementById('fid-modal').classList.contains('open')) fidCerrarModal();
+  _fl.ciudad = p.ciudad || 'Montevideo'; _fl.rubro = p.rubro || 'restaurante';
+  _fl.q = p.nombre; _fl.resaltar = id; _fl.limite = 150;
+  _fidSegs();
+  fidVista('lista');
 }
 
 // ── Alta, importacion y metas ───────────────────────────────────────────────
@@ -692,11 +596,14 @@ function fidCerrarModal() {
 }
 function fidNuevoAbrir() {
   const campo = (id, label, extra) => '<div'+(extra||'')+'><label for="fid-n-'+id+'">'+label+'</label><input class="fid-in" id="fid-n-'+id+'"></div>';
-  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Nuevo prospecto</h3><div class="fid-form">'
-    + campo('nombre', 'Restaurante *', ' class="full"')
-    + '<div><label for="fid-n-zona">Zona *</label><select class="fid-in" id="fid-n-zona"><option>Municipio CH</option><option>Carrasco</option></select></div>'
-    + campo('barrio', 'Barrio') + campo('tipo', 'Tipo (parrilla, pizza…)') + campo('telefono', 'Teléfono')
-    + campo('direccion', 'Dirección', ' class="full"') + campo('contacto', 'Dueño / contacto')
+  const opc = (lista, sel) => lista.map(o => '<option value="'+o[0]+'"'+(o[0] === sel ? ' selected' : '')+'>'+o[1]+'</option>').join('');
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Nuevo comercio</h3><div class="fid-form">'
+    + campo('nombre', 'Nombre del comercio *', ' class="full"')
+    + '<div><label for="fid-n-ciudad">Ciudad</label><select class="fid-in" id="fid-n-ciudad">'+opc([['Montevideo','Montevideo'],['Buenos Aires','Buenos Aires']], _fl.ciudad)+'</select></div>'
+    + '<div><label for="fid-n-rubro">Rubro</label><select class="fid-in" id="fid-n-rubro">'+opc([['restaurante','Restaurante'],['peluqueria','Peluquería']], _fl.rubro)+'</select></div>'
+    + '<div><label for="fid-n-zona">Zona (en Montevideo)</label><select class="fid-in" id="fid-n-zona"><option>Municipio CH</option><option>Carrasco</option></select></div>'
+    + campo('barrio', 'Barrio') + campo('tipo', 'Tipo (pizzería, barbería…)') + campo('telefono', 'Teléfono del local')
+    + campo('direccion', 'Dirección', ' class="full"') + campo('contacto', 'Dueño o encargado') + campo('contacto_tel', 'Celular del dueño')
     + '<div><label for="fid-n-facilidad">Facilidad</label><select class="fid-in" id="fid-n-facilidad"><option value="">Sin clasificar</option><option>Alta</option><option>Media</option><option>Baja</option></select></div>'
     + campo('maps_url', 'Link de Google Maps', ' class="full"')
     + '<div class="full"><label for="fid-n-notas">Notas</label><textarea class="fid-in" id="fid-n-notas"></textarea></div>'
@@ -705,12 +612,11 @@ function fidNuevoAbrir() {
 }
 async function fidNuevoGuardar() {
   const body = {};
-  ['nombre','zona','barrio','tipo','telefono','direccion','contacto','facilidad','maps_url','notas'].forEach(k => { body[k] = document.getElementById('fid-n-'+k).value; });
+  ['nombre','ciudad','rubro','zona','barrio','tipo','telefono','direccion','contacto','contacto_tel','facilidad','maps_url','notas'].forEach(k => { body[k] = document.getElementById('fid-n-'+k).value; });
   try {
     const d = await _fidJson('/api/fidelidad/prospectos', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     fidCerrarModal();
-    fidAviso(d.duplicado ? 'Ese restaurante ya estaba cargado: te abro su ficha.' : 'Prospecto cargado.');
-    fidVista(_fid.vista);
+    fidAviso(d.duplicado ? 'Ese comercio ya estaba cargado: te lo muestro en la lista.' : 'Comercio cargado.');
     fidAbrir(d.id);
   } catch(e) { document.getElementById('fid-n-err').textContent = e.message; }
 }
@@ -912,7 +818,7 @@ function _fidAgendaSemana(l, items) {
     const d = new Date(l.getTime() + i * 864e5), dia = _fidDia(d);
     h += '<div class="fid-cal-dia' + (dia === hoy ? ' hoy' : '') + '">';
     for (let hr = FID_H0; hr < FID_H1; hr++) h += '<div class="fid-cal-slot" onclick="fidAgendarAbrir(\'' + dia + 'T' + String(hr).padStart(2,'0') + ':00\')" title="Agendar el ' + FID_DIAS[d.getDay()] + ' ' + d.getDate() + ' a las ' + hr + ':00"></div>';
-    const delDia = items.filter(x => x.inicio.slice(0,10) === dia);
+    const delDia = _fidAgruparLlamadas(items.filter(x => x.inicio.slice(0,10) === dia));
     // Columnas para lo que se pisa: cada item va a la primera libre.
     const cols = [];
     delDia.forEach(x => {
@@ -952,7 +858,29 @@ function _fidAgendaLista(l, items) {
   return h;
 }
 
+// Las llamadas que caen a la misma hora (el "no atendió" las deja todas a las
+// 11 o a las 16) van en un solo recuadro: seis juntas no se podían leer.
+function _fidAgruparLlamadas(lista) {
+  _fid.agGrupos = _fid.agGrupos || {};
+  const out = [], porHora = {};
+  lista.forEach(x => {
+    if (x.tipo !== 'llamada') { out.push(x); return; }
+    const g = porHora[x.inicio];
+    if (!g) { porHora[x.inicio] = Object.assign({}, x, {grupo: [x]}); out.push(porHora[x.inicio]); return; }
+    g.grupo.push(x);
+    g.id = 'g' + x.inicio;
+    g.titulo = 'Llamar · ' + g.grupo.length + ' llamadas';
+    _fid.agGrupos[g.id] = g.grupo;
+  });
+  return out;
+}
+
 function fidAgendaItem(id) {
+  const grupo = (_fid.agGrupos || {})[id];
+  if (grupo) {
+    return _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Llamadas de las ' + esc(grupo[0].inicio.slice(11, 16)) + '</h3>'
+      + grupo.map(x => '<div class="fid-fila" style="grid-template-columns:1fr auto;padding:8px" onclick="fidCerrarModal();fidAbrir(' + x.prospecto_id + ')"><div><div class="fid-nm">' + esc(x.titulo.replace('Llamar · ', '')) + '</div><div class="fid-meta">' + esc([x.barrio, x.telefono].filter(Boolean).join(' · ')) + '</div></div><span class="fid-pill">Ver</span></div>').join(''));
+  }
   const x = (_fid.agenda || []).find(i => i.id === id);
   if (!x) return;
   if (x.tipo === 'evento') return fidEventoAbrir(x);
@@ -1490,6 +1418,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-event-chip{font-size:0!important;width:8px!important;height:8px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important;border:none!important;background:#0088cc!important}
   .cal-event-chip.origen-google{background:#10b981!important}
   .cal-event-chip.origen-calendly{background:#f59e0b!important}
+  .cal-event-chip.origen-fidelidad{background:#ec4899!important}
   .cal-chip-acts{display:none!important}
   /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
      dispara, asi que en el celular solo queda el mes. */
@@ -2075,6 +2004,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-event-chip.dragging,.calw-chip.dragging{opacity:.35;cursor:grabbing}
 .cal-event-chip.origen-google,.calw-chip.origen-google{border-left-color:#10b981}
 .cal-event-chip.origen-calendly,.calw-chip.origen-calendly{border-left-color:#f59e0b;cursor:default}
+.cal-event-chip.origen-fidelidad,.calw-chip.origen-fidelidad{border-left-color:#ec4899;cursor:default}
+.cal-mobile-ev.origen-fidelidad{border-left:3px solid #ec4899}
 .cal-chip-time{font-weight:800;color:#e2e8f0;font-variant-numeric:tabular-nums;margin-right:4px}
 .cal-chip-title{color:#94a3b8;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-chip-acts{display:none;gap:4px;margin-top:5px;padding-top:5px;border-top:1px solid #232c3d}
@@ -2522,10 +2453,6 @@ body.light .btn-icon{stroke:currentColor}
 .fid-btn.p{background:var(--azul);border-color:var(--azul);color:#fff}
 .fid-btn.p:hover{filter:brightness(1.08)}
 .fid-btn:disabled{opacity:.5;cursor:default}
-.fid-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin:4px 0 18px;overflow-x:auto}
-.fid-tab{padding:9px 16px;font-weight:600;font-size:.82rem;color:var(--texto-debil);border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif}
-.fid-tab.on{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
-.fid-tab b{font-weight:600;color:var(--texto-debil);margin-left:5px;font-size:.72rem}
 .fid-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0}
 .fid-ct{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .fid-ct small{text-transform:none;letter-spacing:0;font-weight:500;color:var(--texto-debil);text-align:right}
@@ -2537,8 +2464,6 @@ body.light .btn-icon{stroke:currentColor}
 .fid-kpi .v small{font-size:.82rem;color:var(--texto-debil);font-weight:600}
 .fid-kpi .d{font-size:.72rem;margin-top:4px;color:var(--texto-tenue)}
 .fid-up{color:var(--verde-texto)}.fid-dn{color:var(--rojo-texto)}
-.fid-barra{height:6px;background:var(--relleno);border-radius:99px;margin-top:9px;overflow:hidden}
-.fid-barra>div{height:100%;background:var(--azul);border-radius:99px}
 .fid-pill{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--borde-fuerte);color:var(--texto-tenue);white-space:nowrap}
 .fid-pill.r{color:var(--rojo-texto);border-color:var(--rojo-borde);background:var(--rojo-tinte)}
 .fid-pill.a{color:var(--ambar);border-color:var(--ambar-borde);background:var(--ambar-tinte)}
@@ -2546,75 +2471,38 @@ body.light .btn-icon{stroke:currentColor}
 .fid-pill.b{color:var(--azul-claro);border-color:var(--azul);background:var(--azul-tinte)}
 .fid-pill.v{color:var(--violeta);border-color:var(--violeta);background:transparent}
 .fid-grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
-.fid-grp{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 6px;display:flex;align-items:center;gap:8px}
-.fid-grp:first-child{margin-top:0}
-.fid-grp.r{color:var(--rojo-texto)}.fid-grp.a{color:var(--ambar)}.fid-grp.b{color:var(--azul-claro)}.fid-grp.v{color:var(--violeta)}
 .fid-fila{display:grid;grid-template-columns:52px 1fr auto auto;gap:12px;align-items:center;padding:10px;border-radius:9px;border:1px solid transparent;cursor:pointer}
 .fid-fila+.fid-fila{border-top-color:var(--borde)}
 .fid-fila:hover{background:var(--hover)}
 .fid-fila.sel{background:var(--azul-tinte);border-color:var(--azul)}
-.fid-hr{font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;font-size:.85rem}
-.fid-hr small{display:block;color:var(--texto-debil);font-weight:500;font-size:.66rem}
-.fid-hr.pt{color:var(--azul-claro)}
 .fid-nm{font-weight:600;color:var(--texto-fuerte);font-size:.86rem}
 .fid-meta{color:var(--texto-debil);font-size:.72rem;margin-top:2px}
 .fid-star{color:#f59e0b}
-.fid-tel{width:32px;height:32px;border-radius:8px;background:var(--verde);display:grid;place-items:center;color:#fff;text-decoration:none;flex-shrink:0}
-.fid-tel svg{width:16px;height:16px}
 .fid-vacio{color:var(--texto-debil);font-size:.8rem;padding:14px 4px;text-align:center}
-.fid-mas{text-align:center;color:var(--texto-debil);font-size:.72rem;padding:6px}
-.fid-ficha h2{font-size:1.15rem;color:var(--texto-fuerte);font-weight:800;margin:0}
 .fid-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin:14px 0;font-size:.8rem}
 .fid-facts label{display:block;color:var(--texto-debil);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;font-weight:600}
 .fid-facts a{color:var(--azul-claro)}
 .fid-in{width:100%;background:var(--superficie-honda);border:1px solid var(--borde-fuerte);border-radius:7px;color:var(--texto);font:12.5px 'Inter',sans-serif;padding:6px 8px;box-sizing:border-box}
 .fid-in:focus{outline:none;border-color:var(--azul)}
 textarea.fid-in{resize:vertical;min-height:54px}
-.fid-guion{background:var(--superficie-honda);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:10px 12px;font-size:.75rem;color:var(--texto-tenue);line-height:1.5}
-.fid-guion b{color:var(--azul-claro)}
-.fid-guion a{color:var(--azul-claro)}
 .fid-res{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.fid-rb{border:1px solid var(--borde-fuerte);border-radius:10px;padding:10px 12px;background:var(--superficie-honda);text-align:left;cursor:pointer;font-family:'Inter',sans-serif;color:var(--texto)}
-.fid-rb:hover{border-color:var(--azul)}
-.fid-rb b{display:block;color:var(--texto-fuerte);font-size:.8rem;margin-bottom:3px}
-.fid-rb span{color:var(--texto-debil);font-size:.7rem}
-.fid-rb.on{border-color:var(--azul);background:var(--azul-tinte);box-shadow:0 0 0 1px var(--azul) inset}
-.fid-extra{margin-top:10px;display:grid;gap:8px}
 .fid-chips{display:flex;gap:6px;flex-wrap:wrap}
 .fid-chip{padding:4px 10px;border-radius:99px;border:1px solid var(--borde-fuerte);background:transparent;color:var(--texto-tenue);font:600 .7rem 'Inter',sans-serif;cursor:pointer}
 .fid-chip:hover,.fid-chip.on{border-color:var(--azul);color:var(--azul-claro)}
-.fid-next{margin-top:12px;padding:12px;border-radius:10px;background:var(--verde-tinte);border:1px solid var(--verde);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:.82rem;color:var(--texto)}
-.fid-next b{color:var(--verde-texto)}
-.fid-next.gris{background:var(--superficie-honda);border-color:var(--borde-fuerte)}
 .fid-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
-.fid-tl{margin-top:16px;border-left:2px solid var(--borde-fuerte);padding-left:14px}
-.fid-tl div{position:relative;font-size:.74rem;color:var(--texto-tenue);margin-bottom:9px;line-height:1.4}
-.fid-tl div::before{content:'';position:absolute;left:-19px;top:4px;width:8px;height:8px;border-radius:50%;background:var(--borde-fuerte)}
-.fid-tl div b{color:var(--texto);font-weight:600}
 .fid-filtros{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
 .fid-sel{padding:6px 10px;border:1px solid var(--borde-fuerte);border-radius:8px;font:500 .78rem 'Inter',sans-serif;color:var(--texto);background:var(--superficie-honda)}
 .fid-seg{display:flex;border:1px solid var(--borde-fuerte);border-radius:8px;overflow:hidden}
 .fid-seg button{padding:6px 13px;font:600 .76rem 'Inter',sans-serif;color:var(--texto-debil);background:none;border:0;cursor:pointer}
 .fid-seg button.on{background:var(--azul);color:#fff}
-.fid-kan{display:grid;grid-template-columns:repeat(7,minmax(170px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
-.fid-col{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:12px;padding:10px;min-height:420px}
-.fid-col.drop{border-color:var(--azul);background:var(--azul-tinte)}
-.fid-colh{display:flex;justify-content:space-between;align-items:baseline}
-.fid-colh b{color:var(--texto-fuerte);font-size:.8rem}.fid-colh span{color:var(--texto-debil);font-weight:700;font-size:.8rem}
-.fid-colm{font-size:.68rem;color:var(--texto-debil);margin:4px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--borde)}
-.fid-kc{background:var(--superficie);border:1px solid var(--borde);border-radius:9px;padding:9px;margin-bottom:8px;cursor:grab}
-.fid-kc:hover{border-color:var(--borde-fuerte)}
 .fid-kc .fid-nm{font-size:.78rem}.fid-kc .fid-meta{font-size:.66rem}
-.fid-kc .ft{margin-top:7px}
 .fid-tabla{width:100%;border-collapse:collapse;font-size:.78rem}
 .fid-tabla th{text-align:left;color:var(--texto-debil);font-weight:600;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;padding:0 8px 8px;white-space:nowrap}
 .fid-tabla td{padding:9px 8px;border-top:1px solid var(--borde);font-variant-numeric:tabular-nums;color:var(--texto)}
 .fid-tabla tr.cl{cursor:pointer}.fid-tabla tr.cl:hover td{background:var(--hover)}
 .fid-tabla .r{text-align:right}
-.fid-pag{display:flex;gap:10px;justify-content:center;align-items:center;padding:14px 0 0;font-size:.8rem;color:var(--texto-debil)}
 .fid-drawer-bd{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;display:none}
-.fid-drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:var(--superficie);border-left:1px solid var(--borde);z-index:1201;overflow-y:auto;padding:18px;box-sizing:border-box;display:none}
-.fid-drawer.open,.fid-drawer-bd.open{display:block}
+.fid-drawer-bd.open{display:block}
 .fid-x{float:right;background:none;border:0;color:var(--texto-debil);font-size:1.3rem;cursor:pointer;line-height:1}
 .fid-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(520px,94vw);max-height:88vh;overflow-y:auto;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;z-index:1201;padding:20px;box-sizing:border-box;display:none}
 .fid-modal.open{display:block}
@@ -2622,6 +2510,31 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .fid-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fid-form label{font-size:.68rem;color:var(--texto-debil);font-weight:600;display:block;margin-bottom:3px}
 .fid-form .full{grid-column:1/-1}
+.fl-kpis{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:.78rem;color:var(--texto-debil);flex-wrap:wrap}
+.fl-kpis b{color:var(--texto-fuerte)}
+.fl-buscar{margin-bottom:12px;font-size:.86rem;padding:9px 12px}
+.fl-card{padding:0 16px}
+.fl-fila{padding:12px 0 12px 12px;margin-left:-16px;border-left:4px solid transparent;border-top:1px solid var(--borde)}
+.fl-fila:first-child{border-top:0}
+.fl-fila.g0{border-left-color:var(--rojo)}
+.fl-fila.g1{border-left-color:var(--verde)}
+.fl-fila.res{background:var(--azul-tinte)}
+.fl-top{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.fl-target{margin-left:auto;font-size:.72rem;font-weight:700;color:var(--texto-tenue);white-space:nowrap}
+.fl-meta a{color:var(--azul-claro);text-decoration:none}
+.fl-nota{font-size:.74rem;color:var(--texto-tenue);margin-top:4px;font-style:italic}
+.fl-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.fl-b{padding:5px 11px;border-radius:7px;border:1px solid var(--borde-fuerte);background:transparent;color:var(--texto);font:600 .74rem 'Inter',sans-serif;cursor:pointer}
+.fl-b:hover{background:var(--hover)}
+.fl-b.on{border-color:var(--azul);color:var(--azul-claro);background:var(--azul-tinte)}
+.fl-box{margin:8px 12px 0 0;padding:10px;border-radius:9px;background:var(--superficie-honda);border:1px solid var(--borde);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fl-box .fid-in{width:auto;flex:1;min-width:180px}
+.fl-box .fl-fecha,.fl-box .fl-cel{flex:0 0 auto;min-width:0;width:auto}
+.fl-box .fid-err{flex-basis:100%;margin:0}
+.fl-box .fid-err:empty{display:none}
+.fl-ok{font-size:.76rem;color:var(--verde-texto);font-weight:600;flex-basis:100%}
+.fl-mas{display:flex;margin:12px auto}
+@media (max-width:700px){.fl-target{margin-left:0;flex-basis:100%}.fl-kpis{margin-left:0}}
 /* Inteligencia comercial */
 .fid-g3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:16px}
 .fid-g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
@@ -3902,52 +3815,26 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Outbound · Scalerics Fidelidad</h1>
-        <div class="fid-sub" id="fid-fecha">Restaurantes de Municipio CH y Carrasco</div>
+        <div class="fid-sub" id="fid-fecha"></div>
       </div>
       <div class="fid-acciones">
+        <button class="fid-btn" id="fid-t-agenda" onclick="fidVista(_fid.vista === 'agenda' ? 'lista' : 'agenda')">Agenda</button>
         <a class="fid-btn" href="/api/fidelidad/export.csv">Exportar CSV</a>
         <label class="fid-btn" for="fid-archivo">Importar Excel</label>
         <input type="file" id="fid-archivo" accept=".xlsx" style="display:none" onchange="fidImportar(this)">
-        <button class="fid-btn p" onclick="fidNuevoAbrir()">+ Prospecto</button>
+        <button class="fid-btn p" onclick="fidNuevoAbrir()">+ Comercio</button>
       </div>
-    </div>
-    <div class="fid-tabs" role="tablist">
-      <button class="fid-tab on" id="fid-t-hoy" onclick="fidVista('hoy')">Mi día<b id="fid-n-hoy"></b></button>
-      <button class="fid-tab" id="fid-t-pipe" onclick="fidVista('pipe')">Pipeline</button>
-      <button class="fid-tab" id="fid-t-todos" onclick="fidVista('todos')">Todos los prospectos<b id="fid-n-todos"></b></button>
-      <button class="fid-tab" id="fid-t-agenda" onclick="fidVista('agenda')">Agenda</button>
-      <button class="fid-tab" id="fid-t-reu" onclick="fidVista('reu')">Reuniones<b id="fid-n-reu"></b></button>
     </div>
     <div id="fid-aviso"></div>
 
-    <div id="fid-v-hoy">
-      <div class="fid-kpis" id="fid-kpis-hoy"></div>
-      <div class="fid-grid2">
-        <div class="fid-card">
-          <div class="fid-ct">Tu cola de llamadas <small>Se ordena sola: vencidas, reuniones sin resultado, hora agendada y los mejores sin tocar</small></div>
-          <div id="fid-cola"><div class="fid-vacio">Cargando…</div></div>
-        </div>
-        <div class="fid-card fid-ficha" id="fid-ficha-inline"><div class="fid-vacio">Elegí un restaurante de la cola.</div></div>
-      </div>
-    </div>
-
-    <div id="fid-v-pipe" style="display:none">
+    <div id="fid-v-lista">
       <div class="fid-filtros">
-        <select class="fid-sel" id="fid-p-zona" onchange="fidCargarPipe()"><option value="">Zona: todas</option><option>Municipio CH</option><option>Carrasco</option></select>
-        <select class="fid-sel fid-cat" id="fid-p-cat" onchange="fidCargarPipe()"></select>
-        <span class="fid-sub" style="margin:0 0 0 auto">Arrastrá la tarjeta para cambiarla de etapa</span>
+        <div class="fid-seg" id="fid-seg-ciudad"><button data-v="Montevideo" onclick="fidFiltro('ciudad', this.dataset.v)">Montevideo</button><button data-v="Buenos Aires" onclick="fidFiltro('ciudad', this.dataset.v)">Buenos Aires</button></div>
+        <div class="fid-seg" id="fid-seg-rubro"><button data-v="restaurante" onclick="fidFiltro('rubro', this.dataset.v)">Restaurantes</button><button data-v="peluqueria" onclick="fidFiltro('rubro', this.dataset.v)">Peluquerías</button></div>
+        <span class="fl-kpis" id="fid-kpis-lista"></span>
       </div>
-      <div class="fid-kan" id="fid-kan"></div>
-    </div>
-
-    <div id="fid-v-todos" style="display:none">
-      <div class="fid-filtros">
-        <input class="fid-sel" id="fid-q" placeholder="Buscar restaurante, barrio, dueño…" oninput="fidBuscar()" style="min-width:220px">
-        <select class="fid-sel" id="fid-f-estado" onchange="fidCargarTodos(1)"><option value="">Todas las etapas</option></select>
-        <select class="fid-sel" id="fid-f-zona" onchange="fidCargarTodos(1)"><option value="">Zona: todas</option><option>Municipio CH</option><option>Carrasco</option></select>
-        <select class="fid-sel fid-cat" id="fid-f-cat" onchange="fidCargarTodos(1)"></select>
-      </div>
-      <div class="fid-card" style="overflow-x:auto"><div id="fid-tabla"></div></div>
+      <input class="fid-in fl-buscar" id="fid-q" type="search" placeholder="Buscar comercio, barrio, dueño, teléfono o nota…" oninput="fidBuscar(this.value)">
+      <div class="fid-card fl-card"><div id="fid-lista"><div class="fid-vacio">Cargando…</div></div></div>
     </div>
 
     <div id="fid-v-agenda" style="display:none">
@@ -3963,16 +3850,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fid-card fid-cal-card"><div id="fid-cal"></div></div>
     </div>
 
-    <div id="fid-v-reu" style="display:none">
-      <div class="fid-g2">
-        <div class="fid-card"><div class="fid-ct">Próximas reuniones</div><div id="fid-reu-prox"></div></div>
-        <div class="fid-card"><div class="fid-ct">Ya pasaron, falta cargar cómo salieron</div><div id="fid-reu-pend"></div></div>
-      </div>
-    </div>
   </div>
 
-  <div class="fid-drawer-bd" id="fid-drawer-bd" onclick="fidCerrarDrawer()"></div>
-  <div class="fid-drawer fid-ficha" id="fid-drawer" role="dialog" aria-label="Ficha del restaurante"></div>
   <div class="fid-drawer-bd" id="fid-modal-bd" onclick="fidCerrarModal()"></div>
   <div class="fid-modal" id="fid-modal" role="dialog"></div>
 
@@ -4222,6 +4101,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span><i style="background:#10b981"></i> De Google</span>
       <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
       <span><i class="cal-leyenda-asunto"></i> Otro asunto</span>
+      <span><i style="background:#ec4899"></i> De Fidelidad &mdash; se edita en Outbound</span>
       <span><b class="cal-leyenda-rep">↻</b> Se repite</span>
       <span class="cal-hint-escritorio" style="margin-left:auto">Arrastrá una reunión para moverla</span>
       <span class="cal-hint-movil">Deslizá el calendario para cambiar de mes</span>
@@ -8701,6 +8581,7 @@ function _calChipHtml(ev, clase) {
   const origen = ev.origen || 'crm';
   const deCalendly = origen === 'calendly';
   const asunto = ev.tipo === 'asunto';
+  if (origen === 'fidelidad') return _calChipFidelidad(ev, clase);
   const titulo = (ev.time ? ev.time + ' ' : '') + (ev.title || '');
   const sinGoogle = !!(ev.google && ev.google.estado === 'error');
   const aviso = (deCalendly ? ' (de Calendly: se reprograma allá)' : '')
@@ -8736,6 +8617,23 @@ function _calChipHtml(ev, clase) {
        + '</div></div>';
 }
 
+// Lo de la agenda de Fidelidad (25/9): se ve acá, pero se agenda, mueve y
+// borra en el Outbound, que es donde vive. Sin arrastre ni Editar/Borrar.
+function _calChipFidelidad(ev, clase) {
+  return '<div class="' + clase + ' origen-fidelidad" draggable="false"'
+       + ' title="' + esc((ev.time ? ev.time + ' ' : '') + ev.title + (ev.description ? ' · ' + ev.description : '') + ' · se edita en Outbound') + '">'
+       + (ev.time ? '<span class="cal-chip-time">' + esc(ev.time) + '</span>' : '')
+       + '<span class="cal-chip-tag">Fidelidad</span>'
+       + '<span class="cal-chip-title">' + esc(ev.title.replace(/^Fidelidad · /, '')) + '</span>'
+       + '<div class="cal-chip-acts"><button class="cal-chip-act cal-act-edit" draggable="false" onclick="event.stopPropagation();_calIrAFidelidad(' + (ev.prospecto_id || 'null') + ')">Ver en Outbound</button></div></div>';
+}
+
+function _calIrAFidelidad(pid) {
+  showPanel('cola');
+  if (pid) fidAbrir(pid);
+  else fidVista('agenda');
+}
+
 // ── arrastrar ────────────────────────────────────────────────────────────────
 // En el mes se suelta sobre un dia y la hora se conserva; en la semana se
 // suelta sobre una franja y cambian las dos cosas. Las de Calendly no se
@@ -8744,7 +8642,7 @@ function _calChipHtml(ev, clase) {
 let _calArrastrando = null;
 
 function _calDragStart(e, id, origen) {
-  if (origen === 'calendly') { e.preventDefault(); return; }
+  if (origen === 'calendly' || origen === 'fidelidad') { e.preventDefault(); return; }
   _calArrastrando = String(id);
   e.currentTarget.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
@@ -9074,6 +8972,13 @@ function _calSeleccionarDiaMobile() {
 // modal y borrar pide la misma confirmacion— para que no diverjan. Las de
 // Calendly no se editan desde aca, igual que en escritorio.
 function _calItemMobile(ev) {
+  if (ev.origen === 'fidelidad') {
+    return '<div class="cal-mobile-ev origen-fidelidad"><div class="cal-mobile-ev-tag">Fidelidad</div>'
+         + '<div class="cal-mobile-ev-titulo">' + esc(ev.title.replace(/^Fidelidad · /, '')) + '</div>'
+         + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+         + (ev.description ? '<div class="cal-mobile-ev-rep">' + esc(ev.description) + '</div>' : '')
+         + '<div class="cal-mobile-acts"><button class="cal-mobile-act cal-mobile-act-editar" onclick="_calIrAFidelidad(' + (ev.prospecto_id || 'null') + ')">Ver en Outbound</button></div></div>';
+  }
   const deCalendly = (ev.origen || 'crm') === 'calendly';
   const asunto = ev.tipo === 'asunto';
   const editar = deCalendly

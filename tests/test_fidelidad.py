@@ -446,7 +446,7 @@ def test_sdr_sale_del_menu_y_outbound_es_fidelidad():
     assert 'id="nav-sdr"' not in html
     assert "Outbound · Scalerics Fidelidad" in html
     assert "Inteligencia comercial · Fidelidad" in html
-    assert "function fidCargarHoy" in html
+    assert "function fidCargarLista" in html
     assert "/*FID_JS*/" not in html
 
 
@@ -466,8 +466,8 @@ def test_el_scraper_solo_guarda_comida_en_el_territorio(db):
     ficha = {"name": "Parrilla Nueva", "category": "Parrilla", "address": "Av. Brasil 2800, Montevideo",
              "phone": "+598 2700 0000", "rating": 4.4, "review_count": 320,
              "maps_url": "https://www.google.com/maps/place/nueva"}
-    assert scraper._guardar_fidelidad(ficha, "Pocitos", db) is True
-    assert scraper._guardar_fidelidad(ficha, "Pocitos", db) is False     # ya estaba
+    assert scraper._guardar_fidelidad(ficha, {"barrio": "Pocitos"}, db) is True
+    assert scraper._guardar_fidelidad(ficha, {"barrio": "Pocitos"}, db) is False     # ya estaba
     fila = _uno(db, "SELECT zona, barrio, fuente, resenas FROM fid_prospectos WHERE nombre='Parrilla Nueva'")
     assert tuple(fila) == ("Municipio CH", "Pocitos", "scraper", 320)
     # No toca el padron de las campañas.
@@ -484,13 +484,46 @@ def test_el_comando_recorre_los_barrios_de_la_zona(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")   # main.py lo exige al importarse
     import main
     llamadas = []
-    monkeypatch.setattr("scraper.run", lambda q, n, db, ya_vistos=None, fidelidad_barrio=None:
-                        llamadas.append((q, n, fidelidad_barrio)) or 1)
-    args = main.create_parser().parse_args(["scrape-fidelidad", "--zona", "Carrasco", "--max-por-barrio", "5"])
-    assert main.cmd_scrape_fidelidad(args) == 3
-    assert llamadas == [("restaurantes en Carrasco, Montevideo", 5, "Carrasco"),
-                        ("restaurantes en Carrasco Norte, Montevideo", 5, "Carrasco Norte"),
-                        ("restaurantes en Barra de Carrasco, Canelones", 5, "Barra de Carrasco")]
+    monkeypatch.setattr("scraper.run", lambda q, n, db, ya_vistos=None, fidelidad=None:
+                        llamadas.append((q, n, fidelidad)) or 1)
+    args = main.create_parser().parse_args(["scrape-fidelidad", "--zona", "Carrasco", "--max-por-barrio", "5",
+                                            "--rubro", "peluqueria"])
+    assert main.cmd_scrape_fidelidad(args) == 9
+    donde = {"barrio": "Carrasco", "ciudad": "Montevideo", "rubro": "peluqueria"}
+    assert llamadas[:3] == [("barbería en Carrasco, Montevideo", 5, donde),
+                            ("peluquería en Carrasco, Montevideo", 5, donde),
+                            ("salón de uñas en Carrasco, Montevideo", 5, donde)]
+    assert llamadas[-1][0] == "salón de uñas en Barra de Carrasco, Canelones"
+
+
+def test_nunca_mas_restaurantes_en(monkeypatch):
+    # "restaurantes en…" traía alta cocina y lugares turísticos.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    import main
+    llamadas = []
+    monkeypatch.setattr("scraper.run", lambda q, n, db, ya_vistos=None, fidelidad=None:
+                        llamadas.append((q, fidelidad)) or 0)
+    main.cmd_scrape_fidelidad(main.create_parser().parse_args(["scrape-fidelidad"]))
+    assert llamadas[0] == ("pizzería en Pocitos, Montevideo",
+                           {"barrio": "Pocitos", "ciudad": "Montevideo", "rubro": "restaurante"})
+    assert not any(q.startswith("restaurantes en") for q, _ in llamadas)
+    llamadas.clear()
+    main.cmd_scrape_fidelidad(main.create_parser().parse_args(["scrape-fidelidad", "--ciudad", "Buenos Aires"]))
+    assert llamadas[0] == ("pizzería en Caballito, Buenos Aires",
+                           {"barrio": "Caballito", "ciudad": "Buenos Aires", "rubro": "restaurante"})
+    assert len(llamadas) == len(fid.BARRIOS_BSAS) * len(fid.BUSQUEDAS["restaurante"]["Buenos Aires"])
+
+
+def test_el_scraper_filtra_rubro_y_cadenas(db):
+    import scraper
+    assert fid.es_del_rubro("Pizzería", "restaurante") and not fid.es_del_rubro("Barbería", "restaurante")
+    assert fid.es_del_rubro("Barbería", "peluqueria") and not fid.es_del_rubro("Pizzería", "peluqueria")
+    assert fid.es_cadena("McDonald's Pocitos") and not fid.es_cadena("Pizzería La Esquina")
+    ficha = {"name": "Barber Shop Caballito", "category": "Barbería", "phone": "+54 9 11 3333 1111",
+             "maps_url": "https://www.google.com/maps/place/barber"}
+    assert scraper._guardar_fidelidad(ficha, {"barrio": "Caballito", "ciudad": "Buenos Aires", "rubro": "peluqueria"}, db)
+    fila = _uno(db, "SELECT ciudad, rubro, zona FROM fid_prospectos WHERE nombre='Barber Shop Caballito'")
+    assert tuple(fila) == ("Buenos Aires", "peluqueria", "Caballito")
 
 
 def test_ningun_reparto_de_paneles_le_suma_nada_al_vendedor(db):

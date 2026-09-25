@@ -533,6 +533,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **25/9 — Outbound de Fidelidad: lista única, pedido de Juan.** Rama `feat/outbound-lista-unica` (worktree `../crm-outbound-v2`).
+  - Las cinco pestañas (Mi día, Pipeline, Todos, Reuniones) pasan a ser una sola lista; la Agenda queda detrás de un botón. Vencidas en rojo arriba, las de hoy en verde, después el resto por `target()` (qué tan parecido es a una pizzería/hamburguesería de barrio; en peluquerías, barbería).
+  - Filtros Montevideo / Buenos Aires y Restaurantes / Peluquerías: columnas nuevas `ciudad`, `rubro` y `contacto_tel` en `fid_prospectos`, y `antes` en `fid_llamadas` (para deshacer). La migración completa las viejas: Montevideo, y el rubro sale del tipo.
+  - Cinco botones por fila (`ACCIONES`): la llamada se registra al tocar; No atendió / Otro día / Reunión guardan una fecha propuesta que el vendedor corrige (`editar_llamada`). No interesa vuelve en un año. El botón equivocado se deshace (`deshacer_llamada`).
+  - `scrape-fidelidad` ahora toma `--rubro` y `--ciudad` y busca por tipo de local ("pizzería en Pocitos"), nunca "restaurantes en…". Saltea cadenas.
+  - El calendario general (`GET /api/calendar/events`) suma las reuniones y eventos de la agenda de Fidelidad (`fidelidad.eventos_para_calendario`), leídos en vivo: no se copia nada, así que no hay nada que se desincronice. Allá son de solo lectura (chip rosa, "Ver en Outbound"). Las llamadas no van. El vendedor sigue sin ver el calendario de la agencia.
+  - En la agenda de Fidelidad, las llamadas de la misma hora van en un solo recuadro ("☎ 6 llamadas").
+
 - **15/9 — rama `fix/discovery-cupo` (worktree `../crm-fix-discovery`). PR abierto, sin merge ni deploy.** Discovery no mandaba desde el 13/9 22:21 UY y Meta tenía huecos casi los mismos días.
   - **Causa:** la marca deja correr a las 20 h, el cupo cuenta 24 h, y el hilo dormía 24 h después de cada intento. Un deploy entre la hora 20 y la 24 marcaba la corrida de discovery con el cupo lleno (0 envíos), y el día se perdía. Meta no marcaba, pero igual dormía hasta mañana.
   - **Arreglo:** discovery mira el cupo antes de marcar, y los dos hilos revisan cada hora (`corridas.REVISAR_CADA_S`, 3610 s, grilla fija desde la primera revisión). La marca de 20 h, el tope rodante y los topes no cambiaron.
