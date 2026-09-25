@@ -116,6 +116,7 @@ def prospecto_desde_maps(data: dict, barrio: str, ciudad: str = "Montevideo", ru
             "zona": normalizar_zona(None, barrio) if ciudad == "Montevideo" else barrio,
             "tipo": data.get("category"), "direccion": data.get("address"), "telefono": data.get("phone"),
             "rating": data.get("rating"), "resenas": data.get("review_count"), "maps_url": data.get("maps_url"),
+            "web": data.get("maps_website_url"), "instagram": data.get("instagram_url"),
             "notas": f"Traído de Google Maps buscando en {barrio}: verificá el barrio."}
 DIAS_PILOTO = 30
 DIAS_REACTIVAR = 90
@@ -363,7 +364,8 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_eventos_inicio ON fid_eventos(inicio)")
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
-                      ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT")):
+                      ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
+                      ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
@@ -424,7 +426,7 @@ def set_config(db: str, cambios: dict) -> dict:
 
 CAMPOS_EDITABLES = ("nombre", "zona", "barrio", "tipo", "direccion", "telefono", "rating",
                     "resenas", "maps_url", "notas", "facilidad", "contacto", "proximo_paso",
-                    "mensual_usd", "ciudad", "rubro", "contacto_tel")
+                    "mensual_usd", "ciudad", "rubro", "contacto_tel", "email", "web", "instagram")
 
 
 def _limpiar_campos(datos: dict) -> dict:
@@ -985,6 +987,8 @@ def target(p: dict, repetidos: set | None = None) -> int:
         if any(_tiene(barrio, b) for b in lista):
             s += v
             break
+    if p.get("instagram"):
+        s += 6  # el que tiene Instagram le habla a público joven
     s += _POR_ETAPA.get(p.get("estado"), 0)
     s += {"Alta": 8, "Media": 3}.get(p.get("facilidad") or "", 0)
     if p.get("contacto"):
@@ -1168,7 +1172,7 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
     c = _conn(db)
     try:
         filas = [dict(f) for f in c.execute(
-            f"SELECT {_COLS_LISTA}, notas, contacto_tel, ciudad, rubro, direccion FROM fid_prospectos "
+            f"SELECT {_COLS_LISTA}, notas, contacto_tel, ciudad, rubro, direccion, email, web, instagram FROM fid_prospectos "
             f"WHERE {' AND '.join(cond)}", params)]
         rep = repetidos_en([{"nombre": f[0]} for f in c.execute("SELECT nombre FROM fid_prospectos")])
         ult = _ultimo_resultado(c)
@@ -1724,6 +1728,8 @@ _ENCABEZADOS = {
     "direccion": ("direccion",), "telefono": ("telefono", "tel", "celular"),
     "rating": ("rating",), "resenas": ("resenas", "reviews"), "maps_url": ("google maps", "maps", "link"),
     "notas": ("notas",), "facilidad": ("facilidad",), "contacto": ("contacto",),
+    "email": ("email", "mail", "correo"), "web": ("web", "sitio"), "instagram": ("instagram",),
+    "ciudad": ("ciudad",),
     "estado": ("estado",), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
 }
 _ESTADO_EXCEL = {"sin contactar": "sin_contactar", "contactado": "contactado",
