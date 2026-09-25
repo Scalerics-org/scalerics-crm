@@ -333,7 +333,7 @@ const FID_CON_FECHA = {no_atendio:'¿Cuándo lo volvés a intentar?', otro_dia:'
 // Las llamadas de antes del 25/9 tienen otros resultados.
 const FID_RES_LABEL = Object.assign({llamar_despues:'Pidió que llame', info_whatsapp:'Info por WhatsApp', no_es_dueno:'No era el dueño',
   piloto:'Arrancó piloto', lo_piensa:'Lo piensa', reprogramar:'Reprogramó', seguimiento:'Seguimiento', no_sigue:'No sigue'}, Object.fromEntries(FID_ACC));
-const _fl = {ciudad:'Montevideo', rubro:'restaurante', q:'', limite:150, items:[], total:0, kpis:null, abierto:null, duA:null, resaltar:null, buscarT:null};
+const _fl = {ciudad:'Montevideo', rubro:'restaurante', q:'', limite:150, items:[], total:0, kpis:null, abierto:null, duA:null, mailA:null, mail:null, resaltar:null, buscarT:null};
 try {
   const g = JSON.parse(localStorage.getItem('fid_filtros') || '{}');
   if (g.ciudad) _fl.ciudad = g.ciudad;
@@ -346,6 +346,12 @@ function fidLoad() {
   const f = document.getElementById('fid-fecha');
   if (f) f.textContent = new Date().toLocaleDateString('es-UY', {weekday:'long', day:'numeric', month:'long'});
   _fidSegs();
+  // Vuelta de Google después de "Conectar mi Gmail".
+  const g = new URLSearchParams(location.search).get('gmail');
+  if (g) {
+    fidAviso(g === 'ok' ? 'Gmail conectado: los mails salen desde tu casilla.' : g === 'cancelado' ? 'No se conectó Gmail.' : 'No se pudo conectar Gmail. Probá de nuevo.', g === 'ok' ? '' : 'error');
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
   fidVista(_fid.vista);
 }
 
@@ -441,22 +447,27 @@ function _fidFilaLista(p) {
   else meta.push('<span class="fid-dn">Sin teléfono</span>');
   if (p.contacto || p.contacto_tel) meta.push('Dueño: '+esc(p.contacto || '')+(celDueno ? ' <a href="'+celDueno+'">'+esc(p.contacto_tel)+'</a>' : ''));
   if (wa) meta.push('<a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>');
+  if (p.email) meta.push(esc(p.email));
+  if (p.instagram) meta.push('<a href="'+esc(p.instagram)+'" target="_blank" rel="noopener">Instagram</a>');
   let h = '<div class="fl-fila g'+p.grupo+(_fl.resaltar === p.id ? ' res' : '')+'" id="fl-'+p.id+'">'
     + '<div class="fl-top"><span class="fid-nm">'+esc(p.nombre)+'</span>'+_fidEstadoPill(p)
     + (lh ? '<span class="fid-pill b">✓ Llamado '+esc(lh.hecha_en.slice(11, 16))+' · '+esc(FID_RES_LABEL[lh.resultado] || lh.resultado)+'</span>' : '')
     + (p.n_no_atendio > 1 ? '<span class="fid-pill">No atendió ×'+p.n_no_atendio+'</span>' : '')
+    + (p.ultimo_mail ? '<span class="fid-pill b">✉ Mail enviado '+esc(p.ultimo_mail.slice(0, 10) === _fidTxt(new Date()).slice(0, 10) ? p.ultimo_mail.slice(11, 16) : fidFecha(p.ultimo_mail, false))+'</span>' : '')
     + '<span class="fl-target" title="Qué tan parecido es al cliente ideal de Fidelidad">'+p.target+'% target</span></div>'
     + '<div class="fid-meta fl-meta">'+meta.join(' · ')+'</div>'
     + (nota ? '<div class="fl-nota">«'+esc(nota)+'»</div>' : '');
   if (p.estado !== 'cerrado') {
     h += '<div class="fl-acc">' + FID_ACC.map(a => '<button class="fl-b'+(ab && ab.accion === a[0] ? ' on' : '')+'" onclick="fidAccion('+p.id+',\''+a[0]+'\')">'+a[1]+'</button>').join('')
-      + '<button class="fl-b" onclick="fidDuenoAbrir('+p.id+')">'+(p.contacto || p.contacto_tel ? 'Editar dueño' : '+ Dueño')+'</button></div>';
+      + '<button class="fl-b" onclick="fidDuenoAbrir('+p.id+')">'+(p.contacto || p.contacto_tel ? 'Editar dueño' : '+ Dueño')+'</button>'
+      + '<button class="fl-b'+(_fl.mailA === p.id ? ' on' : '')+'" onclick="fidMailAbrir('+p.id+')">✉ Mail</button></div>';
   }
   if (_fl.duA === p.id) {
     h += '<div class="fl-box"><input class="fid-in" id="fl-du-nom" placeholder="Nombre del dueño o encargado" value="'+esc(p.contacto || '')+'">'
       + '<input class="fid-in fl-cel" id="fl-du-tel" placeholder="Celular" value="'+esc(p.contacto_tel || '')+'">'
       + '<button class="fid-btn p" onclick="fidDuenoGuardar('+p.id+')">Guardar</button><button class="fid-btn" onclick="_fl.duA=null;_fidPintarLista()">Cancelar</button></div>';
   }
+  if (_fl.mailA === p.id) h += _fidMailCaja();
   if (ab && FID_CON_FECHA[ab.accion]) {
     h += '<div class="fl-box"><span class="fl-ok">✓ Llamada registrada. '+FID_CON_FECHA[ab.accion]+'</span>'
       + '<div class="fid-chips">'+_fidOpcionesFecha(ab.accion).map(o => '<button class="fid-chip'+(o[1] === ab.fecha ? ' on' : '')+'" onclick="fidElegirFecha(\''+o[1]+'\')">'+o[0]+'</button>').join('')+'</div>'
@@ -571,6 +582,56 @@ async function fidDuenoGuardar(id) {
   } catch(e) { fidAviso(esc(e.message), 'error'); return; }
   _fl.duA = null;
   _fidPintarLista();
+}
+
+// ── Mail con borrador ────────────────────────────────────────────────────────
+// Sale de la casilla de quien lo manda (services/gmail_usuario.py).
+function _fidMailCaja() {
+  const m = _fl.mail;
+  if (!m) return '<div class="fl-box"><span class="fid-meta">Armando el borrador…</span></div>';
+  const g = m.gmail || {};
+  if (!g.configurado) return '<div class="fl-box"><span class="fid-meta">El envío por Gmail todavía no está activado en el CRM.</span></div>';
+  if (!g.conectado) {
+    return '<div class="fl-box"><span class="fid-meta">'+(m.error ? esc(m.error)+'. ' : '')+'Para mandar desde tu casilla, conectá tu Gmail (una sola vez).</span>'
+      + '<a class="fid-btn p" href="/oauth/gmail/conectar">Conectar mi Gmail</a><button class="fid-btn" onclick="_fl.mailA=null;_fidPintarLista()">Cancelar</button></div>';
+  }
+  return '<div class="fl-box fl-mail">'
+    + '<label class="fid-meta" for="fl-m-para">Para</label><input class="fid-in" id="fl-m-para" type="email" placeholder="mail del comercio" value="'+esc(m.para || '')+'" oninput="_fl.mail.para=this.value">'
+    + '<label class="fid-meta" for="fl-m-asunto">Asunto</label><input class="fid-in" id="fl-m-asunto" value="'+esc(m.asunto || '')+'" oninput="_fl.mail.asunto=this.value">'
+    + '<label class="fid-meta" for="fl-m-cuerpo">Mensaje (lo podés cambiar antes de mandar)</label><textarea class="fid-in" id="fl-m-cuerpo" oninput="_fl.mail.cuerpo=this.value">'+esc(m.cuerpo || '')+'</textarea>'
+    + '<div class="fl-mail-pie"><button class="fid-btn p" id="fl-m-mandar" onclick="fidMailMandar()">Mandar mail</button><button class="fid-btn" onclick="_fl.mailA=null;_fidPintarLista()">Cancelar</button>'
+    + '<span class="fid-meta">Sale desde '+esc(g.email)+'</span></div><div class="fid-err" id="fl-m-err">'+esc(m.error || '')+'</div></div>';
+}
+
+async function fidMailAbrir(id) {
+  if (_fl.mailA === id) { _fl.mailA = null; _fidPintarLista(); return; }
+  _fl.mailA = id; _fl.mail = null;
+  _fidPintarLista();
+  try { _fl.mail = await _fidJson('/api/fidelidad/prospectos/'+id+'/borrador'); }
+  catch(e) { _fl.mailA = null; fidAviso(esc(e.message), 'error'); }
+  _fidPintarLista();
+}
+
+async function fidMailMandar() {
+  const m = _fl.mail, id = _fl.mailA;
+  if (!m || !id) return;
+  const btn = document.getElementById('fl-m-mandar');
+  btn.disabled = true; btn.textContent = 'Mandando…';
+  let d = null, r;
+  try {
+    r = await fetch('/api/fidelidad/prospectos/'+id+'/mail', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({para: m.para, asunto: m.asunto, cuerpo: m.cuerpo})});
+    try { d = await r.json(); } catch(e) {}
+  } catch(e) { d = {error: 'No hay conexión'}; }
+  if (!r || !r.ok) {
+    m.error = (d && d.error) || 'No se pudo mandar';
+    if (d && d.reconectar) m.gmail.conectado = false;
+    _fidPintarLista();
+    return;
+  }
+  const p = _fl.items.find(x => x.id === id);
+  _fl.mailA = null; _fl.mail = null;
+  fidAviso('Mail enviado a <b>'+esc(m.para)+'</b> desde '+esc(d.de)+(p ? '. Te queda una llamada de seguimiento a '+esc(p.nombre)+' en 2 días.' : '.'));
+  fidCargarLista();
 }
 
 // Desde la agenda o Inteligencia comercial: lleva a la fila del comercio.
@@ -2534,6 +2595,10 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .fl-box .fid-err:empty{display:none}
 .fl-ok{font-size:.76rem;color:var(--verde-texto);font-weight:600;flex-basis:100%}
 .fl-mas{display:flex;margin:12px auto}
+.fl-mail{flex-direction:column;align-items:stretch}
+.fl-mail .fid-in{flex:0 0 auto;width:100%}
+.fl-mail textarea.fid-in{min-height:220px;line-height:1.45}
+.fl-mail-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media (max-width:700px){.fl-target{margin-left:0;flex-basis:100%}.fl-kpis{margin-left:0}}
 /* Inteligencia comercial */
 .fid-g3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:16px}

@@ -7,11 +7,15 @@ de panel porque así están guardados los permisos de cada rol.
 """
 
 import os
+import secrets
+import sqlite3
 
-from flask import Blueprint, Response, current_app, jsonify, request, session
+from flask import Blueprint, Response, current_app, jsonify, redirect, request, session
 
 from services import fidelidad as fid
+from services import gmail_usuario as gmail
 from services.auth import is_admin, require_panel
+from services.mails_vedados import esta_vedado
 
 fidelidad_bp = Blueprint("fidelidad", __name__)
 
@@ -244,3 +248,91 @@ def api_llamada_deshacer(lid):
     if error:
         return _error(error, 404 if error == "la llamada no existe" else 400)
     return jsonify({"ok": True, "prospecto": p})
+
+
+
+# ── mail con borrador (25/9) ─────────────────────────────────────────────────
+# Sale de la casilla de quien lo manda: cada uno conecta su Gmail una vez.
+
+def _base() -> str:
+    """La URL pública del CRM. En Fly el request llega por http detrás del proxy."""
+    base = (current_app.config.get("PUBLIC_URL") or request.host_url).rstrip("/")
+    if base.startswith("http://") and not base.startswith(("http://localhost", "http://127.")):
+        base = "https://" + base[len("http://"):]
+    return base
+
+
+def _vuelta_gmail() -> str:
+    return _base() + "/oauth/gmail/callback"
+
+
+def _yo() -> dict:
+    c = sqlite3.connect(_db())
+    c.row_factory = sqlite3.Row
+    try:
+        f = c.execute("SELECT name, email, phone FROM users WHERE id = ?", (session.get("user_id"),)).fetchone()
+    finally:
+        c.close()
+    return dict(f) if f else {"name": _usuario(), "email": None, "phone": None}
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/borrador")
+def api_borrador(pid):
+    p = fid.get_prospecto(_db(), pid)
+    if not p:
+        return _error("el prospecto no existe", 404)
+    yo = _yo()
+    return jsonify({**fid.borrador(p, yo["name"], yo.get("phone")),
+                    "gmail": gmail.estado(_db(), session.get("user_id"))})
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/mail", methods=["POST"])
+def api_mandar_mail(pid):
+    d = request.get_json(silent=True) or {}
+    para, asunto, cuerpo = (d.get("para") or "").strip(), (d.get("asunto") or "").strip(), (d.get("cuerpo") or "").strip()
+    if not fid.get_prospecto(_db(), pid):
+        return _error("el prospecto no existe", 404)
+    if not fid.es_mail(para):
+        return _error("poné un mail válido", 400)
+    if not asunto or not cuerpo:
+        return _error("falta el asunto o el mensaje", 400)
+    if esta_vedado(_db(), para):
+        return _error("ese mail pidió no recibir más correos", 400)
+    yo = _yo()
+    try:
+        enviado = gmail.enviar(_db(), session.get("user_id"), yo["name"], para, asunto, cuerpo)
+    except gmail.Desconectado as e:
+        return jsonify({"ok": False, "error": str(e), "reconectar": True}), 409
+    except Exception as e:
+        return _error(str(e), 502)
+    p = fid.registrar_mail(_db(), pid, _usuario(), enviado["de"], para, asunto, enviado.get("id"), cuando=_ahora())
+    return jsonify({"ok": True, "de": enviado["de"], "prospecto": p}), 201
+
+
+@fidelidad_bp.route("/oauth/gmail/conectar")
+def oauth_gmail_conectar():
+    if not gmail.configurado():
+        return "Falta configurar el acceso a Gmail del CRM (GMAIL_WEB_CLIENT_ID).", 503
+    session["gmail_state"] = secrets.token_urlsafe(24)
+    return redirect(gmail.url_autorizacion(_vuelta_gmail(), session["gmail_state"], _yo().get("email")))
+
+
+@fidelidad_bp.route("/oauth/gmail/callback")
+def oauth_gmail_callback():
+    estado = session.pop("gmail_state", None)
+    if not estado or request.args.get("state") != estado:
+        return redirect("/?gmail=error#cola")
+    if request.args.get("error") or not request.args.get("code"):
+        return redirect("/?gmail=cancelado#cola")
+    try:
+        gmail.conectar(_db(), session.get("user_id"), request.args["code"], _vuelta_gmail())
+    except Exception as e:
+        current_app.logger.warning(f"No se pudo conectar Gmail: {e}")
+        return redirect("/?gmail=error#cola")
+    return redirect("/?gmail=ok#cola")
+
+
+@fidelidad_bp.route("/api/fidelidad/gmail", methods=["DELETE"])
+def api_gmail_desconectar():
+    gmail.desconectar(_db(), session.get("user_id"))
+    return jsonify({"ok": True})
