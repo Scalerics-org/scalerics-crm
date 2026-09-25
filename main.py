@@ -60,10 +60,12 @@ def create_parser() -> argparse.ArgumentParser:
     multi_p.add_argument("--con-web", action="store_true", help="Modo discovery: junta los negocios que SI tienen sitio web")
 
     fid_p = subparsers.add_parser("scrape-fidelidad",
-                                  help="Restaurantes de Municipio CH y Carrasco para Scalerics Fidelidad")
-    fid_p.add_argument("--max-por-barrio", type=int, default=40)
+                                  help="Restaurantes y peluquerías para Scalerics Fidelidad")
+    fid_p.add_argument("--rubro", choices=["restaurante", "peluqueria"], default="restaurante")
+    fid_p.add_argument("--ciudad", choices=["Montevideo", "Buenos Aires"], default="Montevideo")
+    fid_p.add_argument("--max-por-barrio", type=int, default=20, help="Máximo por búsqueda (tipo de local y barrio)")
     fid_p.add_argument("--zona", choices=["Municipio CH", "Carrasco"], default=None,
-                       help="Solo una de las dos zonas")
+                       help="En Montevideo, solo una de las dos zonas")
 
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
@@ -166,24 +168,26 @@ def cmd_scrape_multi(args):
 
 
 def cmd_scrape_fidelidad(args):
-    """Barrio por barrio y de a uno: Google corta rapido a quien le pega en
-    paralelo, y son pocos barrios. Los prospectos van a las tablas de
+    """Barrio por barrio, tipo de local por tipo de local, y de a uno: Google
+    corta rapido a quien le pega en paralelo. Los prospectos van a las tablas de
     Fidelidad (con CRM_URL, al CRM de produccion), no al padron."""
     from scraper import run
-    from services.fidelidad import BARRIOS
+    from services.fidelidad import BARRIOS, BARRIOS_BSAS, BUSQUEDAS
     logger = logging.getLogger(__name__)
+    if args.ciudad == "Buenos Aires":
+        barrios = [(b, "Buenos Aires") for b in BARRIOS_BSAS]
+    else:
+        barrios = [(b, "Canelones" if b == "Barra de Carrasco" else "Montevideo")
+                   for zona, lista in BARRIOS.items() if not args.zona or zona == args.zona for b in lista]
     vistos: set[str] = set()
     total = 0
-    for zona, barrios in BARRIOS.items():
-        if args.zona and zona != args.zona:
-            continue
-        for barrio in barrios:
-            depto = "Canelones" if barrio == "Barra de Carrasco" else "Montevideo"
-            n = run(f"restaurantes en {barrio}, {depto}", args.max_por_barrio, DB_PATH,
-                    ya_vistos=vistos, fidelidad_barrio=barrio)
-            logger.info(f"[{barrio}] {n} restaurantes nuevos")
+    for barrio, depto in barrios:
+        for tipo in BUSQUEDAS[args.rubro][args.ciudad]:
+            n = run(f"{tipo} en {barrio}, {depto}", args.max_por_barrio, DB_PATH, ya_vistos=vistos,
+                    fidelidad={"barrio": barrio, "ciudad": args.ciudad, "rubro": args.rubro})
+            logger.info(f"[{tipo} · {barrio}] {n} nuevos")
             total += n
-    logger.info(f"scrape-fidelidad completo: {total} restaurantes nuevos")
+    logger.info(f"scrape-fidelidad completo: {total} comercios nuevos")
     return total
 
 

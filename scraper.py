@@ -251,13 +251,15 @@ def _remote_insert(data: dict) -> bool:
         return False
 
 
-def _guardar_fidelidad(data: dict, barrio: str, db_path: str) -> bool:
-    """Un restaurante para el Outbound de Scalerics Fidelidad (services/fidelidad.py).
+def _guardar_fidelidad(data: dict, fidelidad: dict, db_path: str) -> bool:
+    """Un comercio para el Outbound de Scalerics Fidelidad (services/fidelidad.py).
+    `fidelidad` dice dónde se buscó: barrio, ciudad y rubro.
 
     Va a sus propias tablas, no a `businesses`: no entra a las campañas de mail.
     Con CRM_URL lo manda al CRM de produccion; si no, a la base local."""
     from services.fidelidad import crear_prospecto, prospecto_desde_maps
-    datos = prospecto_desde_maps(data, barrio)
+    datos = prospecto_desde_maps(data, fidelidad["barrio"], fidelidad.get("ciudad") or "Montevideo",
+                                 fidelidad.get("rubro"))
     crm_url = os.environ.get("CRM_URL", "").rstrip("/")
     token = os.environ.get("ADMIN_TOKEN", "")
     if crm_url and token:
@@ -359,7 +361,7 @@ def recolectar_fichas(page, tope: int, ya_vistos: set[str] | None = None) -> lis
     return vistas[:tope]
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad_barrio: str | None = None) -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad: dict | None = None) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -431,14 +433,16 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                     data = extract_business_data(page)
 
-                    # Scalerics Fidelidad: cualquier restaurante sirve, tenga web
-                    # o no. Solo se saltean los que no son de comida.
-                    if fidelidad_barrio:
-                        from services.fidelidad import es_de_comida
-                        if not data.get("name") or not es_de_comida(data.get("category")):
-                            logger.info(f"Saltando (no es de comida): {data.get('name')} · {data.get('category')}")
+                    # Scalerics Fidelidad: tenga web o no. Se saltean los que no
+                    # son del rubro buscado y las cadenas (decide una casa central).
+                    if fidelidad:
+                        from services.fidelidad import es_cadena, es_del_rubro
+                        rubro = fidelidad.get("rubro") or "restaurante"
+                        if not data.get("name") or not es_del_rubro(data.get("category"), rubro) \
+                                or es_cadena(data.get("name")):
+                            logger.info(f"Saltando (no es del rubro o es cadena): {data.get('name')} · {data.get('category')}")
                             break
-                        if _guardar_fidelidad(data, fidelidad_barrio, db_path):
+                        if _guardar_fidelidad(data, fidelidad, db_path):
                             inserted += 1
                             logger.info(f"[{inserted}/{max_results}] Fidelidad: {data['name']}")
                         else:
@@ -494,6 +498,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad_barrio: str | None = None) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad: dict | None = None) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web, ya_vistos=ya_vistos, fidelidad_barrio=fidelidad_barrio)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web, ya_vistos=ya_vistos, fidelidad=fidelidad)

@@ -124,7 +124,7 @@ def api_crear():
     if que == "sin_nombre":
         return _error("falta el nombre del restaurante", 400)
     if que == "fuera_de_zona":
-        return _error("no es de Municipio CH ni de Carrasco", 400)
+        return _error("en Montevideo, por ahora solo Municipio CH y Carrasco", 400)
     return jsonify({"ok": True, "id": pid, "duplicado": que == "duplicado"}), 200 if que == "duplicado" else 201
 
 
@@ -204,3 +204,43 @@ def api_config_guardar():
     if not is_admin(_db(), session.get("user_id")):
         return _error("solo un administrador cambia las metas", 403)
     return jsonify({"ok": True, "config": fid.set_config(_db(), request.get_json(silent=True) or {})})
+
+
+# ── lista única (25/9) ───────────────────────────────────────────────────────
+
+@fidelidad_bp.route("/api/fidelidad/lista")
+def api_lista():
+    try:
+        limite = min(2000, max(1, int(request.args.get("limite") or 150)))
+    except ValueError:
+        limite = 150
+    return jsonify(fid.armar_lista(_db(), ciudad=request.args.get("ciudad") or None,
+                                   rubro=request.args.get("rubro") or None,
+                                   q=request.args.get("q") or None, cuando=_ahora(), limite=limite))
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/accion", methods=["POST"])
+def api_accion(pid):
+    d = request.get_json(silent=True) or {}
+    p, lid, error = fid.registrar_accion(_db(), pid, d.get("accion") or "", _usuario(),
+                                         fecha=d.get("fecha"), nota=d.get("nota") or "", cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "el prospecto no existe" else 400)
+    return jsonify({"ok": True, "llamada_id": lid, "prospecto": p}), 201
+
+
+@fidelidad_bp.route("/api/fidelidad/llamadas/<int:lid>", methods=["PUT"])
+def api_llamada_editar(lid):
+    d = request.get_json(silent=True) or {}
+    p, error = fid.editar_llamada(_db(), lid, fecha=d.get("fecha"), nota=d.get("nota"), cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "la llamada no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/llamadas/<int:lid>", methods=["DELETE"])
+def api_llamada_deshacer(lid):
+    p, error = fid.deshacer_llamada(_db(), lid)
+    if error:
+        return _error(error, 404 if error == "la llamada no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
