@@ -829,34 +829,47 @@ def armar_pipeline(db: str, zona: str | None = None, cat: str | None = None,
 # mercado del 25/9 (Square, Paytronix, LoyaltyPass, notas de UY/AR). Base 20, se
 # suma la mejor palabra clave, la peor negativa, teléfono, reseñas, rating y
 # barrio. Las cadenas quedan en 0. Los números son una estimación: se ajustan acá.
+#
+# Además pesa el público joven (pedido de Juan, 25/9): sumar puntos desde el
+# celular lo adopta primero la gente joven, así que suben los locales a los que
+# va (hamburguesa, sushi, brunch, bubble tea, barbería, uñas) y los barrios de
+# estudiantes y jóvenes, y bajan los de público mayor (bodegón, confitería,
+# salón de señoras).
 
 _CLAVES = {
     "restaurante": [
+        (("hamburgues", "burger", "smash"), 34),
         (("pizzeria", "pizza", "muzzarella", "fugazza"), 30),
-        (("hamburgues", "burger"), 30),
-        (("empanada",), 25),
-        (("chivit", "lomiteria", "sandwicher", "milanes"), 22),
-        (("rotiseria", "comida para llevar", "comidas caseras", "minutas"), 22),
-        (("comida rapida", "fast food"), 18),
-        (("cafeteria", "cafe", "panaderia", "confiteria"), 18),
-        (("pastas",), 12),
-        (("sushi", "poke"), 12),
-        (("arabe", "shawarma", "kebab", "tacos", "mexican"), 10),
-        (("heladeria",), 8),
-        (("parrill", "asador"), 5),
-        (("bar", "cerveceria", "pub"), 3),
-        (("bodegon",), -5),
+        (("sushi", "poke", "bubble tea", "acai", "brunch", "bagel", "burrito", "wrap",
+          "cafe de especialidad", "specialty coffee", "coffee"), 26),
+        (("tacos", "mexican", "shawarma", "kebab", "arabe", "wok", "ramen", "asiatic"), 22),
+        (("empanada",), 22),
+        (("chivit", "lomiteria", "sandwicher", "milanes"), 20),
+        (("comida rapida", "fast food"), 20),
+        (("cafeteria", "cafe"), 16),
+        (("rotiseria", "comida para llevar", "comidas caseras", "minutas"), 14),
+        (("heladeria",), 12),
+        (("cerveceria", "pub"), 10),
+        (("pastas",), 8),
+        (("panaderia",), 6),
+        (("bar",), 3),
+        (("parrill", "asador"), 0),
+        (("confiteria", "tradicional", "de antano"), -8),
+        (("bodegon",), -10),
         (("marisqueria", "mariscos", "tenedor libre", "buffet"), -12),
         (("bistro", "cocina de autor", "tapas", "vinoteca", "wine bar", "steakhouse"), -20),
         (("alta cocina", "gourmet", "fine dining", "degustacion"), -40),
         (("hotel", "hostel", "salon de fiestas", "eventos", "catering", "boliche", "discoteca"), -40),
     ],
     "peluqueria": [
-        (("barberia", "barber"), 32),
-        (("peluqueria", "peluquero"), 22),
-        (("manicur", "salon de unas", "nails", "nail", "esmaltado", "unas"), 22),
-        (("cejas", "pestanas", "lifting", "depilacion"), 15),
-        (("salon de belleza", "estetica"), 12),
+        (("barberia", "barber", "fade"), 34),
+        (("manicur", "salon de unas", "nails", "nail", "esmaltado", "unas"), 28),
+        (("cejas", "pestanas", "lifting", "brow", "lash"), 22),
+        (("peluqueria unisex", "hair", "studio"), 22),
+        (("peluqueria", "peluquero"), 16),
+        (("depilacion",), 12),
+        (("salon de belleza", "estetica"), 8),
+        (("senoras", "peinados"), -10),
         (("canina", "mascotas", "grooming"), 12),
         (("spa", "masajes"), -10),
         (("tatuaje", "tattoo", "piercing"), -10),
@@ -879,24 +892,29 @@ _CADENAS = (
 _CADENAS_CHICAS = ("chivitos marcos",)
 _LUGAR_MALO = ("shopping", "mall", "patio de comidas", "terminal", "aeropuerto", "hotel")
 # Barrios: comercio de barrio con clientela que vuelve suma; turismo y oficinas resta.
+# Los de 14 son barrios de estudiantes y jóvenes (facultades, departamentos
+# chicos, vida nocturna); los de 10, comercio de barrio con clientela que vuelve.
 _BARRIOS = {
-    "Montevideo": {10: ("pocitos", "punta carretas", "buceo", "malvin", "parque batlle", "blanqueada",
-                        "cordon", "tres cruces", "parque rodo", "punta gorda", "union", "la comercial",
-                        "larranaga", "jacinto vera", "brazo oriental", "atahualpa", "prado", "aguada",
-                        "villa dolores", "palermo", "villa biarritz"),
-                   5: ("carrasco", "centro", "colon", "sayago", "villa espanola"),
+    "Montevideo": {14: ("cordon", "parque rodo", "pocitos", "punta carretas", "tres cruces", "centro",
+                        "palermo"),
+                   10: ("buceo", "malvin", "parque batlle", "blanqueada", "punta gorda", "union",
+                        "la comercial", "larranaga", "jacinto vera", "brazo oriental", "atahualpa", "prado",
+                        "aguada", "villa dolores", "villa biarritz"),
+                   5: ("carrasco", "colon", "sayago", "villa espanola"),
                    -10: ("ciudad vieja",)},
-    "Buenos Aires": {10: ("caballito", "villa crespo", "almagro", "villa urquiza", "belgrano", "colegiales",
-                          "nunez", "saavedra", "devoto", "villa del parque", "flores", "boedo",
-                          "pueyrredon", "coghlan", "villa ortuzar", "chacarita", "parque chas",
-                          "floresta", "santa rita"),
+    "Buenos Aires": {14: ("palermo", "villa crespo", "almagro", "colegiales", "belgrano", "caballito",
+                          "nunez", "chacarita", "villa urquiza", "boedo"),
+                     10: ("saavedra", "devoto", "villa del parque", "flores", "pueyrredon", "coghlan",
+                          "villa ortuzar", "parque chas", "floresta", "santa rita"),
                      8: ("vicente lopez", "olivos", "florida", "munro", "martinez", "san isidro",
                          "villa adelina", "ramos mejia", "castelar"),
-                     5: ("palermo", "recoleta", "liniers", "mataderos", "parque patricios"),
+                     5: ("recoleta", "liniers", "mataderos", "parque patricios"),
                      -15: ("puerto madero", "san telmo", "san nicolas", "microcentro", "retiro", "la boca")},
 }
-_RESENAS = {"restaurante": ((30, -10), (80, 5), (1501, 15), (4001, 0), (None, -20)),
-            "peluqueria": ((15, -10), (40, 5), (601, 15), (1501, 0), (None, -15))}
+# Muchas reseñas es también señal de público joven (es el que reseña), hasta
+# que ya es turístico o cadena.
+_RESENAS = {"restaurante": ((30, -10), (80, 5), (1501, 15), (4001, 5), (None, -20)),
+            "peluqueria": ((15, -10), (40, 5), (601, 15), (1501, 5), (None, -15))}
 # Lo que ya se avanzó con ese comercio sube la chance de compra.
 _POR_ETAPA = {"contactado": 5, "reunion_agendada": 20, "reunion_hecha": 25, "piloto": 35}
 

@@ -293,3 +293,19 @@ def test_el_calendario_general_no_deja_mover_lo_de_fidelidad():
     html = dashboard.DASHBOARD_HTML
     assert "if (origen === 'calendly' || origen === 'fidelidad') { e.preventDefault(); return; }" in html
     assert "function _calChipFidelidad" in html and "function _fidAgruparLlamadas" in html
+
+
+def test_pesa_el_publico_joven():
+    # El sistema de puntos en el celular lo adopta primero la gente joven.
+    base = {"telefono": "099123456", "resenas": 300, "rating": 4.4, "barrio": "Cordón"}
+    burger = fid.target(dict(base, nombre="Smash House", tipo="Hamburguesería"))
+    sushi = fid.target(dict(base, nombre="Poke Bowl", tipo="Restaurante de sushi"))
+    confiteria = fid.target(dict(base, nombre="Confitería Las Delicias", tipo="Confitería"))
+    bodegon = fid.target(dict(base, nombre="El Bodegón", tipo="Bodegón"))
+    assert burger > sushi > confiteria > bodegon
+    barberia = fid.target(dict(base, nombre="Fade Club", tipo="Barbería", rubro="peluqueria"))
+    senoras = fid.target(dict(base, nombre="Peinados Marta", tipo="Peluquería de señoras", rubro="peluqueria"))
+    assert barberia - senoras >= 20
+    # Barrio de estudiantes por encima de uno de comercio de barrio.
+    assert fid.target(dict(base, nombre="Pizza X", tipo="Pizzería", barrio="Parque Rodó")) > \
+        fid.target(dict(base, nombre="Pizza X", tipo="Pizzería", barrio="Malvín"))
