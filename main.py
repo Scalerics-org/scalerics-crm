@@ -67,6 +67,10 @@ def create_parser() -> argparse.ArgumentParser:
     fid_p.add_argument("--zona", choices=["Municipio CH", "Carrasco"], default=None,
                        help="En Montevideo, solo una de las dos zonas")
 
+    bmf_p = subparsers.add_parser("buscar-mails-fidelidad",
+                                  help="Buscar el mail de los comercios de Fidelidad en su web")
+    bmf_p.add_argument("--limite", type=int, default=200)
+
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
     buscar_p = subparsers.add_parser("buscar-mails",
@@ -114,6 +118,23 @@ def cmd_buscar_mails(args):
         finally:
             browser.close()
     print(res)
+
+def cmd_buscar_mails_fidelidad(args):
+    from playwright.sync_api import sync_playwright
+    from services.email_finder import abrir_con_playwright
+    from services.fidelidad import buscar_mails
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_default_timeout(20000)
+        try:
+            res = buscar_mails(DB_PATH, abrir_con_playwright(page), limite=args.limite)
+        finally:
+            browser.close()
+    print(res)
+    return res
+
 
 _DEPARTAMENTOS = [
     "Montevideo", "Canelones", "Maldonado", "Colonia", "San José",
@@ -211,6 +232,7 @@ def main():
         "dashboard": cmd_dashboard,
         "buscar-mails": cmd_buscar_mails,
         "scrape-fidelidad": cmd_scrape_fidelidad,
+        "buscar-mails-fidelidad": cmd_buscar_mails_fidelidad,
     }
     commands[args.command](args)
 

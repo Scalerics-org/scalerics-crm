@@ -363,9 +363,24 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_eventos_inicio ON fid_eventos(inicio)")
+    # Los mails que se mandan desde la lista (25/9), aparte de las llamadas.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_mails (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospecto_id  INTEGER NOT NULL REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            enviado_en    TEXT NOT NULL,
+            usuario       TEXT,
+            de            TEXT,
+            para          TEXT,
+            asunto        TEXT,
+            gmail_id      TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_mails_p ON fid_mails(prospecto_id)")
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
-                      ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT")):
+                      ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT"),
+                      ("mail_buscado_en", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
@@ -544,6 +559,8 @@ def get_prospecto(db: str, pid: int) -> dict | None:
             "SELECT * FROM fid_llamadas WHERE prospecto_id = ? ORDER BY hecha_en DESC, id DESC", (pid,))]
         p["cambios"] = [dict(x) for x in c.execute(
             "SELECT * FROM fid_cambios WHERE prospecto_id = ? ORDER BY en DESC, id DESC", (pid,))]
+        p["mails"] = [dict(x) for x in c.execute(
+            "SELECT * FROM fid_mails WHERE prospecto_id = ? ORDER BY enviado_en DESC, id DESC", (pid,))]
         return p
     finally:
         c.close()
@@ -1185,6 +1202,8 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
                 hoy_ll[f["prospecto_id"]] = dict(f)
         llam_hoy = c.execute("SELECT COUNT(*) FROM fid_llamadas WHERE substr(hecha_en, 1, 10) = ?",
                              (hoy,)).fetchone()[0]
+        mails = {f["prospecto_id"]: f["enviado_en"] for f in c.execute(
+            "SELECT prospecto_id, MAX(enviado_en) AS enviado_en FROM fid_mails GROUP BY prospecto_id")}
     finally:
         c.close()
     cfg = get_config(db)
@@ -1199,6 +1218,7 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
         f["ultimo_resultado"] = u.get("ultimo")
         f["ultima_nota"] = notas.get(f["id"])
         f["llamada_hoy"] = hoy_ll.get(f["id"])
+        f["ultimo_mail"] = mails.get(f["id"])
         f["target"] = target(f, rep)
         cuando_txt = f["fecha_reunion"] if f["estado"] == "reunion_agendada" else f["proxima_llamada"]
         f["cuando"] = cuando_txt
@@ -1222,6 +1242,114 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
         "acciones": {k: v["label"] for k, v in ACCIONES.items()},
         "ciudades": CIUDADES, "rubros": RUBROS,
     }
+
+
+# ── mail con borrador (25/9) ─────────────────────────────────────────────────
+# Juan: un botón que abre el mail ya escrito y se manda con un clic, desde la
+# casilla de quien lo manda (services/gmail_usuario.py). El mail no es una
+# llamada: va a su propia tabla para no inflar las llamadas ni la tasa de
+# contacto de Inteligencia comercial.
+
+DEMO_URL = "https://trouville.scalerics.workers.dev"
+DIAS_SEGUIMIENTO_MAIL = 2
+_MAIL_OK = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.I)
+
+
+def es_mail(texto: str | None) -> bool:
+    return bool(_MAIL_OK.match((texto or "").strip()))
+
+
+def borrador(p: dict, firma_nombre: str, firma_tel: str | None = None) -> dict:
+    """El mail precargado para un comercio. El vendedor lo puede cambiar."""
+    nombre = p.get("nombre") or "tu local"
+    res = p.get("resenas") or 0
+    visto = (f"Vi que {nombre} tiene más de {res // 10 * 10 if res >= 20 else res} reseñas en Google: "
+             "se nota que tienen clientela fiel." if res >= 20 else f"Estuve mirando {nombre} y me pareció ideal para esto.")
+    primer_nombre = (firma_nombre or "").split(" ")[0] or "el equipo"
+    firma = "\n".join(x for x in (firma_nombre, "Scalerics Fidelidad", firma_tel) if x)
+    if (p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))) == "peluqueria":
+        asunto = f"Que tus clientes vuelvan más seguido a {nombre}"
+        cuerpo = (f"Hola, ¿cómo va?\n\nSoy {primer_nombre}, de Scalerics. {visto}\n\n"
+                  "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada visita suma "
+                  "puntos en el celular (sin descargar ninguna app) y los canjean por descuentos o servicios "
+                  "del local.\n\n"
+                  f"Acá podés ver cómo funciona: {DEMO_URL}\n\n"
+                  f"¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}")
+    else:
+        zona = f"de {p['barrio']} " if p.get("barrio") else ""
+        asunto = f"Que tus clientes {zona}vuelvan más seguido"
+        cuerpo = (f"Hola, ¿cómo va?\n\nSoy {primer_nombre}, de Scalerics. {visto}\n\n"
+                  "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada compra suma "
+                  "puntos en el celular (sin descargar ninguna app) y los canjean por promos del local. "
+                  "Además incluye la carta digital.\n\n"
+                  f"Acá podés ver cómo funciona: {DEMO_URL}\n\n"
+                  f"¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}")
+    return {"para": p.get("email") or "", "asunto": asunto, "cuerpo": cuerpo}
+
+
+def buscar_mails(db: str, abrir, limite: int = 100) -> dict:
+    """Busca el mail en la web de los comercios que tienen web y no mail
+    (`email_finder.buscar_mail_del_sitio`). Se marca cuándo se buscó para no
+    volver a abrir cada vez los que no publican ninguno; un sitio que no abrió
+    no se marca, porque no dio evidencia de nada."""
+    from services.email_finder import buscar_mail_del_sitio
+    c = _conn(db)
+    try:
+        filas = [dict(f) for f in c.execute(
+            "SELECT id, web FROM fid_prospectos WHERE archivado = 0 AND COALESCE(web, '') != '' "
+            "AND COALESCE(email, '') = '' AND mail_buscado_en IS NULL LIMIT ?", (limite,))]
+    finally:
+        c.close()
+    cuenta = Counter()
+    for f in filas:
+        mail, abrio = buscar_mail_del_sitio(abrir, f["web"])
+        cambios = {}
+        if mail:
+            cambios["email"] = mail
+        if mail or abrio:
+            cambios["mail_buscado_en"] = fmt(ahora())
+        cuenta["encontrados" if mail else "sin_mail" if abrio else "no_abrio"] += 1
+        if cambios:
+            c = _conn(db)
+            try:
+                c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                          list(cambios.values()) + [f["id"]])
+                c.commit()
+            finally:
+                c.close()
+    return {"revisados": len(filas), **cuenta}
+
+
+def registrar_mail(db: str, pid: int, usuario: str, de: str, para: str, asunto: str,
+                   gmail_id: str | None = None, cuando: datetime | None = None) -> dict | None:
+    """Anota el mail enviado y deja una llamada de seguimiento a los dos días
+    hábiles (si ya había una antes, queda la que estaba)."""
+    cuando = cuando or ahora()
+    seguir = fmt(datetime.combine(_sumar_habiles(cuando.date(), DIAS_SEGUIMIENTO_MAIL),
+                                  datetime.min.time()).replace(hour=11))
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None
+        p = dict(f)
+        c.execute("INSERT INTO fid_mails (prospecto_id, enviado_en, usuario, de, para, asunto, gmail_id) "
+                  "VALUES (?,?,?,?,?,?,?)", (pid, fmt(cuando), usuario, de, para, asunto, gmail_id))
+        cambios = {}
+        if not p.get("email"):
+            cambios["email"] = para
+        if p["estado"] not in ("cerrado", "reunion_agendada") and \
+                (not p.get("proxima_llamada") or p["proxima_llamada"] > seguir or p["estado"] == "descartado"):
+            cambios["proxima_llamada"] = seguir
+        if p["estado"] == "descartado":
+            cambios.update(_cambiar_estado(c, p, "contactado", cuando, usuario))
+        if cambios:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                      list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid)
 
 
 # ── agenda ───────────────────────────────────────────────────────────────────
