@@ -438,3 +438,26 @@ def test_agendar_y_anotar_desde_el_bot(db, cli):
     cli.post(f"/api/fidelidad/prospectos/{pid}/nota", json={"nota": "Quiere la demo", "autor": "Juan"})
     assert fid.get_prospecto(db, pid)["notas"] == "23/09 Juan: Quiere la demo\n23/09 Gonzalo: El dueño es Pablo"
     assert cli.post("/api/fidelidad/prospectos/999/nota", json={"nota": "x"}).status_code == 404
+
+
+# ── "Otros" (28/9) ───────────────────────────────────────────────────────────
+
+def test_lo_que_no_es_comida_ni_peluqueria_va_a_otros(db, cli):
+    assert fid.rubro_de("Farmacia", "Farmacia Pocitos") == "otro"
+    assert fid.rubro_de("Heladería") == "restaurante" and fid.rubro_de(None, "Rodelú") == "restaurante"
+    kiosco = _p(db, "Kiosco Pepe", tipo="Kiosco")
+    assert fid.get_prospecto(db, kiosco)["rubro"] == "otro"
+    assert _ids(fid.armar_lista(db, "Montevideo", "otro", cuando=AHORA)) == [kiosco]
+    d = cli.get(f"/api/fidelidad/prospectos/{kiosco}/borrador").get_json()
+    assert d["asunto"] == "Que tus clientes vuelvan más seguido a Kiosco Pepe"
+    assert "regalos del local" in d["cuerpo"]
+
+
+def test_la_migracion_pasa_a_otros_una_sola_vez(db):
+    pid = _p(db, "Ferretería Juan", tipo="Ferretería", rubro="restaurante")
+    _exec(db, "DELETE FROM fid_config WHERE clave = 'rubro_otro_migrado'")
+    init_db(db)
+    assert fid.get_prospecto(db, pid)["rubro"] == "otro"
+    fid.editar_prospecto(db, pid, {"rubro": "restaurante"})     # alguien lo cambia a mano
+    init_db(db)
+    assert fid.get_prospecto(db, pid)["rubro"] == "restaurante"

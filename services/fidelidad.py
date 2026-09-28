@@ -52,7 +52,8 @@ ZONAS = ["Municipio CH", "Carrasco"]
 # La lista única (25/9): se filtra por ciudad y por rubro. En Montevideo sigue
 # valiendo el territorio del socio (ZONAS); en Buenos Aires la zona es el barrio.
 CIUDADES = ["Montevideo", "Buenos Aires"]
-RUBROS = {"restaurante": "Restaurantes", "peluqueria": "Peluquerías"}
+# "Otros" (28/9, Juan): lo que no es comida ni peluquería ("ahí van a ir randoms").
+RUBROS = {"restaurante": "Restaurantes", "peluqueria": "Peluquerías", "otro": "Otros"}
 # Se busca al principio de cada palabra: "spa" no tiene que agarrar "España".
 # Las que terminan en espacio van como palabra entera: "spa " no es "Spazio".
 _PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas ", "nail",
@@ -69,12 +70,22 @@ BARRIOS = {
 # restaurantes, pero Maps mete farmacias y supermercados del barrio.
 _COMIDA = ("restaur", "parrill", "pizz", "sushi", "hambur", "burger", "cafe", "bar", "comida",
            "cocina", "bistro", "brunch", "panader", "helad", "pasta", "chivit", "tapas", "marisc",
-           "vegan", "asador", "cervec", "empanad", "rotiser", "delivery", "confiter", "almuerz")
+           "vegan", "asador", "cervec", "empanad", "rotiser", "delivery", "confiter", "almuerz",
+           # Desde que existe "Otros" (28/9), lo que no esté acá deja de contar como restaurante.
+           "bodeg", "minuta", "milanes", "lomit", "sandwic", "poke", "wok", "taco", "burrito", "kebab",
+           "shawarma", "arabe", "ramen", "bagel", "acai", "bubble", "fast food", "fainá", "faina", "gourmet",
+           "chef", "grill", "food", "pub", "boliche", "catering")
 
 
 def rubro_de(tipo: str | None, nombre: str | None = None) -> str:
+    """Peluquería, restaurante u otro. Sin tipo, restaurante: es lo que se
+    cargó siempre, y un "Rodelú" sin más datos casi seguro es de comida."""
     t = " " + normalizar(f"{tipo or ''} {nombre or ''}") + " "
-    return "peluqueria" if any(" " + c in t for c in _PELUQUERIA) else "restaurante"
+    if any(" " + c in t for c in _PELUQUERIA):
+        return "peluqueria"
+    if not normalizar(tipo) or any(c in t for c in _COMIDA):
+        return "restaurante"
+    return "otro"
 
 
 def normalizar_ciudad(ciudad: str | None) -> str:
@@ -411,6 +422,14 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE fid_prospectos SET archivado = 0 WHERE archivado = 1 AND ciudad = 'Montevideo'")
     for pid, tipo, nombre in conn.execute("SELECT id, tipo, nombre FROM fid_prospectos WHERE rubro IS NULL").fetchall():
         conn.execute("UPDATE fid_prospectos SET rubro = ? WHERE id = ?", (rubro_de(tipo, nombre), pid))
+    # Una sola vez (28/9): lo que estaba como restaurante y no es de comida
+    # pasa a "Otros". Con marca, para no pisar después un cambio a mano.
+    if not conn.execute("SELECT 1 FROM fid_config WHERE clave = 'rubro_otro_migrado'").fetchone():
+        for pid, tipo, nombre in conn.execute(
+                "SELECT id, tipo, nombre FROM fid_prospectos WHERE rubro = 'restaurante'").fetchall():
+            if rubro_de(tipo, nombre) == "otro":
+                conn.execute("UPDATE fid_prospectos SET rubro = 'otro' WHERE id = ?", (pid,))
+        conn.execute("INSERT INTO fid_config (clave, valor) VALUES ('rubro_otro_migrado', '1')")
     # El rol del socio. Solo ve estas dos pantallas; el candado real está en
     # `solo_fidelidad` (dashboard.require_login), no en el menú.
     conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
@@ -975,6 +994,7 @@ _BARRIOS = {
 # Muchas reseñas es también señal de público joven (es el que reseña), hasta
 # que ya es turístico o cadena.
 _RESENAS = {"restaurante": ((30, -10), (80, 5), (1501, 15), (4001, 5), (None, -20)),
+            "otro": ((30, -10), (80, 5), (1501, 15), (4001, 5), (None, -20)),
             "peluqueria": ((15, -10), (40, 5), (601, 15), (1501, 5), (None, -15))}
 # Lo que ya se avanzó con ese comercio sube la chance de compra.
 _POR_ETAPA = {"contactado": 5, "reunion_agendada": 20, "reunion_hecha": 25, "piloto": 35}
@@ -1333,6 +1353,11 @@ PLANTILLAS_BASE = [
      "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada visita suma puntos en el "
      "celular (sin descargar ninguna app) y los canjean por descuentos o servicios del local."
      "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
+    ("Primer contacto", "otro", "Que tus clientes vuelvan más seguido a {comercio}",
+     "Hola, ¿cómo va?\n\nSoy {mi_primer_nombre}, de Scalerics. {visto}\n\n"
+     "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada compra suma puntos en el "
+     "celular (sin descargar ninguna app) y los canjean por descuentos o regalos del local."
+     "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
     ("Después de hablar por teléfono", "", "Lo que hablamos recién · Scalerics Fidelidad",
      "Hola{dueno}, ¿cómo va?\n\nGracias por el rato de recién. Como te conté, con el sistema de puntos tus "
      "clientes suman con cada compra desde el celular, sin descargar nada, y canjean por promos que elegís vos. "
@@ -1364,8 +1389,10 @@ def init_plantillas_mail(conn: sqlite3.Connection) -> None:
             borrada     INTEGER NOT NULL DEFAULT 0
         )
     """)
-    if not conn.execute("SELECT 1 FROM fid_plantillas LIMIT 1").fetchone():
-        for i, (nombre, rubro, asunto, cuerpo) in enumerate(PLANTILLAS_BASE):
+    # Las de entrada que falten (las nuevas, como la de "Otros"). Una que se
+    # borró queda borrada: se busca también entre las borradas.
+    for i, (nombre, rubro, asunto, cuerpo) in enumerate(PLANTILLAS_BASE):
+        if not conn.execute("SELECT 1 FROM fid_plantillas WHERE nombre = ? AND rubro = ?", (nombre, rubro)).fetchone():
             conn.execute("INSERT INTO fid_plantillas (nombre, rubro, asunto, cuerpo, orden, creado_por) "
                          "VALUES (?,?,?,?,?,?)", (nombre, rubro, asunto, cuerpo, i, "Scalerics"))
 
@@ -1438,7 +1465,7 @@ def borrador(p: dict, firma_nombre: str, firma_tel: str | None = None, plantilla
     }
     if not plantilla:
         rubro = p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))
-        nombre_base, _, asunto, cuerpo = next(x for x in PLANTILLAS_BASE if x[1] == rubro)
+        nombre_base, _, asunto, cuerpo = next((x for x in PLANTILLAS_BASE if x[1] == rubro), PLANTILLAS_BASE[0])
         plantilla = {"id": None, "asunto": asunto, "cuerpo": cuerpo}
     return {"para": p.get("email") or "", "plantilla_id": plantilla.get("id"),
             "asunto": _completar(plantilla["asunto"], valores), "cuerpo": _completar(plantilla["cuerpo"], valores)}

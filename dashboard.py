@@ -417,7 +417,7 @@ function _fidPintarLista() {
     document.getElementById('fid-kpis-lista').innerHTML = '<span class="fid-pill r">'+k.vencidas+' vencidas</span><span class="fid-pill g">'+k.hoy+' para hoy</span>'
       + '<span><b>'+k.llamadas_hoy+'</b> / '+k.meta_llamadas_dia+' llamadas hoy</span>';
   }
-  const rubro = _fl.rubro === 'peluqueria' ? 'peluquerías' : 'restaurantes';
+  const rubro = {peluqueria:'peluquerías', otro:'comercios de «Otros»'}[_fl.rubro] || 'restaurantes';
   let h = _fl.items.map(_fidFilaLista).join('');
   if (!h) h = '<div class="fid-vacio">'+(_fl.q ? 'Ningún comercio coincide con «'+esc(_fl.q)+'».' : 'Todavía no hay '+rubro+' de '+esc(_fl.ciudad)+'. Cargalos con «Importar Excel» o «+ Comercio».')+'</div>';
   if (_fl.total > _fl.items.length) h += '<button class="fid-btn fl-mas" onclick="fidVerMas()">Mostrar más ('+(_fl.total - _fl.items.length)+' restantes)</button>';
@@ -716,7 +716,7 @@ function _fidMailCaja() {
     return '<div class="fl-box"><span class="fid-meta">'+(m.error ? esc(m.error)+'. ' : '')+'Para mandar desde tu casilla, conectá tu Gmail (una sola vez).</span>'
       + '<a class="fid-btn p" href="/oauth/gmail/conectar">Conectar mi Gmail</a><button class="fid-btn" onclick="_fl.mailA=null;_fidPintarLista()">Cancelar</button></div>';
   }
-  const opts = (m.plantillas || []).map(t => '<option value="'+t.id+'"'+(t.id === m.plantilla_id ? ' selected' : '')+'>'+esc(t.nombre)+(t.rubro ? ' · '+(t.rubro === 'peluqueria' ? 'peluquerías' : 'restaurantes') : '')+'</option>').join('');
+  const opts = (m.plantillas || []).map(t => '<option value="'+t.id+'"'+(t.id === m.plantilla_id ? ' selected' : '')+'>'+esc(t.nombre)+(t.rubro ? ' · '+({peluqueria:'peluquerías', otro:'otros'}[t.rubro] || 'restaurantes') : '')+'</option>').join('');
   return '<div class="fl-box fl-mail">'
     + '<div class="fl-mail-pie"><label class="fid-meta" for="fl-m-plantilla">Plantilla</label><select class="fid-sel" id="fl-m-plantilla" onchange="fidMailPlantilla(this.value)">'+opts+'</select>'
     + '<a href="#" class="fid-meta" onclick="fidPlantillasAbrir();return false">Editar plantillas</a></div>'
@@ -750,7 +750,7 @@ async function fidPlantillasAbrir(editar) {
   let d; try { d = await _fidJson('/api/fidelidad/plantillas'); } catch(e) { fidAviso(esc(e.message), 'error'); return; }
   _fid.plantillas = d.plantillas;
   const t = editar === 'nueva' ? {id: null, nombre: '', rubro: '', asunto: '', cuerpo: ''} : d.plantillas.find(x => x.id === editar);
-  const rubroTxt = r => r === 'peluqueria' ? 'Peluquerías' : r === 'restaurante' ? 'Restaurantes' : 'Todos';
+  const rubroTxt = r => ({peluqueria:'Peluquerías', restaurante:'Restaurantes', otro:'Otros'})[r] || 'Todos';
   let h = '<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Plantillas de mail</h3>';
   if (!t) {
     h += d.plantillas.map(x => '<div class="fid-fila" style="grid-template-columns:1fr auto auto;padding:8px" onclick="fidPlantillasAbrir('+x.id+')"><div><div class="fid-nm">'+esc(x.nombre)+'</div><div class="fid-meta">'+esc(x.asunto)+'</div></div><span class="fid-pill">'+rubroTxt(x.rubro)+'</span><span class="fid-pill">Editar</span></div>').join('')
@@ -758,7 +758,7 @@ async function fidPlantillasAbrir(editar) {
   } else {
     h += '<div class="fid-form">'
       + '<div class="full"><label for="fid-t-nombre">Nombre</label><input class="fid-in" id="fid-t-nombre" value="'+esc(t.nombre)+'" placeholder="Seguimiento después de la demo"></div>'
-      + '<div class="full"><label for="fid-t-rubro">Para</label><select class="fid-in" id="fid-t-rubro">'+[['','Todos'],['restaurante','Restaurantes'],['peluqueria','Peluquerías']].map(o => '<option value="'+o[0]+'"'+(o[0] === t.rubro ? ' selected' : '')+'>'+o[1]+'</option>').join('')+'</select></div>'
+      + '<div class="full"><label for="fid-t-rubro">Para</label><select class="fid-in" id="fid-t-rubro">'+[['','Todos'],['restaurante','Restaurantes'],['peluqueria','Peluquerías'],['otro','Otros']].map(o => '<option value="'+o[0]+'"'+(o[0] === t.rubro ? ' selected' : '')+'>'+o[1]+'</option>').join('')+'</select></div>'
       + '<div class="full"><label for="fid-t-asunto">Asunto</label><input class="fid-in" id="fid-t-asunto" value="'+esc(t.asunto)+'"></div>'
       + '<div class="full"><label for="fid-t-cuerpo">Texto</label><textarea class="fid-in" id="fid-t-cuerpo" style="min-height:220px">'+esc(t.cuerpo)+'</textarea></div>'
       + '<div class="full fid-meta">Se reemplazan solas: '+Object.entries(d.variables).map(v => '<code>{'+v[0]+'}</code> '+esc(v[1])).join(' · ')+'</div>'
@@ -834,7 +834,7 @@ function fidNuevoAbrir() {
   _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Nuevo comercio</h3><div class="fid-form">'
     + campo('nombre', 'Nombre del comercio *', ' class="full"')
     + '<div><label for="fid-n-ciudad">Ciudad</label><select class="fid-in" id="fid-n-ciudad">'+opc([['Montevideo','Montevideo'],['Buenos Aires','Buenos Aires']], _fl.ciudad)+'</select></div>'
-    + '<div><label for="fid-n-rubro">Rubro</label><select class="fid-in" id="fid-n-rubro">'+opc([['restaurante','Restaurante'],['peluqueria','Peluquería']], _fl.rubro)+'</select></div>'
+    + '<div><label for="fid-n-rubro">Rubro</label><select class="fid-in" id="fid-n-rubro">'+opc([['restaurante','Restaurante'],['peluqueria','Peluquería'],['otro','Otro']], _fl.rubro)+'</select></div>'
     + campo('barrio', 'Barrio') + campo('tipo', 'Tipo (pizzería, barbería…)') + campo('telefono', 'Teléfono del local')
     + campo('direccion', 'Dirección', ' class="full"') + campo('contacto', 'Dueño o encargado') + campo('contacto_tel', 'Celular del dueño')
     + '<div><label for="fid-n-facilidad">Facilidad</label><select class="fid-in" id="fid-n-facilidad"><option value="">Sin clasificar</option><option>Alta</option><option>Media</option><option>Baja</option></select></div>'
@@ -4159,7 +4159,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div class="fid-filtros" id="fid-filtros-comun">
       <div class="fid-seg" id="fid-seg-ciudad"><button data-v="Montevideo" onclick="fidFiltro('ciudad', this.dataset.v)">Montevideo</button><button data-v="Buenos Aires" onclick="fidFiltro('ciudad', this.dataset.v)">Buenos Aires</button></div>
-      <div class="fid-seg" id="fid-seg-rubro"><button data-v="restaurante" onclick="fidFiltro('rubro', this.dataset.v)">Restaurantes</button><button data-v="peluqueria" onclick="fidFiltro('rubro', this.dataset.v)">Peluquerías</button></div>
+      <div class="fid-seg" id="fid-seg-rubro"><button data-v="restaurante" onclick="fidFiltro('rubro', this.dataset.v)">Restaurantes</button><button data-v="peluqueria" onclick="fidFiltro('rubro', this.dataset.v)">Peluquerías</button><button data-v="otro" onclick="fidFiltro('rubro', this.dataset.v)">Otros</button></div>
       <span class="fl-kpis" id="fid-kpis-lista"></span>
     </div>
 
