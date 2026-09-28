@@ -116,6 +116,7 @@ def prospecto_desde_maps(data: dict, barrio: str, ciudad: str = "Montevideo", ru
             "zona": normalizar_zona(None, barrio) if ciudad == "Montevideo" else barrio,
             "tipo": data.get("category"), "direccion": data.get("address"), "telefono": data.get("phone"),
             "rating": data.get("rating"), "resenas": data.get("review_count"), "maps_url": data.get("maps_url"),
+            "web": data.get("maps_website_url"), "instagram": data.get("instagram_url"),
             "notas": f"Traído de Google Maps buscando en {barrio}: verificá el barrio."}
 DIAS_PILOTO = 30
 DIAS_REACTIVAR = 90
@@ -362,8 +363,25 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_eventos_inicio ON fid_eventos(inicio)")
+    # Los mails que se mandan desde la lista (25/9), aparte de las llamadas.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_mails (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospecto_id  INTEGER NOT NULL REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            enviado_en    TEXT NOT NULL,
+            usuario       TEXT,
+            de            TEXT,
+            para          TEXT,
+            asunto        TEXT,
+            gmail_id      TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_mails_p ON fid_mails(prospecto_id)")
+    init_plantillas_mail(conn)
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
-                      ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT")):
+                      ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
+                      ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT"),
+                      ("mail_buscado_en", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
@@ -424,7 +442,7 @@ def set_config(db: str, cambios: dict) -> dict:
 
 CAMPOS_EDITABLES = ("nombre", "zona", "barrio", "tipo", "direccion", "telefono", "rating",
                     "resenas", "maps_url", "notas", "facilidad", "contacto", "proximo_paso",
-                    "mensual_usd", "ciudad", "rubro", "contacto_tel")
+                    "mensual_usd", "ciudad", "rubro", "contacto_tel", "email", "web", "instagram")
 
 
 def _limpiar_campos(datos: dict) -> dict:
@@ -542,6 +560,8 @@ def get_prospecto(db: str, pid: int) -> dict | None:
             "SELECT * FROM fid_llamadas WHERE prospecto_id = ? ORDER BY hecha_en DESC, id DESC", (pid,))]
         p["cambios"] = [dict(x) for x in c.execute(
             "SELECT * FROM fid_cambios WHERE prospecto_id = ? ORDER BY en DESC, id DESC", (pid,))]
+        p["mails"] = [dict(x) for x in c.execute(
+            "SELECT * FROM fid_mails WHERE prospecto_id = ? ORDER BY enviado_en DESC, id DESC", (pid,))]
         return p
     finally:
         c.close()
@@ -985,6 +1005,8 @@ def target(p: dict, repetidos: set | None = None) -> int:
         if any(_tiene(barrio, b) for b in lista):
             s += v
             break
+    if p.get("instagram"):
+        s += 6  # el que tiene Instagram le habla a público joven
     s += _POR_ETAPA.get(p.get("estado"), 0)
     s += {"Alta": 8, "Media": 3}.get(p.get("facilidad") or "", 0)
     if p.get("contacto"):
@@ -1168,7 +1190,7 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
     c = _conn(db)
     try:
         filas = [dict(f) for f in c.execute(
-            f"SELECT {_COLS_LISTA}, notas, contacto_tel, ciudad, rubro, direccion FROM fid_prospectos "
+            f"SELECT {_COLS_LISTA}, notas, contacto_tel, ciudad, rubro, direccion, email, web, instagram FROM fid_prospectos "
             f"WHERE {' AND '.join(cond)}", params)]
         rep = repetidos_en([{"nombre": f[0]} for f in c.execute("SELECT nombre FROM fid_prospectos")])
         ult = _ultimo_resultado(c)
@@ -1181,6 +1203,8 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
                 hoy_ll[f["prospecto_id"]] = dict(f)
         llam_hoy = c.execute("SELECT COUNT(*) FROM fid_llamadas WHERE substr(hecha_en, 1, 10) = ?",
                              (hoy,)).fetchone()[0]
+        mails = {f["prospecto_id"]: f["enviado_en"] for f in c.execute(
+            "SELECT prospecto_id, MAX(enviado_en) AS enviado_en FROM fid_mails GROUP BY prospecto_id")}
     finally:
         c.close()
     cfg = get_config(db)
@@ -1195,6 +1219,7 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
         f["ultimo_resultado"] = u.get("ultimo")
         f["ultima_nota"] = notas.get(f["id"])
         f["llamada_hoy"] = hoy_ll.get(f["id"])
+        f["ultimo_mail"] = mails.get(f["id"])
         f["target"] = target(f, rep)
         cuando_txt = f["fecha_reunion"] if f["estado"] == "reunion_agendada" else f["proxima_llamada"]
         f["cuando"] = cuando_txt
@@ -1218,6 +1243,218 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
         "acciones": {k: v["label"] for k, v in ACCIONES.items()},
         "ciudades": CIUDADES, "rubros": RUBROS,
     }
+
+
+# ── mail con borrador (25/9) ─────────────────────────────────────────────────
+# Juan: un botón que abre el mail ya escrito y se manda con un clic, desde la
+# casilla de quien lo manda (services/gmail_usuario.py). El mail no es una
+# llamada: va a su propia tabla para no inflar las llamadas ni la tasa de
+# contacto de Inteligencia comercial.
+
+DEMO_URL = "https://trouville.scalerics.workers.dev"
+DIAS_SEGUIMIENTO_MAIL = 2
+_MAIL_OK = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.I)
+
+
+def es_mail(texto: str | None) -> bool:
+    return bool(_MAIL_OK.match((texto or "").strip()))
+
+
+# Las plantillas (28/9): Juan pidió poder mandar distintas. Viven en
+# `fid_plantillas` y cualquiera del Outbound crea o edita las suyas; estas son
+# las que vienen de entrada. Llevan variables entre llaves (VARIABLES_MAIL).
+VARIABLES_MAIL = {
+    "comercio": "Nombre del local", "barrio": "Barrio", "resenas": "Cantidad de reseñas en Google",
+    "visto": "Frase armada con las reseñas («Vi que X tiene más de 400 reseñas…»)",
+    "dueno": "Nombre del dueño, si está cargado", "demo": "Link a la demo", "precio": "Precio por mes (USD)",
+    "mi_nombre": "Tu nombre completo", "mi_primer_nombre": "Tu primer nombre", "mi_telefono": "Tu teléfono",
+    "firma": "Tu nombre, Scalerics Fidelidad y tu teléfono",
+}
+PLANTILLAS_BASE = [
+    ("Primer contacto", "restaurante", "Que tus clientes de {barrio} vuelvan más seguido",
+     "Hola, ¿cómo va?\n\nSoy {mi_primer_nombre}, de Scalerics. {visto}\n\n"
+     "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada compra suma puntos en el "
+     "celular (sin descargar ninguna app) y los canjean por promos del local. Además incluye la carta digital."
+     "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
+    ("Primer contacto", "peluqueria", "Que tus clientes vuelvan más seguido a {comercio}",
+     "Hola, ¿cómo va?\n\nSoy {mi_primer_nombre}, de Scalerics. {visto}\n\n"
+     "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada visita suma puntos en el "
+     "celular (sin descargar ninguna app) y los canjean por descuentos o servicios del local."
+     "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
+    ("Después de hablar por teléfono", "", "Lo que hablamos recién · Scalerics Fidelidad",
+     "Hola{dueno}, ¿cómo va?\n\nGracias por el rato de recién. Como te conté, con el sistema de puntos tus "
+     "clientes suman con cada compra desde el celular, sin descargar nada, y canjean por promos que elegís vos. "
+     "Así vuelven más seguido.\n\nTe dejo la demo para que la mires con calma: {demo}\n\n"
+     "Son USD {precio} por mes, sin permanencia. Si te parece, coordinamos 20 minutos y te lo muestro "
+     "funcionando en tu local.\n\n{firma}"),
+    ("Seguimiento: no respondió", "", "¿Pudiste mirarlo?",
+     "Hola{dueno}, ¿cómo va?\n\nTe escribo por el sistema de puntos para {comercio} que te mandé hace unos "
+     "días. ¿Pudiste mirar la demo? {demo}\n\nSi te sirve, te llamo 5 minutos esta semana y te cuento cómo lo "
+     "usan otros locales.\n\n{firma}"),
+    ("Propuesta de piloto", "", "Arrancamos con 30 días de prueba en {comercio}",
+     "Hola{dueno}, ¿cómo va?\n\nComo quedamos, te propongo arrancar con un piloto de 30 días en {comercio}: "
+     "lo dejamos andando, tus clientes empiezan a sumar puntos y al final miramos juntos cuántos se registraron "
+     "y cuántos volvieron.\n\nSi te convence, sigue a USD {precio} por mes, sin permanencia.\n\n"
+     "¿Te queda bien que lo instalemos esta semana?\n\n{firma}"),
+]
+
+
+def init_plantillas_mail(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_plantillas (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre      TEXT NOT NULL,
+            rubro       TEXT NOT NULL DEFAULT '',
+            asunto      TEXT NOT NULL,
+            cuerpo      TEXT NOT NULL,
+            orden       INTEGER NOT NULL DEFAULT 0,
+            creado_por  TEXT,
+            borrada     INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    if not conn.execute("SELECT 1 FROM fid_plantillas LIMIT 1").fetchone():
+        for i, (nombre, rubro, asunto, cuerpo) in enumerate(PLANTILLAS_BASE):
+            conn.execute("INSERT INTO fid_plantillas (nombre, rubro, asunto, cuerpo, orden, creado_por) "
+                         "VALUES (?,?,?,?,?,?)", (nombre, rubro, asunto, cuerpo, i, "Scalerics"))
+
+
+def listar_plantillas(db: str, rubro: str | None = None) -> list[dict]:
+    """Las vigentes; con `rubro`, las de ese rubro y las que sirven para todos."""
+    c = _conn(db)
+    try:
+        filas = [dict(f) for f in c.execute("SELECT * FROM fid_plantillas WHERE borrada = 0 ORDER BY orden, id")]
+    finally:
+        c.close()
+    return [f for f in filas if not rubro or f["rubro"] in ("", rubro)]
+
+
+def guardar_plantilla(db: str, datos: dict, usuario: str, pid: int | None = None) -> tuple[int | None, str | None]:
+    nombre = (datos.get("nombre") or "").strip()[:80]
+    asunto = (datos.get("asunto") or "").strip()[:200]
+    cuerpo = (datos.get("cuerpo") or "").strip()[:8000]
+    rubro = datos.get("rubro") if datos.get("rubro") in RUBROS else ""
+    if not nombre or not asunto or not cuerpo:
+        return None, "falta el nombre, el asunto o el texto"
+    c = _conn(db)
+    try:
+        if pid:
+            cur = c.execute("UPDATE fid_plantillas SET nombre = ?, rubro = ?, asunto = ?, cuerpo = ? "
+                            "WHERE id = ? AND borrada = 0", (nombre, rubro, asunto, cuerpo, pid))
+            if not cur.rowcount:
+                return None, "la plantilla no existe"
+        else:
+            orden = c.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM fid_plantillas").fetchone()[0]
+            pid = c.execute("INSERT INTO fid_plantillas (nombre, rubro, asunto, cuerpo, orden, creado_por) "
+                            "VALUES (?,?,?,?,?,?)", (nombre, rubro, asunto, cuerpo, orden, usuario)).lastrowid
+        c.commit()
+    finally:
+        c.close()
+    return pid, None
+
+
+def borrar_plantilla(db: str, pid: int) -> bool:
+    c = _conn(db)
+    try:
+        cur = c.execute("UPDATE fid_plantillas SET borrada = 1 WHERE id = ?", (pid,))
+        c.commit()
+        return cur.rowcount > 0
+    finally:
+        c.close()
+
+
+def _completar(texto: str, valores: dict) -> str:
+    # Una llave que no es variable (un emoji, un texto entre llaves) queda como está.
+    return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), texto)
+
+
+def borrador(p: dict, firma_nombre: str, firma_tel: str | None = None, plantilla: dict | None = None,
+             precio: float = 150) -> dict:
+    """El mail precargado para un comercio con una plantilla. El vendedor lo
+    puede cambiar antes de mandar."""
+    nombre = p.get("nombre") or "tu local"
+    res = p.get("resenas") or 0
+    visto = (f"Vi que {nombre} tiene más de {res // 10 * 10 if res >= 20 else res} reseñas en Google: "
+             "se nota que tienen clientela fiel." if res >= 20 else f"Estuve mirando {nombre} y me pareció ideal para esto.")
+    dueno = (p.get("contacto") or "").strip().split(" ")[0]
+    valores = {
+        "comercio": nombre, "barrio": p.get("barrio") or "tu barrio", "resenas": str(res), "visto": visto,
+        "dueno": f" {dueno}" if dueno and not any(ch.isdigit() for ch in dueno) else "",
+        "demo": DEMO_URL, "precio": f"{precio:g}",
+        "mi_nombre": firma_nombre or "", "mi_primer_nombre": (firma_nombre or "").split(" ")[0] or "el equipo",
+        "mi_telefono": firma_tel or "",
+        "firma": "\n".join(x for x in (firma_nombre, "Scalerics Fidelidad", firma_tel) if x),
+    }
+    if not plantilla:
+        rubro = p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))
+        nombre_base, _, asunto, cuerpo = next(x for x in PLANTILLAS_BASE if x[1] == rubro)
+        plantilla = {"id": None, "asunto": asunto, "cuerpo": cuerpo}
+    return {"para": p.get("email") or "", "plantilla_id": plantilla.get("id"),
+            "asunto": _completar(plantilla["asunto"], valores), "cuerpo": _completar(plantilla["cuerpo"], valores)}
+
+
+def buscar_mails(db: str, abrir, limite: int = 100) -> dict:
+    """Busca el mail en la web de los comercios que tienen web y no mail
+    (`email_finder.buscar_mail_del_sitio`). Se marca cuándo se buscó para no
+    volver a abrir cada vez los que no publican ninguno; un sitio que no abrió
+    no se marca, porque no dio evidencia de nada."""
+    from services.email_finder import buscar_mail_del_sitio
+    c = _conn(db)
+    try:
+        filas = [dict(f) for f in c.execute(
+            "SELECT id, web FROM fid_prospectos WHERE archivado = 0 AND COALESCE(web, '') != '' "
+            "AND COALESCE(email, '') = '' AND mail_buscado_en IS NULL LIMIT ?", (limite,))]
+    finally:
+        c.close()
+    cuenta = Counter()
+    for f in filas:
+        mail, abrio = buscar_mail_del_sitio(abrir, f["web"])
+        cambios = {}
+        if mail:
+            cambios["email"] = mail
+        if mail or abrio:
+            cambios["mail_buscado_en"] = fmt(ahora())
+        cuenta["encontrados" if mail else "sin_mail" if abrio else "no_abrio"] += 1
+        if cambios:
+            c = _conn(db)
+            try:
+                c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                          list(cambios.values()) + [f["id"]])
+                c.commit()
+            finally:
+                c.close()
+    return {"revisados": len(filas), **cuenta}
+
+
+def registrar_mail(db: str, pid: int, usuario: str, de: str, para: str, asunto: str,
+                   gmail_id: str | None = None, cuando: datetime | None = None) -> dict | None:
+    """Anota el mail enviado y deja una llamada de seguimiento a los dos días
+    hábiles (si ya había una antes, queda la que estaba)."""
+    cuando = cuando or ahora()
+    seguir = fmt(datetime.combine(_sumar_habiles(cuando.date(), DIAS_SEGUIMIENTO_MAIL),
+                                  datetime.min.time()).replace(hour=11))
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None
+        p = dict(f)
+        c.execute("INSERT INTO fid_mails (prospecto_id, enviado_en, usuario, de, para, asunto, gmail_id) "
+                  "VALUES (?,?,?,?,?,?,?)", (pid, fmt(cuando), usuario, de, para, asunto, gmail_id))
+        cambios = {}
+        if not p.get("email"):
+            cambios["email"] = para
+        if p["estado"] not in ("cerrado", "reunion_agendada") and \
+                (not p.get("proxima_llamada") or p["proxima_llamada"] > seguir or p["estado"] == "descartado"):
+            cambios["proxima_llamada"] = seguir
+        if p["estado"] == "descartado":
+            cambios.update(_cambiar_estado(c, p, "contactado", cuando, usuario))
+        if cambios:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                      list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid)
 
 
 # ── agenda ───────────────────────────────────────────────────────────────────
@@ -1724,6 +1961,8 @@ _ENCABEZADOS = {
     "direccion": ("direccion",), "telefono": ("telefono", "tel", "celular"),
     "rating": ("rating",), "resenas": ("resenas", "reviews"), "maps_url": ("google maps", "maps", "link"),
     "notas": ("notas",), "facilidad": ("facilidad",), "contacto": ("contacto",),
+    "email": ("email", "mail", "correo"), "web": ("web", "sitio"), "instagram": ("instagram",),
+    "ciudad": ("ciudad",),
     "estado": ("estado",), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
 }
 _ESTADO_EXCEL = {"sin contactar": "sin_contactar", "contactado": "contactado",
