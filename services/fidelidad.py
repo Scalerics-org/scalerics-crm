@@ -1966,19 +1966,55 @@ def leer_xlsx(contenido: bytes) -> list[list]:
     return filas
 
 
+# El orden importa: cada columna se asigna al primer campo que coincide, y
+# "Celular del dueño" tiene que ganarle a "Celular" (el del local).
 _ENCABEZADOS = {
-    "nombre": ("restaurante", "nombre", "negocio", "local"),
+    "contacto_tel": ("celular del dueno", "celular dueno", "cel dueno", "telefono del dueno", "whatsapp del dueno"),
+    "proxima_llamada": ("proxima llamada", "volver a llamar", "llamar el"),
+    "nombre": ("restaurante", "nombre", "negocio", "local", "comercio"),
     "zona": ("zona", "municipio"), "barrio": ("barrio",), "tipo": ("tipo", "rubro", "categoria"),
     "direccion": ("direccion",), "telefono": ("telefono", "tel", "celular"),
     "rating": ("rating",), "resenas": ("resenas", "reviews"), "maps_url": ("google maps", "maps", "link"),
-    "notas": ("notas",), "facilidad": ("facilidad",), "contacto": ("contacto",),
+    "notas": ("notas", "nota", "comentario", "observ"), "facilidad": ("facilidad",),
+    "contacto": ("contacto", "dueno", "encargado"),
     "email": ("email", "mail", "correo"), "web": ("web", "sitio"), "instagram": ("instagram",),
     "ciudad": ("ciudad",),
-    "estado": ("estado",), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
+    "estado": ("estado", "resultado"), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
 }
 _ESTADO_EXCEL = {"sin contactar": "sin_contactar", "contactado": "contactado",
                  "reunion agendada": "reunion_agendada", "reunion hecha": "reunion_hecha",
-                 "piloto": "piloto", "cerrado": "cerrado", "descartado": "descartado"}
+                 "piloto": "piloto", "cerrado": "cerrado", "descartado": "descartado",
+                 # Lo que se anota en la calle (28/9).
+                 "visitado": "contactado", "interesado": "contactado", "le intereso": "contactado",
+                 "volver": "contactado", "reunion": "reunion_agendada", "cliente": "cerrado",
+                 "no le interesa": "descartado", "no interesa": "descartado"}
+
+
+def _fecha_excel(v) -> str | None:
+    """La próxima llamada como la escriben en la calle: 30/9, 30/9/2026,
+    2026-09-30 o una fecha de Excel (número de días desde 1899-12-30).
+    Sin hora va a las 11."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)) or re.fullmatch(r"\d{5}(\.\d+)?", str(v).strip()):
+        d = datetime(1899, 12, 30) + timedelta(days=float(v))
+        return fmt(d if d.hour else d.replace(hour=11))
+    t = str(v).strip()
+    if parse_dt(t):
+        d = parse_dt(t)
+        return fmt(d if len(t) > 10 else d.replace(hour=11))
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?", t)
+    if not m:
+        return None
+    hoy = ahora()
+    anio = int(m[3]) + (2000 if m[3] and len(m[3]) == 2 else 0) if m[3] else hoy.year
+    try:
+        d = datetime(anio, int(m[2]), int(m[1]), int(m[4] or 11), int(m[5] or 0))
+    except ValueError:
+        return None
+    if not m[3] and d < hoy - timedelta(days=60):
+        d = d.replace(year=anio + 1)  # "15/1" escrito en diciembre es del año que viene
+    return fmt(d)
 
 
 def filas_a_prospectos(filas: list[list]) -> list[dict]:
@@ -2004,6 +2040,7 @@ def filas_a_prospectos(filas: list[list]) -> list[dict]:
         if d.get("maps_url") and not str(d["maps_url"]).startswith("http"):
             d["maps_url"] = None
         d["estado"] = _ESTADO_EXCEL.get(normalizar(d.get("estado")), "sin_contactar")
+        d["proxima_llamada"] = _fecha_excel(d.get("proxima_llamada"))
         out.append(d)
     return out
 
@@ -2022,6 +2059,13 @@ def importar(db: str, contenido: bytes) -> dict:
     for d in prospectos:
         d["guardar_fuera_de_zona"] = True
         pid, que = crear_prospecto(db, d, fuente="excel")
+        if que == "creado" and d.get("proxima_llamada"):
+            c = _conn(db)
+            try:
+                c.execute("UPDATE fid_prospectos SET proxima_llamada = ? WHERE id = ?", (d["proxima_llamada"], pid))
+                c.commit()
+            finally:
+                c.close()
         if que == "creado" and normalizar_ciudad(d.get("ciudad")) == "Montevideo"                 and not normalizar_zona(d.get("zona"), d.get("barrio")):
             que = "fuera_de_zona"
         cuenta[que] += 1

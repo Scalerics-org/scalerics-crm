@@ -336,3 +336,24 @@ def test_el_pipeline_esta_en_la_pantalla():
 def test_spa_es_palabra_entera():
     assert fid.rubro_de("Cafetería", "Spazio Moka") == "restaurante"
     assert fid.rubro_de("Day Spa") == "peluqueria" and fid.rubro_de("Salón de uñas") == "peluqueria"
+
+
+# ── la planilla de la calle (28/9) ───────────────────────────────────────────
+
+def test_la_planilla_de_la_calle_entra_con_dueno_resultado_y_proxima_llamada(db):
+    filas = [["Nombre", "Ciudad", "Barrio", "Tipo", "Teléfono", "Dueño", "Celular del dueño", "Resultado",
+              "Próxima llamada", "Notas"],
+             ["Pizza Calle", "Montevideo", "Pocitos", "Pizzería", "2708 1234", "Martín", "099 123 456", "Interesado",
+              "30/9 16:00", "Mandar demo"],
+             ["Barbería Calle", "Montevideo", "Buceo", "Barbería", "", "", "", "No le interesa", "", ""]]
+    ps = fid.filas_a_prospectos(filas)
+    assert ps[0]["contacto_tel"] == "099 123 456" and ps[0]["telefono"] == "2708 1234"
+    assert ps[0]["contacto"] == "Martín" and ps[0]["estado"] == "contactado"
+    assert ps[0]["proxima_llamada"] == f"{fid.ahora().year}-09-30 16:00" or ps[0]["proxima_llamada"].endswith("-09-30 16:00")
+    assert ps[1]["estado"] == "descartado" and ps[1]["proxima_llamada"] is None
+
+
+def test_fechas_como_las_anotan():
+    assert fid._fecha_excel("2026-10-02") == "2026-10-02 11:00"
+    assert fid._fecha_excel("46295") == "2026-09-30 11:00"          # fecha de Excel
+    assert fid._fecha_excel("mañana") is None and fid._fecha_excel("") is None
