@@ -57,6 +57,8 @@ const HERRAMIENTA = {
   },
 };
 
+const { crearPedidos } = require('./captacion-pedidos');
+
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 function hoyEnMontevideo(ahora) {
@@ -105,17 +107,32 @@ function crearCaptacion({ cfg, modelo, proveedor, repo = null, logger = null, ah
   const grupo = (cfg.GRUPO_CAPTACION_JID || '').trim();
   const activo = Boolean(grupo && cfg.CRM_API_URL && cfg.CRM_ADMIN_TOKEN && modelo?.activo);
 
-  async function cargar(visita, autor) {
-    const r = await fetch(`${cfg.CRM_API_URL.replace(/\/$/, '')}/api/fidelidad/visitas`, {
-      method: 'POST',
+  async function crm(method, path, body) {
+    const r = await fetch(`${cfg.CRM_API_URL.replace(/\/$/, '')}${path}`, {
+      method,
       headers: { 'Content-Type': 'application/json', 'x-admin-token': cfg.CRM_ADMIN_TOKEN },
-      body: JSON.stringify({ ...visita, autor, fuente: 'whatsapp' }),
+      body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10000),
     });
     let datos = null;
     try { datos = await r.json(); } catch { /* sin cuerpo */ }
     if (!r.ok) throw new Error((datos && datos.error) || `el CRM contestó ${r.status}`);
     return datos;
+  }
+
+  function cargar(visita, autor) {
+    const limpia = Object.fromEntries(Object.entries(visita).filter(([, x]) => x !== '' && x != null));
+    return crm('POST', '/api/fidelidad/visitas', { ...limpia, autor, fuente: 'whatsapp' });
+  }
+
+  const pedidos = crearPedidos({
+    crm, modelo, sistema: () => sistema(ahora()), visitaSchema: HERRAMIENTA.parametros.properties.visitas,
+    cargarVisita: cargar, resumenVisita: resumen, ahora,
+  });
+
+  /** Le hablan al bot: lo nombran, empiezan con "bot" o le responden a él. */
+  function esPedido(m) {
+    return Boolean(m.alBot) || /^\s*@?bot(?![a-z])/i.test(m.texto);
   }
 
   async function recibir(m) {
@@ -126,6 +143,19 @@ function crearCaptacion({ cfg, modelo, proveedor, repo = null, logger = null, ah
     }
     if (!activo || !m.texto || !m.texto.trim()) return;
     if (repo && !repo.entranteEsNuevo(m.id)) return;
+
+    if (esPedido(m)) {
+      let texto;
+      try {
+        texto = await pedidos.atender(m);
+      } catch (e) {
+        logger?.warn({ err: String(e.message || e) }, 'captación: falló un pedido');
+        texto = `No pude hacerlo: ${e.message || e}`;
+      }
+      logger?.info({ id: m.id }, 'captación: pedido');
+      await proveedor.enviarTexto(grupo, texto);
+      return;
+    }
 
     const r = await modelo.pedir({
       system: sistema(ahora()),
@@ -142,9 +172,8 @@ function crearCaptacion({ cfg, modelo, proveedor, repo = null, logger = null, ah
 
     const partes = [];
     for (const v of a.visitas.slice(0, 6)) {
-      const visita = Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '' && x != null));
       try {
-        partes.push(resumen(await cargar(visita, m.nombre || '')));
+        partes.push(resumen(await cargar(v, m.nombre || '')));
       } catch (e) {
         logger?.warn({ err: String(e.message || e) }, 'captación: no se pudo cargar una visita');
         partes.push(`No pude cargar *${v.nombre}*: ${e.message || e}`);

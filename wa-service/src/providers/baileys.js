@@ -61,6 +61,21 @@ function telefonoDelMensaje(key) {
 }
 
 /** Saca el texto de un mensaje entrante, sea plano o con formato. */
+/**
+ * Si un mensaje de grupo le habla al bot: lo menciona (@bot) o responde a un
+ * mensaje suyo. `propios` son los JID del bot (el de telefono y el LID).
+ */
+function esParaElBot(msg, propios) {
+  const base = (j) => String(j || '').split('@')[0].split(':')[0];
+  const mios = new Set(propios.filter(Boolean).map(base));
+  if (!mios.size) return false;
+  const m = msg?.message || {};
+  const ctx = m.extendedTextMessage?.contextInfo || m.imageMessage?.contextInfo || m.videoMessage?.contextInfo;
+  if (!ctx) return false;
+  if ((ctx.mentionedJid || []).some((j) => mios.has(base(j)))) return true;
+  return Boolean(ctx.participant && mios.has(base(ctx.participant)));
+}
+
 function textoDeMensaje(msg) {
   const m = msg?.message;
   if (!m) return '';
@@ -330,6 +345,7 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
             handlerGrupo({
               grupo: jid, texto, id: msg.key?.id || null, nombre: msg.pushName || '',
               from: autor.endsWith('@lid') ? null : telefonoDeJid(autor),
+              alBot: esParaElBot(msg, [sock?.user?.id, sock?.user?.lid]),
             });
           } else {
             logger?.debug({ jid }, 'entrante ignorado: es de grupo');
@@ -511,5 +527,5 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
 }
 
 module.exports = {
-  crear, jidDeTelefono, telefonoDeJid, telefonoDelMensaje, textoDeMensaje, medioDeMensaje, BACKOFF_MS,
+  crear, jidDeTelefono, telefonoDeJid, telefonoDelMensaje, textoDeMensaje, medioDeMensaje, esParaElBot, BACKOFF_MS,
 };
