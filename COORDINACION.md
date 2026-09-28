@@ -533,6 +533,13 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **28/9 — Fidelidad y bot del grupo de captación (PRs #108–#114, todo deployado: CRM v292, `scalerics-wa` v113).**
+  - **Mail** desde el Gmail de cada usuario (`services/gmail_usuario.py`, token cifrado con `CREDENCIALES_KEY`) con plantillas editables (`fid_plantillas`). **No manda hasta que Juan cree el cliente OAuth web** y cargue `GMAIL_WEB_CLIENT_ID` / `GMAIL_WEB_CLIENT_SECRET` en Fly (redirect `https://scalerics-crm.fly.dev/oauth/gmail/callback`, scope `gmail.send`).
+  - Agenda arranca en el mes; vuelve el Pipeline; rubro **Otros** (`rubro_de`); entra **todo Montevideo** (se sacó la restricción a CH/Carrasco; al buscar comercios nuevos, priorizar CH y Carrasco).
+  - Captación en la calle: `+ Visita` y `POST /api/fidelidad/visitas` (`fid_visitas`, no cuenta como llamada). Planilla modelo en el escritorio de Juan.
+  - **Bot:** escucha SOLO `GRUPO_CAPTACION_JID` (grupo "empresa fidelizacion") y **solo actúa si lo arroban** (Juan: no gastar ni mezclarse). Con @ interpreta con `CAPTACION_MODELO` (claude-sonnet-5) si es avance o pedido (`src/captacion-pedidos.js`: resumen, llamar hoy, info, agendar, anotar, dueño, marcar) y contesta. Si el bot no puede descifrar mensajes de un miembro ("No session found"), `POST /captacion/saludar` (desde la máquina: `http://[$FLY_PRIVATE_IP]:8080`) le hace mandar un mensaje al grupo y arma las sesiones.
+  - **No correr Playwright en la notebook de Juan** (2 núcleos, 8 GB: se traba). Quedó listo `.github/workflows/fidelidad-buscador.yml` pero no se pudo subir: el token de `gh` no tiene scope `workflow` (Juan tiene que correr `gh auth refresh -h github.com -s workflow`).
+
 - **25/9 — Outbound de Fidelidad: lista única, pedido de Juan.** Rama `feat/outbound-lista-unica` (worktree `../crm-outbound-v2`).
   - Las cinco pestañas (Mi día, Pipeline, Todos, Reuniones) pasan a ser una sola lista; la Agenda queda detrás de un botón. Vencidas en rojo arriba, las de hoy en verde, después el resto por `target()` (qué tan parecido es a una pizzería/hamburguesería de barrio; en peluquerías, barbería).
   - Filtros Montevideo / Buenos Aires y Restaurantes / Peluquerías: columnas nuevas `ciudad`, `rubro` y `contacto_tel` en `fid_prospectos`, y `antes` en `fid_llamadas` (para deshacer). La migración completa las viejas: Montevideo, y el rubro sale del tipo.
