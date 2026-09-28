@@ -51,6 +51,9 @@ const esquema = z.object({
   // log ("mensaje de un grupo que no es el de captación") la primera vez que
   // alguien escribe en el grupo.
   GRUPO_CAPTACION_JID: z.string().default(''),
+  // El modelo que interpreta el grupo. Mas capaz que el del embudo: son pocos
+  // mensajes al dia y cada uno tiene que entenderse bien (Juan, 28/9).
+  CAPTACION_MODELO: z.string().default('claude-sonnet-5'),
 
   /**
    * Numeros del equipo. Coma-separado.

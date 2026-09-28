@@ -62,8 +62,9 @@ function telefonoDelMensaje(key) {
 
 /** Saca el texto de un mensaje entrante, sea plano o con formato. */
 /**
- * Si un mensaje de grupo le habla al bot: lo menciona (@bot) o responde a un
- * mensaje suyo. `propios` son los JID del bot (el de telefono y el LID).
+ * Si un mensaje de grupo arroba al bot (@bot). Responderle a un mensaje suyo
+ * no cuenta: Juan quiere que conteste solo si lo arroban (28/9). `propios` son
+ * los JID del bot (el de telefono y el LID).
  */
 function esParaElBot(msg, propios) {
   const base = (j) => String(j || '').split('@')[0].split(':')[0];
@@ -72,8 +73,7 @@ function esParaElBot(msg, propios) {
   const m = msg?.message || {};
   const ctx = m.extendedTextMessage?.contextInfo || m.imageMessage?.contextInfo || m.videoMessage?.contextInfo;
   if (!ctx) return false;
-  if ((ctx.mentionedJid || []).some((j) => mios.has(base(j)))) return true;
-  return Boolean(ctx.participant && mios.has(base(ctx.participant)));
+  return (ctx.mentionedJid || []).some((j) => mios.has(base(j)));
 }
 
 function textoDeMensaje(msg) {
