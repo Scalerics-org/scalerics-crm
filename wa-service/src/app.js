@@ -270,7 +270,12 @@ function construir(cfg, {
 
   // El grupo de captacion en la calle: la IA saca los locales visitados y los
   // carga en el Outbound de Fidelidad del CRM. Aparte del embudo de leads.
-  const captacion = crearCaptacion({ cfg, modelo: modeloIA, proveedor, repo, logger: log, ahora });
+  const modeloCaptacion = clienteModelo || crearModelo({
+    cliente: clienteAnthropic(cfg.ANTHROPIC_API_KEY),
+    modelo: cfg.CAPTACION_MODELO,
+    logger: log,
+  });
+  const captacion = crearCaptacion({ cfg, modelo: modeloCaptacion, proveedor, repo, logger: log, ahora });
   proveedor.alRecibirGrupo?.((m) => {
     captacion.recibir(m).catch((e) => log.warn({ err: String(e.message || e) }, 'captación: falló'));
   });

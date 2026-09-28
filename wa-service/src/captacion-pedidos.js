@@ -16,41 +16,33 @@
 const ACCIONES = ['resumen', 'llamar_hoy', 'info_local', 'agendar_reunion', 'agendar_llamada', 'anotar',
   'dueno', 'marcar_cliente', 'marcar_no_interesa', 'cargar_visitas', 'no_entiendo'];
 
-function herramientaPedido(visitaSchema) {
-  return {
-    nombre: 'interpretar_pedido',
-    descripcion: 'Qué le pidieron al bot, para hacerlo en el CRM.',
-    parametros: {
-      type: 'object',
-      properties: {
-        accion: {
-          type: 'string',
-          enum: ACCIONES,
-          description: [
-            'resumen: cuántas visitas, llamadas o reuniones hubo (hoy, ayer, la semana…).',
-            'llamar_hoy: a quién hay que llamar hoy / qué está vencido.',
-            'info_local: qué se sabe de un local.',
-            'agendar_reunion / agendar_llamada: dejar una reunión o una llamada con fecha para un local.',
-            'anotar: agregar una nota a un local.',
-            'dueno: cargar el nombre o el celular del dueño o encargado de un local.',
-            'marcar_cliente / marcar_no_interesa: cambiar el estado de un local.',
-            'cargar_visitas: cargar uno o más locales visitados.',
-            'no_entiendo: cualquier otra cosa.',
-          ].join(' '),
-        },
-        local: { type: 'string', description: 'El nombre del local del que hablan, si hablan de uno.' },
-        desde: { type: 'string', description: 'Para resumen: primer día, AAAA-MM-DD.' },
-        hasta: { type: 'string', description: 'Para resumen: último día, AAAA-MM-DD.' },
-        fecha: { type: 'string', description: 'Para agendar: AAAA-MM-DDTHH:MM en hora de Montevideo.' },
-        nota: { type: 'string' },
-        contacto: { type: 'string', description: 'Nombre del dueño o encargado.' },
-        contacto_tel: { type: 'string', description: 'Celular del dueño o encargado.' },
-        visitas: visitaSchema,
-      },
-      required: ['accion'],
-    },
-  };
-}
+/** Lo que la IA completa cuando el mensaje es un pedido (src/captacion.js). */
+const PROPIEDADES_PEDIDO = {
+  accion: {
+    type: 'string',
+    enum: ACCIONES,
+    description: [
+      'Solo si tipo=pedido.',
+      'resumen: cuántas visitas, llamadas o reuniones hubo (hoy, ayer, la semana…).',
+      'llamar_hoy: a quién hay que llamar hoy / qué está vencido.',
+      'info_local: qué se sabe de un local.',
+      'agendar_reunion / agendar_llamada: dejar una reunión o una llamada con fecha para un local.',
+      'anotar: agregar una nota a un local.',
+      'dueno: cargar el nombre o el celular del dueño o encargado de un local.',
+      'marcar_cliente / marcar_no_interesa: cambiar el estado de un local.',
+      'cargar_visitas: cargar uno o más locales (usá "visitas").',
+      'no_entiendo: le piden algo que no está en esta lista o no se entiende.',
+    ].join(' '),
+  },
+  local: { type: 'string', description: 'El nombre del local del que hablan, si hablan de uno (sacalo también del contexto: "ese", "el de Pocitos").' },
+  desde: { type: 'string', description: 'Para resumen: primer día, AAAA-MM-DD.' },
+  hasta: { type: 'string', description: 'Para resumen: último día, AAAA-MM-DD.' },
+  fecha: { type: 'string', description: 'Para agendar: AAAA-MM-DDTHH:MM en hora de Montevideo.' },
+  nota: { type: 'string' },
+  contacto: { type: 'string', description: 'Nombre del dueño o encargado.' },
+  contacto_tel: { type: 'string', description: 'Celular del dueño o encargado.' },
+  pregunta: { type: 'string', description: 'Si falta un dato para hacerlo (qué local, qué día) o el pedido es ambiguo, la pregunta corta y amable para pedirlo, en voseo rioplatense.' },
+};
 
 const ESTADOS = {
   sin_contactar: 'Sin contactar', contactado: 'Contactado', reunion_agendada: 'Reunión agendada',
@@ -59,7 +51,7 @@ const ESTADOS = {
 const RESULTADOS = { visitado: 'visitados', interesado: 'interesados', reunion: 'reuniones',
   no_interesa: 'no les interesa', cliente: 'clientes' };
 
-const AYUDA = 'Me podés pedir, nombrándome:\n'
+const AYUDA = 'Arrobándome me podés pedir:\n'
   + '• cuántas visitas o llamadas hubo (hoy, la semana…)\n'
   + '• a quién hay que llamar hoy\n'
   + '• qué sabemos de un local\n'
@@ -67,7 +59,7 @@ const AYUDA = 'Me podés pedir, nombrándome:\n'
   + '• anotar algo o cargar el dueño de un local\n'
   + '• marcar un local como cliente o "no le interesa"\n'
   + '• cargar visitas\n'
-  + 'Y las visitas que anoten acá las cargo solo.';
+  + 'Si no me arroban, no leo nada.';
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
@@ -134,9 +126,7 @@ function textoLocal(p) {
   return lineas.join('\n');
 }
 
-function crearPedidos({ crm, modelo, sistema, visitaSchema, cargarVisita, resumenVisita, ahora }) {
-  const HERRAMIENTA = herramientaPedido(visitaSchema);
-
+function crearPedidos({ crm, cargarVisita, resumenVisita, ahora }) {
   /** Un solo local por nombre, o un texto para contestar si no se pudo. */
   async function buscarLocal(nombre) {
     if (!nombre) return { error: '¿De qué local? Decime el nombre.' };
@@ -148,16 +138,10 @@ function crearPedidos({ crm, modelo, sistema, visitaSchema, cargarVisita, resume
     return { error: `Encontré varios: ${items.map((p) => `${p.nombre}${p.barrio ? ` (${p.barrio})` : ''}`).join(', ')}. ¿Cuál?` };
   }
 
-  async function atender(m) {
+  /** Hace el pedido ya interpretado por la IA y devuelve el texto para el grupo. */
+  async function ejecutar(a, m) {
     const hoy = ahora().toLocaleDateString('en-CA', { timeZone: 'America/Montevideo' });
-    const r = await modelo.pedir({
-      system: sistema() + '\nAhora te están pidiendo algo a vos (te nombraron). Interpretá qué quieren.',
-      mensajes: [{ role: 'user', content: `${m.nombre || 'Alguien del equipo'} escribió:\n${m.texto}` }],
-      herramienta: HERRAMIENTA,
-      maxTokens: 900,
-    });
-    const a = r?.argumentos;
-    if (!a) return 'Ahora no puedo pensar (falló la IA). Probá de nuevo en un rato.';
+    if (a.pregunta && (!a.accion || a.accion === 'no_entiendo')) return a.pregunta;
     const autor = m.nombre || '';
 
     switch (a.accion) {
@@ -214,11 +198,11 @@ function crearPedidos({ crm, modelo, sistema, visitaSchema, cargarVisita, resume
         return '✓ Cargado en el CRM\n' + partes.join('\n\n');
       }
       default:
-        return `No entendí qué necesitás. ${AYUDA}`;
+        return a.pregunta || `No entendí qué necesitás. ${AYUDA}`;
     }
   }
 
-  return { atender };
+  return { ejecutar };
 }
 
-module.exports = { crearPedidos, textoResumen, textoLlamarHoy, textoLocal, normal, AYUDA };
+module.exports = { crearPedidos, PROPIEDADES_PEDIDO, ACCIONES, textoResumen, textoLlamarHoy, textoLocal, normal, AYUDA };

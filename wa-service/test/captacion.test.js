@@ -51,14 +51,32 @@ const CREADO = {
   },
 };
 
-test('carga la visita en el CRM y contesta en el grupo lo que cargó', async () => {
+test('sin arrobar al bot no se llama a la IA ni se carga nada', async () => {
+  const { proveedor, modelo, captacion } = await armar({ tipo: 'avance', visitas: [{ nombre: 'La Pizzería de Juan', resultado: 'interesado' }] });
+  const pedidos = await conFetch(() => CREADO, () => captacion.recibir({ grupo: GRUPO, id: 's1', nombre: 'Gonzalo', texto: 'Pasé por La Pizzería de Juan, le interesó' }));
+  assert.equal(modelo.llamadas.length, 0);
+  assert.equal(pedidos.length, 0);
+  assert.equal(proveedor.getEnviados().length, 0);
+});
+
+test('lo que se dijo sin arrobarlo sirve de contexto cuando lo arroban', async () => {
+  const { modelo, captacion } = await armar({ tipo: 'avance', visitas: [{ nombre: 'La Pizzería de Juan', resultado: 'interesado' }] });
+  await conFetch(() => CREADO, async () => {
+    await captacion.recibir({ grupo: GRUPO, id: 'x1', nombre: 'Gonzalo', texto: 'Pasé por La Pizzería de Juan, le interesó' });
+    await captacion.recibir({ grupo: GRUPO, id: 'x2', nombre: 'Juan', alBot: true, texto: '@bot cargá lo que dijo Gonzalo' });
+  });
+  assert.equal(modelo.llamadas.length, 1);
+  assert.match(modelo.llamadas[0].mensajes[0].content, /\[Gonzalo\] Pasé por La Pizzería de Juan/);
+});
+
+test('carga la visita en el CRM y, si lo arrobaron, contesta lo que cargó', async () => {
   const { proveedor, modelo, captacion } = await armar({
-    es_avance: true,
+    tipo: 'avance',
     visitas: [{ nombre: 'La Pizzería de Juan', barrio: 'Pocitos', contacto: 'Martín', contacto_tel: '099 123 456',
       resultado: 'interesado', proxima: '2026-10-01T16:00', telefono: '' }],
   });
   const pedidos = await conFetch(() => CREADO, () => captacion.recibir({
-    grupo: GRUPO, id: 'm1', nombre: 'Gonzalo',
+    grupo: GRUPO, id: 'm1', nombre: 'Gonzalo', alBot: true,
     texto: 'Pasé por La Pizzería de Juan en Pocitos, el dueño Martín 099 123 456, le interesó, llamar el jueves a la tarde',
   }));
   assert.equal(pedidos.length, 1);
@@ -78,39 +96,39 @@ test('carga la visita en el CRM y contesta en el grupo lo que cargó', async () 
 });
 
 test('lo que no es un avance no se carga ni se contesta', async () => {
-  const { proveedor, captacion } = await armar({ es_avance: false, visitas: [] });
+  const { proveedor, captacion } = await armar({ tipo: 'charla' });
   const pedidos = await conFetch(() => CREADO, () => captacion.recibir({ grupo: GRUPO, id: 'm2', texto: 'Hoy almorzamos 🍕' }));
   assert.equal(pedidos.length, 0);
   assert.equal(proveedor.getEnviados().length, 0);
 });
 
 test('solo escucha su grupo, y no procesa dos veces el mismo mensaje', async () => {
-  const { modelo, captacion } = await armar({ es_avance: true, visitas: [{ nombre: 'X', resultado: 'visitado' }] });
+  const { modelo, captacion } = await armar({ tipo: 'avance', visitas: [{ nombre: 'X', resultado: 'visitado' }] });
   await conFetch(() => CREADO, async () => {
-    await captacion.recibir({ grupo: 'otro@g.us', id: 'a', texto: 'Pasé por X' });
-    await captacion.recibir({ grupo: GRUPO, id: 'b', texto: 'Pasé por X' });
-    await captacion.recibir({ grupo: GRUPO, id: 'b', texto: 'Pasé por X' });
+    await captacion.recibir({ grupo: 'otro@g.us', id: 'a', alBot: true, texto: 'Pasé por X' });
+    await captacion.recibir({ grupo: GRUPO, id: 'b', alBot: true, texto: 'Pasé por X' });
+    await captacion.recibir({ grupo: GRUPO, id: 'b', alBot: true, texto: 'Pasé por X' });
   });
   assert.equal(modelo.llamadas.length, 1);
 });
 
 test('sin grupo configurado no hace nada', async () => {
-  const { modelo, captacion } = await armar({ es_avance: true, visitas: [] }, { ...CFG, GRUPO_CAPTACION_JID: '' });
+  const { modelo, captacion } = await armar({ tipo: 'charla' }, { ...CFG, GRUPO_CAPTACION_JID: '' });
   assert.equal(captacion.activo, false);
-  await captacion.recibir({ grupo: GRUPO, id: 'c', texto: 'Pasé por X' });
+  await captacion.recibir({ grupo: GRUPO, id: 'c', alBot: true, texto: 'Pasé por X' });
   assert.equal(modelo.llamadas.length, 0);
 });
 
 test('si el CRM rechaza uno, lo dice y carga los demás', async () => {
   const { proveedor, captacion } = await armar({
-    es_avance: true,
+    tipo: 'avance',
     visitas: [{ nombre: 'Uno', resultado: 'visitado' }, { nombre: 'Dos', resultado: 'no_interesa' }],
   });
   await conFetch((b) => (b.nombre === 'Uno'
     ? { status: 400, datos: { ok: false, error: 'la fecha no puede quedar en el pasado' } }
     : { status: 201, datos: { ok: true, nuevo: false, resultado: 'No le interesa',
       prospecto: { nombre: 'Dos', barrio: 'Cordón', estado: 'descartado' } } }),
-  () => captacion.recibir({ grupo: GRUPO, id: 'd', texto: 'Uno y Dos' }));
+  () => captacion.recibir({ grupo: GRUPO, id: 'd', alBot: true, texto: '@bot Uno y Dos' }));
   const [r] = proveedor.getEnviados();
   assert.match(r.texto, /No pude cargar \*Uno\*: la fecha no puede quedar en el pasado/);
   assert.match(r.texto, /\*Dos\* · Cordón \(ya estaba: actualizado\)/);
@@ -118,7 +136,7 @@ test('si el CRM rechaza uno, lo dice y carga los demás', async () => {
 });
 
 test('saluda en el grupo (así arma las sesiones de cifrado con todos)', async () => {
-  const { proveedor, captacion } = await armar({ es_avance: false, visitas: [] });
+  const { proveedor, captacion } = await armar({ tipo: 'charla' });
   await captacion.saludar();
   const [r] = proveedor.getEnviados();
   assert.equal(r.to, GRUPO);
@@ -151,7 +169,7 @@ const LISTA = { status: 200, datos: { items: [
 ] } };
 
 test('pedido de resumen: consulta el CRM y contesta, sin cargar visitas', async () => {
-  const { proveedor, captacion } = await armar({ accion: 'resumen' });
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'resumen' });
   const pedidos = await conFetch(() => ({ status: 200, datos: {
     desde: '2026-09-28', hasta: '2026-09-28',
     visitas: { total: 3, por_persona: { Gonzalo: 2, Lucas: 1 }, por_resultado: { interesado: 2, no_interesa: 1 } },
@@ -167,9 +185,16 @@ test('pedido de resumen: consulta el CRM y contesta, sin cargar visitas', async 
   assert.match(r.texto, /Reuniones agendadas: Rodelú \(vie 2\/10 11:00\)/);
 });
 
-test('"bot, a quién llamo hoy" sin mencionarlo también es un pedido', async () => {
-  const { proveedor, captacion } = await armar({ accion: 'llamar_hoy' });
-  await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p2', texto: 'bot, a quién llamo hoy?' }));
+test('un pedido sin arrobar al bot no se hace ni se contesta', async () => {
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'llamar_hoy' });
+  const pedidos = await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p2b', texto: 'bot, a quién llamo hoy?' }));
+  assert.equal(pedidos.length, 0);
+  assert.equal(proveedor.getEnviados().length, 0);
+});
+
+test('a quién llamar hoy', async () => {
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'llamar_hoy' });
+  await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p2', alBot: true, texto: '@bot a quién llamo hoy?' }));
   const [r] = proveedor.getEnviados();
   assert.match(r.texto, /Vencidas \(1\): Smashico Burger \(dom 27\/9\)/);
   assert.match(r.texto, /Para hoy \(1\): Burger Club \(16:00\)/);
@@ -177,12 +202,12 @@ test('"bot, a quién llamo hoy" sin mencionarlo también es un pedido', async ()
 });
 
 test('agendar: busca el local, pide la fecha si falta y agenda', async () => {
-  let armado = await armar({ accion: 'agendar_reunion', local: 'Rodelú' });
+  let armado = await armar({ tipo: 'pedido', accion: 'agendar_reunion', local: 'Rodelú' });
   await conFetch(() => ({ status: 200, datos: { items: [{ id: 7, nombre: 'Rodelú' }] } }),
     () => armado.captacion.recibir({ grupo: GRUPO, id: 'p3', alBot: true, texto: 'agendá con Rodelú' }));
   assert.match(armado.proveedor.getEnviados()[0].texto, /¿Para cuándo la reunión con Rodelú\?/);
 
-  armado = await armar({ accion: 'agendar_reunion', local: 'rodelu', fecha: '2026-10-02T11:00' });
+  armado = await armar({ tipo: 'pedido', accion: 'agendar_reunion', local: 'rodelu', fecha: '2026-10-02T11:00' });
   const pedidos = await conFetch((body, url) => (url.includes('/agendar')
     ? { status: 200, datos: { prospecto: { nombre: 'Rodelú', fecha_reunion: '2026-10-02 11:00' } } }
     : { status: 200, datos: { items: [{ id: 7, nombre: 'Rodelú' }, { id: 8, nombre: 'Rodelú Express' }] } }),
@@ -193,30 +218,71 @@ test('agendar: busca el local, pide la fecha si falta y agenda', async () => {
 });
 
 test('si hay varios locales parecidos, pregunta cuál', async () => {
-  const { proveedor, captacion } = await armar({ accion: 'info_local', local: 'burger' });
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'info_local', local: 'burger' });
   await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p5', alBot: true, texto: 'qué sabemos de burger' }));
   assert.match(proveedor.getEnviados()[0].texto, /Encontré varios: Smashico Burger, Burger Club, Rigor Pizza\. ¿Cuál\?/);
 });
 
 test('lo que no entiende lo contesta igual, con lo que sabe hacer', async () => {
-  const { proveedor, captacion } = await armar({ accion: 'no_entiendo' });
+  const { proveedor, captacion } = await armar({ tipo: 'charla' });
   const pedidos = await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p6', alBot: true, texto: '@bot cantame algo' }));
   assert.equal(pedidos.length, 0);
   assert.equal(proveedor.getEnviados()[0].texto, `No entendí qué necesitás. ${AYUDA}`);
 });
 
 test('si el CRM falla, lo dice en el grupo', async () => {
-  const { proveedor, captacion } = await armar({ accion: 'llamar_hoy' });
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'llamar_hoy' });
   await conFetch(() => ({ status: 500, datos: { error: 'se cayó' } }),
     () => captacion.recibir({ grupo: GRUPO, id: 'p7', alBot: true, texto: 'a quién llamo' }));
   assert.equal(proveedor.getEnviados()[0].texto, 'No pude hacerlo: se cayó');
 });
 
-test('reconoce cuándo le hablan al bot: mención o respuesta a un mensaje suyo', () => {
+test('le hablan al bot solo si lo arroban (responderle no cuenta)', () => {
   const propios = ['59892000713:12@s.whatsapp.net', '99887766554433:12@lid'];
   const con = (contextInfo) => ({ message: { extendedTextMessage: { text: 'x', contextInfo } } });
   assert.equal(esParaElBot(con({ mentionedJid: ['99887766554433@lid'] }), propios), true);
-  assert.equal(esParaElBot(con({ participant: '59892000713@s.whatsapp.net' }), propios), true);
+  assert.equal(esParaElBot(con({ participant: '59892000713@s.whatsapp.net' }), propios), false);
   assert.equal(esParaElBot(con({ mentionedJid: ['59811111111@s.whatsapp.net'] }), propios), false);
   assert.equal(esParaElBot({ message: { conversation: 'hola' } }, propios), false);
+});
+
+
+test('si falta un dato, pregunta en vez de adivinar', async () => {
+  const { proveedor, captacion } = await armar({ tipo: 'pedido', accion: 'no_entiendo', pregunta: '¿De qué local hablás?' });
+  await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'q1', alBot: true, texto: 'bot agendá eso' }));
+  assert.equal(proveedor.getEnviados()[0].texto, '¿De qué local hablás?');
+});
+
+test('la IA ve los mensajes anteriores del grupo y lo que contestó el bot', async () => {
+  const { modelo, captacion } = await armar({ tipo: 'pedido', accion: 'llamar_hoy' });
+  await conFetch(() => LISTA, async () => {
+    await captacion.recibir({ grupo: GRUPO, id: 'c1', nombre: 'Lucas', alBot: true, texto: 'a quién llamo hoy?' });
+    await captacion.recibir({ grupo: GRUPO, id: 'c2', nombre: 'Lucas', alBot: true, texto: 'y el primero de esos?' });
+  });
+  const segundo = modelo.llamadas[1].mensajes[0].content;
+  assert.match(segundo, /\[Lucas\] a quién llamo hoy\?/);
+  assert.match(segundo, /\[Bot\] Vencidas \(1\): Smashico Burger/);
+  assert.match(segundo, /Último mensaje, de Lucas \(le habla al bot\):\ny el primero de esos\?$/);
+});
+
+test('charla entre ellos no se contesta; si le hablan al bot y es charla, contesta con lo que sabe hacer', async () => {
+  const { proveedor, captacion } = await armar({ tipo: 'charla' });
+  await conFetch(() => LISTA, async () => {
+    await captacion.recibir({ grupo: GRUPO, id: 'h1', texto: 'nos vemos a las 3 en la esquina' });
+    await captacion.recibir({ grupo: GRUPO, id: 'h2', alBot: true, texto: 'bot, qué onda' });
+  });
+  const env = proveedor.getEnviados();
+  assert.equal(env.length, 1);
+  assert.match(env[0].texto, /^No entendí qué necesitás/);
+});
+
+test('si la IA falla y le hablaban al bot, lo dice', async () => {
+  const proveedor = crearMock();
+  await proveedor.conectar();
+  const captacion = crearCaptacion({ cfg: CFG, proveedor, modelo: { activo: true, pedir: async () => null } });
+  await captacion.recibir({ grupo: GRUPO, id: 'f1', alBot: true, texto: 'bot?' });
+  await captacion.recibir({ grupo: GRUPO, id: 'f2', texto: 'charla' });
+  const env = proveedor.getEnviados();
+  assert.equal(env.length, 1);
+  assert.match(env[0].texto, /falló la IA/);
 });
