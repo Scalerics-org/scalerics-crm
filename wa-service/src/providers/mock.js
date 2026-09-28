@@ -11,6 +11,7 @@ function crear({ logger } = {}) {
   let handler = null;
   let handlerSinTexto = null;
   let handlerSaliente = null;
+  let handlerGrupo = null;
   let conectado = false;
   let contador = 0;
 
@@ -55,6 +56,10 @@ function crear({ logger } = {}) {
       handlerSinTexto = fn;
     },
 
+    alRecibirGrupo(fn) {
+      handlerGrupo = fn;
+    },
+
     // ── solo para tests ────────────────────────────────────────────────────
     getEnviados: () => enviados.slice(),
     getPresencias: () => presencias.slice(),
@@ -67,6 +72,8 @@ function crear({ logger } = {}) {
     // escribiendo desde su telefono. WhatsApp lo entrega igual que el eco de
     // lo que mandamos nosotros, y por eso hay uno solo para los dos casos.
     simularSaliente: (m) => handlerSaliente && handlerSaliente(m),
+    /** Simula un mensaje en un grupo: {grupo, texto, id, nombre}. */
+    simularGrupo: (m) => handlerGrupo && handlerGrupo(m),
   };
 }
 
