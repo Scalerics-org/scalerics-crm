@@ -116,6 +116,14 @@ test('si el CRM rechaza uno, lo dice y carga los demás', async () => {
   assert.match(r.texto, /No le interesa · vuelve en un año/);
 });
 
+test('saluda en el grupo (así arma las sesiones de cifrado con todos)', async () => {
+  const { proveedor, captacion } = await armar({ es_avance: false, visitas: [] });
+  await captacion.saludar();
+  const [r] = proveedor.getEnviados();
+  assert.equal(r.to, GRUPO);
+  assert.match(r.texto, /Soy el bot de Scalerics/);
+});
+
 test('fechas cortas y resumen de una reunión', () => {
   assert.equal(fechaCorta('2026-10-01 16:00'), 'jue 1/10 16:00');
   assert.equal(fechaCorta(null), '');
