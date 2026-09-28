@@ -54,8 +54,9 @@ ZONAS = ["Municipio CH", "Carrasco"]
 CIUDADES = ["Montevideo", "Buenos Aires"]
 RUBROS = {"restaurante": "Restaurantes", "peluqueria": "Peluquerías"}
 # Se busca al principio de cada palabra: "spa" no tiene que agarrar "España".
-_PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas", "nail",
-               "hair", "coiffeur", "estetica", "belleza", "spa", "masaje", "depilacion",
+# Las que terminan en espacio van como palabra entera: "spa " no es "Spazio".
+_PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas ", "nail",
+               "hair", "coiffeur", "estetica", "belleza", "spa ", "masaje", "depilacion",
                "pestanas", "cejas")
 # Lo que recorre `main.py scrape-fidelidad`, barrio por barrio: Google Maps
 # devuelve mejor "pizzería en Pocitos" que "pizzería en Municipio CH".
@@ -72,7 +73,7 @@ _COMIDA = ("restaur", "parrill", "pizz", "sushi", "hambur", "burger", "cafe", "b
 
 
 def rubro_de(tipo: str | None, nombre: str | None = None) -> str:
-    t = " " + normalizar(f"{tipo or ''} {nombre or ''}")
+    t = " " + normalizar(f"{tipo or ''} {nombre or ''}") + " "
     return "peluqueria" if any(" " + c in t for c in _PELUQUERIA) else "restaurante"
 
 
@@ -793,7 +794,8 @@ def armar_hoy(db: str, cuando: datetime | None = None) -> dict:
 
 
 def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str | None = None,
-           q: str | None = None, pagina: int = 1, por_pagina: int = 50) -> dict:
+           q: str | None = None, pagina: int = 1, por_pagina: int = 50,
+           ciudad: str | None = None, rubro: str | None = None) -> dict:
     cond, params = ["archivado = 0"], []
     if estado in ESTADOS:
         cond.append("estado = ?")
@@ -801,10 +803,17 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
     if zona in ZONAS:
         cond.append("zona = ?")
         params.append(zona)
+    if ciudad:
+        cond.append("COALESCE(ciudad, 'Montevideo') = ?")
+        params.append(normalizar_ciudad(ciudad))
+    if rubro in RUBROS:
+        cond.append("COALESCE(rubro, 'restaurante') = ?")
+        params.append(rubro)
     c = _conn(db)
     try:
         filas = [dict(f) for f in c.execute(
-            f"SELECT {_COLS_LISTA}, notas FROM fid_prospectos WHERE {' AND '.join(cond)}", params)]
+            f"SELECT {_COLS_LISTA}, notas, ciudad, rubro, direccion, contacto_tel, instagram FROM fid_prospectos "
+            f"WHERE {' AND '.join(cond)}", params)]
         conc = _categorias_con_cierre(c)
     finally:
         c.close()
@@ -815,6 +824,7 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
         filas = [f for f in filas if nq in normalizar(f"{f['nombre']} {f.get('barrio')} {f.get('tipo')} {f.get('contacto')}")]
     for f in filas:
         f["puntaje"] = puntaje(f, conc)
+        f["target"] = target(f)
         f["categoria"] = categoria(f.get("tipo"))
     filas.sort(key=lambda f: (ESTADOS.index(f["estado"]) if f["estado"] in ESTADOS else 9, -f["puntaje"]))
     total = len(filas)
@@ -825,14 +835,15 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
 
 
 def armar_pipeline(db: str, zona: str | None = None, cat: str | None = None,
-                   por_columna: int = 40) -> dict:
-    todos = listar(db, zona=zona, cat=cat, por_pagina=100000)["items"]
+                   por_columna: int = 40, ciudad: str | None = None, rubro: str | None = None) -> dict:
+    todos = listar(db, zona=zona, cat=cat, por_pagina=100000, ciudad=ciudad, rubro=rubro)["items"]
     cfg = get_config(db)
     cols = []
     for e in ESTADOS:
         items = [p for p in todos if p["estado"] == e]
         if e == "sin_contactar":
-            items.sort(key=lambda p: -p["puntaje"])
+            # El mismo orden que la lista: el más target primero (25/9).
+            items.sort(key=lambda p: -p["target"])
         else:
             items.sort(key=lambda p: (p.get("proxima_llamada") or p.get("fecha_reunion") or "9999"))
         potencial = sum((p.get("mensual_usd") or cfg["precio_usd"]) for p in items)
@@ -2011,7 +2022,7 @@ def importar(db: str, contenido: bytes) -> dict:
     for d in prospectos:
         d["guardar_fuera_de_zona"] = True
         pid, que = crear_prospecto(db, d, fuente="excel")
-        if que == "creado" and not normalizar_zona(d.get("zona"), d.get("barrio")):
+        if que == "creado" and normalizar_ciudad(d.get("ciudad")) == "Montevideo"                 and not normalizar_zona(d.get("zona"), d.get("barrio")):
             que = "fuera_de_zona"
         cuenta[que] += 1
     return {"ok": True, "leidos": len(prospectos), "creados": cuenta["creado"],
