@@ -263,7 +263,7 @@ def test_la_pantalla_es_una_sola_lista():
     html = dashboard.DASHBOARD_HTML
     for id_ in ("fid-lista", "fid-q", "fid-seg-ciudad", "fid-seg-rubro", "fid-kpis-lista"):
         assert f'id="{id_}"' in html, id_
-    for viejo in ('id="fid-t-hoy"', 'id="fid-t-pipe"', 'id="fid-t-todos"', 'id="fid-t-reu"', 'id="fid-drawer"'):
+    for viejo in ('id="fid-t-hoy"', 'id="fid-t-todos"', 'id="fid-t-reu"', 'id="fid-drawer"'):
         assert viejo not in html, viejo
     assert ">Restaurantes</button>" in html and ">Peluquerías</button>" in html
 
@@ -309,3 +309,51 @@ def test_pesa_el_publico_joven():
     # Barrio de estudiantes por encima de uno de comercio de barrio.
     assert fid.target(dict(base, nombre="Pizza X", tipo="Pizzería", barrio="Parque Rodó")) > \
         fid.target(dict(base, nombre="Pizza X", tipo="Pizzería", barrio="Malvín"))
+
+
+# ── el pipeline (vuelve el 28/9) ─────────────────────────────────────────────
+
+def test_el_pipeline_usa_los_filtros_y_el_target(db, cli):
+    flojo = _p(db, "Parrilla Turística", tipo="Parrilla", resenas=6000, telefono="27081234")
+    bueno = _p(db, "Pizzería La Esquina")
+    _p(db, "Barbería Don Pepe", tipo="Barbería")
+    fid.crear_prospecto(db, {"nombre": "Pizzería de Almagro", "ciudad": "Buenos Aires", "barrio": "Almagro",
+                             "tipo": "Pizzería", "telefono": "1145551234"})
+    d = cli.get("/api/fidelidad/pipeline?ciudad=Montevideo&rubro=restaurante").get_json()
+    sin = next(c for c in d["columnas"] if c["estado"] == "sin_contactar")
+    assert [p["id"] for p in sin["items"]] == [bueno, flojo]
+    assert sin["items"][0]["target"] > sin["items"][1]["target"]
+    assert cli.post(f"/api/fidelidad/prospectos/{bueno}/estado", json={"estado": "contactado"}).status_code == 200
+    d = cli.get("/api/fidelidad/pipeline?ciudad=Buenos%20Aires&rubro=restaurante").get_json()
+    assert sum(c["total"] for c in d["columnas"]) == 1
+
+
+def test_el_pipeline_esta_en_la_pantalla():
+    html = dashboard.DASHBOARD_HTML
+    assert 'id="fid-t-pipe"' in html and 'id="fid-kan"' in html and "function fidCargarPipe" in html
+
+
+def test_spa_es_palabra_entera():
+    assert fid.rubro_de("Cafetería", "Spazio Moka") == "restaurante"
+    assert fid.rubro_de("Day Spa") == "peluqueria" and fid.rubro_de("Salón de uñas") == "peluqueria"
+
+
+# ── la planilla de la calle (28/9) ───────────────────────────────────────────
+
+def test_la_planilla_de_la_calle_entra_con_dueno_resultado_y_proxima_llamada(db):
+    filas = [["Nombre", "Ciudad", "Barrio", "Tipo", "Teléfono", "Dueño", "Celular del dueño", "Resultado",
+              "Próxima llamada", "Notas"],
+             ["Pizza Calle", "Montevideo", "Pocitos", "Pizzería", "2708 1234", "Martín", "099 123 456", "Interesado",
+              "30/9 16:00", "Mandar demo"],
+             ["Barbería Calle", "Montevideo", "Buceo", "Barbería", "", "", "", "No le interesa", "", ""]]
+    ps = fid.filas_a_prospectos(filas)
+    assert ps[0]["contacto_tel"] == "099 123 456" and ps[0]["telefono"] == "2708 1234"
+    assert ps[0]["contacto"] == "Martín" and ps[0]["estado"] == "contactado"
+    assert ps[0]["proxima_llamada"] == f"{fid.ahora().year}-09-30 16:00" or ps[0]["proxima_llamada"].endswith("-09-30 16:00")
+    assert ps[1]["estado"] == "descartado" and ps[1]["proxima_llamada"] is None
+
+
+def test_fechas_como_las_anotan():
+    assert fid._fecha_excel("2026-10-02") == "2026-10-02 11:00"
+    assert fid._fecha_excel("46295") == "2026-09-30 11:00"          # fecha de Excel
+    assert fid._fecha_excel("mañana") is None and fid._fecha_excel("") is None

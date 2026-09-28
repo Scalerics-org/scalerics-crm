@@ -357,12 +357,17 @@ function fidLoad() {
 
 function fidVista(v) {
   _fid.vista = v;
-  document.getElementById('fid-v-lista').style.display = v === 'lista' ? '' : 'none';
-  document.getElementById('fid-v-agenda').style.display = v === 'agenda' ? '' : 'none';
-  const b = document.getElementById('fid-t-agenda');
-  b.classList.toggle('on', v === 'agenda');
-  b.textContent = v === 'agenda' ? '← Volver a la lista' : 'Agenda';
+  ['lista','pipe','agenda'].forEach(k => { document.getElementById('fid-v-'+k).style.display = k === v ? '' : 'none'; });
+  // Los botones de Pipeline y Agenda vuelven a la lista si ya estás ahí.
+  [['pipe','Pipeline'],['agenda','Agenda']].forEach(([k, txt]) => {
+    const b = document.getElementById('fid-t-'+k);
+    b.classList.toggle('on', v === k);
+    b.textContent = v === k ? '← Volver a la lista' : txt;
+  });
+  // Ciudad y rubro valen para la lista y el pipeline; la agenda muestra todo.
+  document.getElementById('fid-filtros-comun').style.display = v === 'agenda' ? 'none' : '';
   if (v === 'lista') fidCargarLista();
+  else if (v === 'pipe') fidCargarPipe();
   else fidCargarAgenda();
 }
 
@@ -384,7 +389,8 @@ async function fidFiltro(k, v) {
   _fl[k] = v; _fl.limite = 150; _fl.resaltar = null;
   try { localStorage.setItem('fid_filtros', JSON.stringify({ciudad:_fl.ciudad, rubro:_fl.rubro})); } catch(e) {}
   _fidSegs();
-  fidCargarLista();
+  if (_fid.vista === 'pipe') fidCargarPipe();
+  else fidCargarLista();
 }
 
 function fidBuscar(v) {
@@ -582,6 +588,60 @@ async function fidDuenoGuardar(id) {
   } catch(e) { fidAviso(esc(e.message), 'error'); return; }
   _fl.duA = null;
   _fidPintarLista();
+}
+
+// ── Pipeline (vuelve el 28/9, pedido de Juan) ───────────────────────────────
+// Las etapas en columnas, con los mismos filtros de ciudad y rubro que la lista.
+// Arrastrar una tarjeta la cambia de etapa sin registrar una llamada.
+async function fidCargarPipe() {
+  const q = new URLSearchParams({ciudad: _fl.ciudad, rubro: _fl.rubro});
+  let d; try { d = await _fidJson('/api/fidelidad/pipeline?'+q); } catch(e) { document.getElementById('fid-kan').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  document.getElementById('fid-kan').innerHTML = d.columnas.map(c => {
+    const sub = c.estado === 'sin_contactar' ? 'Del más target al menos'
+      : c.estado === 'cerrado' ? '<span class="fid-up">'+_fidUsd(c.potencial_usd)+' MRR</span>'
+      : c.estado === 'descartado' ? 'Vuelven a la lista al año'
+      : _fidUsd(c.potencial_usd)+' potencial'+(c.probabilidad ? ' · prob. '+Math.round(c.probabilidad*100)+'%' : '');
+    return '<div class="fid-col" data-estado="'+c.estado+'" ondragover="event.preventDefault();this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="fidSoltar(event,this)">'
+      + '<div class="fid-colh"><b>'+c.label+'</b><span>'+c.total+'</span></div><div class="fid-colm">'+sub+'</div>'
+      + (c.items.length ? c.items.map(p => _fidTarjeta(p)).join('') : '<div class="fid-mas">Vacío</div>')
+      + (c.total > c.items.length ? '<div class="fid-mas">+ '+(c.total - c.items.length)+' más en la lista</div>' : '')
+      + '</div>';
+  }).join('');
+}
+function _fidTarjeta(p) {
+  let pie = '';
+  if (p.estado === 'sin_contactar') pie = '<span class="fid-pill">'+p.target+'% target</span>'+(p.rating ? ' <span class="fid-pill">★ '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY')+'</span>' : '');
+  else if (p.estado === 'reunion_agendada' && p.fecha_reunion) {
+    const paso = _fidDt(p.fecha_reunion) < new Date();
+    pie = '<span class="fid-pill '+(paso ? 'r' : 'b')+'">'+(paso ? 'Falta el resultado · ' : '')+esc(fidFecha(p.fecha_reunion))+'</span>';
+  }
+  else if (p.estado === 'piloto' && p.piloto_inicio) pie = '<span class="fid-pill g">Día '+(Math.floor((new Date() - _fidDt(p.piloto_inicio)) / 864e5) + 1)+' de 30</span>';
+  else if (p.estado === 'cerrado') pie = '<span class="fid-pill g">Desde '+esc(fidFecha(p.cerrado_en, false))+'</span>';
+  else if (p.estado === 'descartado') pie = '<span class="fid-meta">'+esc(p.motivo_descarte||'')+'</span>';
+  else if (p.proxima_llamada) {
+    const venc = p.proxima_llamada.slice(0,10) < _fidTxt(new Date()).slice(0,10);
+    pie = '<span class="fid-pill '+(venc ? 'r' : 'a')+'">'+(venc ? 'Vencida' : esc(fidFecha(p.proxima_llamada)))+'</span>';
+  }
+  return '<div class="fid-kc" draggable="true" ondragstart="event.dataTransfer.setData(\'text/plain\',\''+p.id+'\')" onclick="fidAbrir('+p.id+')" title="Ver en la lista">'
+    + '<div class="fid-nm">'+esc(p.nombre)+'</div><div class="fid-meta">'+esc([p.barrio, p.tipo].filter(Boolean).join(' · '))+'</div>'
+    + (pie ? '<div class="ft">'+pie+'</div>' : '') + '</div>';
+}
+function fidSoltar(ev, col) {
+  ev.preventDefault(); col.classList.remove('drop');
+  const id = Number(ev.dataTransfer.getData('text/plain'));
+  if (id) fidMover(id, col.dataset.estado);
+}
+async function fidMover(id, estado) {
+  const body = {estado: estado};
+  if (estado === 'reunion_agendada') {
+    const f = prompt('Fecha y hora de la reunión (AAAA-MM-DD HH:MM). Podés dejarlo vacío.', '');
+    if (f === null) return;
+    if (f) body.fecha_reunion = f;
+  }
+  if (estado === 'descartado') body.motivo = 'No le interesa';
+  try { await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
+  catch(e) { fidAviso(esc(e.message), 'error'); }
+  fidCargarPipe();
 }
 
 // ── Mail con borrador ────────────────────────────────────────────────────────
@@ -2709,6 +2769,17 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .fl-box .fid-err:empty{display:none}
 .fl-ok{font-size:.76rem;color:var(--verde-texto);font-weight:600;flex-basis:100%}
 .fl-mas{display:flex;margin:12px auto}
+.fid-kan{display:grid;grid-template-columns:repeat(7,minmax(170px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+.fid-col{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:12px;padding:10px;min-height:420px}
+.fid-col.drop{border-color:var(--azul);background:var(--azul-tinte)}
+.fid-colh{display:flex;justify-content:space-between;align-items:baseline}
+.fid-colh b{color:var(--texto-fuerte);font-size:.8rem}.fid-colh span{color:var(--texto-debil);font-weight:700;font-size:.8rem}
+.fid-colm{font-size:.68rem;color:var(--texto-debil);margin:4px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--borde)}
+.fid-kc{background:var(--superficie);border:1px solid var(--borde);border-radius:9px;padding:9px;margin-bottom:8px;cursor:grab}
+.fid-kc:hover{border-color:var(--borde-fuerte)}
+.fid-kc .fid-nm{font-size:.78rem}.fid-kc .fid-meta{font-size:.66rem}
+.fid-kc .ft{margin-top:7px;display:flex;gap:4px;flex-wrap:wrap}
+.fid-mas{text-align:center;color:var(--texto-debil);font-size:.72rem;padding:6px}
 .fl-mail{flex-direction:column;align-items:stretch}
 .fl-mail .fid-in{flex:0 0 auto;width:100%}
 .fl-mail textarea.fid-in{min-height:220px;line-height:1.45}
@@ -4012,6 +4083,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div class="fid-sub" id="fid-fecha"></div>
       </div>
       <div class="fid-acciones">
+        <button class="fid-btn" id="fid-t-pipe" onclick="fidVista(_fid.vista === 'pipe' ? 'lista' : 'pipe')">Pipeline</button>
         <button class="fid-btn" id="fid-t-agenda" onclick="fidVista(_fid.vista === 'agenda' ? 'lista' : 'agenda')">Agenda</button>
         <a class="fid-btn" href="/api/fidelidad/export.csv">Exportar CSV</a>
         <label class="fid-btn" for="fid-archivo">Importar Excel</label>
@@ -4021,12 +4093,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="fid-aviso"></div>
 
+    <div class="fid-filtros" id="fid-filtros-comun">
+      <div class="fid-seg" id="fid-seg-ciudad"><button data-v="Montevideo" onclick="fidFiltro('ciudad', this.dataset.v)">Montevideo</button><button data-v="Buenos Aires" onclick="fidFiltro('ciudad', this.dataset.v)">Buenos Aires</button></div>
+      <div class="fid-seg" id="fid-seg-rubro"><button data-v="restaurante" onclick="fidFiltro('rubro', this.dataset.v)">Restaurantes</button><button data-v="peluqueria" onclick="fidFiltro('rubro', this.dataset.v)">Peluquerías</button></div>
+      <span class="fl-kpis" id="fid-kpis-lista"></span>
+    </div>
+
+    <div id="fid-v-pipe" style="display:none">
+      <div class="fid-sub" style="margin:-4px 0 10px">Arrastrá la tarjeta para cambiarla de etapa. Tocala para verla en la lista.</div>
+      <div class="fid-kan" id="fid-kan"></div>
+    </div>
+
     <div id="fid-v-lista">
-      <div class="fid-filtros">
-        <div class="fid-seg" id="fid-seg-ciudad"><button data-v="Montevideo" onclick="fidFiltro('ciudad', this.dataset.v)">Montevideo</button><button data-v="Buenos Aires" onclick="fidFiltro('ciudad', this.dataset.v)">Buenos Aires</button></div>
-        <div class="fid-seg" id="fid-seg-rubro"><button data-v="restaurante" onclick="fidFiltro('rubro', this.dataset.v)">Restaurantes</button><button data-v="peluqueria" onclick="fidFiltro('rubro', this.dataset.v)">Peluquerías</button></div>
-        <span class="fl-kpis" id="fid-kpis-lista"></span>
-      </div>
       <input class="fid-in fl-buscar" id="fid-q" type="search" placeholder="Buscar comercio, barrio, dueño, teléfono o nota…" oninput="fidBuscar(this.value)">
       <div class="fid-card fl-card"><div id="fid-lista"><div class="fid-vacio">Cargando…</div></div></div>
     </div>

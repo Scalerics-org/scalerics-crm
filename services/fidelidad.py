@@ -54,8 +54,9 @@ ZONAS = ["Municipio CH", "Carrasco"]
 CIUDADES = ["Montevideo", "Buenos Aires"]
 RUBROS = {"restaurante": "Restaurantes", "peluqueria": "Peluquerías"}
 # Se busca al principio de cada palabra: "spa" no tiene que agarrar "España".
-_PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas", "nail",
-               "hair", "coiffeur", "estetica", "belleza", "spa", "masaje", "depilacion",
+# Las que terminan en espacio van como palabra entera: "spa " no es "Spazio".
+_PELUQUERIA = ("peluq", "barber", "estilist", "salon de belleza", "manicur", "unas ", "nail",
+               "hair", "coiffeur", "estetica", "belleza", "spa ", "masaje", "depilacion",
                "pestanas", "cejas")
 # Lo que recorre `main.py scrape-fidelidad`, barrio por barrio: Google Maps
 # devuelve mejor "pizzería en Pocitos" que "pizzería en Municipio CH".
@@ -72,7 +73,7 @@ _COMIDA = ("restaur", "parrill", "pizz", "sushi", "hambur", "burger", "cafe", "b
 
 
 def rubro_de(tipo: str | None, nombre: str | None = None) -> str:
-    t = " " + normalizar(f"{tipo or ''} {nombre or ''}")
+    t = " " + normalizar(f"{tipo or ''} {nombre or ''}") + " "
     return "peluqueria" if any(" " + c in t for c in _PELUQUERIA) else "restaurante"
 
 
@@ -793,7 +794,8 @@ def armar_hoy(db: str, cuando: datetime | None = None) -> dict:
 
 
 def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str | None = None,
-           q: str | None = None, pagina: int = 1, por_pagina: int = 50) -> dict:
+           q: str | None = None, pagina: int = 1, por_pagina: int = 50,
+           ciudad: str | None = None, rubro: str | None = None) -> dict:
     cond, params = ["archivado = 0"], []
     if estado in ESTADOS:
         cond.append("estado = ?")
@@ -801,10 +803,17 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
     if zona in ZONAS:
         cond.append("zona = ?")
         params.append(zona)
+    if ciudad:
+        cond.append("COALESCE(ciudad, 'Montevideo') = ?")
+        params.append(normalizar_ciudad(ciudad))
+    if rubro in RUBROS:
+        cond.append("COALESCE(rubro, 'restaurante') = ?")
+        params.append(rubro)
     c = _conn(db)
     try:
         filas = [dict(f) for f in c.execute(
-            f"SELECT {_COLS_LISTA}, notas FROM fid_prospectos WHERE {' AND '.join(cond)}", params)]
+            f"SELECT {_COLS_LISTA}, notas, ciudad, rubro, direccion, contacto_tel, instagram FROM fid_prospectos "
+            f"WHERE {' AND '.join(cond)}", params)]
         conc = _categorias_con_cierre(c)
     finally:
         c.close()
@@ -815,6 +824,7 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
         filas = [f for f in filas if nq in normalizar(f"{f['nombre']} {f.get('barrio')} {f.get('tipo')} {f.get('contacto')}")]
     for f in filas:
         f["puntaje"] = puntaje(f, conc)
+        f["target"] = target(f)
         f["categoria"] = categoria(f.get("tipo"))
     filas.sort(key=lambda f: (ESTADOS.index(f["estado"]) if f["estado"] in ESTADOS else 9, -f["puntaje"]))
     total = len(filas)
@@ -825,14 +835,15 @@ def listar(db: str, estado: str | None = None, zona: str | None = None, cat: str
 
 
 def armar_pipeline(db: str, zona: str | None = None, cat: str | None = None,
-                   por_columna: int = 40) -> dict:
-    todos = listar(db, zona=zona, cat=cat, por_pagina=100000)["items"]
+                   por_columna: int = 40, ciudad: str | None = None, rubro: str | None = None) -> dict:
+    todos = listar(db, zona=zona, cat=cat, por_pagina=100000, ciudad=ciudad, rubro=rubro)["items"]
     cfg = get_config(db)
     cols = []
     for e in ESTADOS:
         items = [p for p in todos if p["estado"] == e]
         if e == "sin_contactar":
-            items.sort(key=lambda p: -p["puntaje"])
+            # El mismo orden que la lista: el más target primero (25/9).
+            items.sort(key=lambda p: -p["target"])
         else:
             items.sort(key=lambda p: (p.get("proxima_llamada") or p.get("fecha_reunion") or "9999"))
         potencial = sum((p.get("mensual_usd") or cfg["precio_usd"]) for p in items)
@@ -1955,19 +1966,55 @@ def leer_xlsx(contenido: bytes) -> list[list]:
     return filas
 
 
+# El orden importa: cada columna se asigna al primer campo que coincide, y
+# "Celular del dueño" tiene que ganarle a "Celular" (el del local).
 _ENCABEZADOS = {
-    "nombre": ("restaurante", "nombre", "negocio", "local"),
+    "contacto_tel": ("celular del dueno", "celular dueno", "cel dueno", "telefono del dueno", "whatsapp del dueno"),
+    "proxima_llamada": ("proxima llamada", "volver a llamar", "llamar el"),
+    "nombre": ("restaurante", "nombre", "negocio", "local", "comercio"),
     "zona": ("zona", "municipio"), "barrio": ("barrio",), "tipo": ("tipo", "rubro", "categoria"),
     "direccion": ("direccion",), "telefono": ("telefono", "tel", "celular"),
     "rating": ("rating",), "resenas": ("resenas", "reviews"), "maps_url": ("google maps", "maps", "link"),
-    "notas": ("notas",), "facilidad": ("facilidad",), "contacto": ("contacto",),
+    "notas": ("notas", "nota", "comentario", "observ"), "facilidad": ("facilidad",),
+    "contacto": ("contacto", "dueno", "encargado"),
     "email": ("email", "mail", "correo"), "web": ("web", "sitio"), "instagram": ("instagram",),
     "ciudad": ("ciudad",),
-    "estado": ("estado",), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
+    "estado": ("estado", "resultado"), "fecha_reunion": ("fecha reunion",), "proximo_paso": ("proximo paso",),
 }
 _ESTADO_EXCEL = {"sin contactar": "sin_contactar", "contactado": "contactado",
                  "reunion agendada": "reunion_agendada", "reunion hecha": "reunion_hecha",
-                 "piloto": "piloto", "cerrado": "cerrado", "descartado": "descartado"}
+                 "piloto": "piloto", "cerrado": "cerrado", "descartado": "descartado",
+                 # Lo que se anota en la calle (28/9).
+                 "visitado": "contactado", "interesado": "contactado", "le intereso": "contactado",
+                 "volver": "contactado", "reunion": "reunion_agendada", "cliente": "cerrado",
+                 "no le interesa": "descartado", "no interesa": "descartado"}
+
+
+def _fecha_excel(v) -> str | None:
+    """La próxima llamada como la escriben en la calle: 30/9, 30/9/2026,
+    2026-09-30 o una fecha de Excel (número de días desde 1899-12-30).
+    Sin hora va a las 11."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)) or re.fullmatch(r"\d{5}(\.\d+)?", str(v).strip()):
+        d = datetime(1899, 12, 30) + timedelta(days=float(v))
+        return fmt(d if d.hour else d.replace(hour=11))
+    t = str(v).strip()
+    if parse_dt(t):
+        d = parse_dt(t)
+        return fmt(d if len(t) > 10 else d.replace(hour=11))
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?", t)
+    if not m:
+        return None
+    hoy = ahora()
+    anio = int(m[3]) + (2000 if m[3] and len(m[3]) == 2 else 0) if m[3] else hoy.year
+    try:
+        d = datetime(anio, int(m[2]), int(m[1]), int(m[4] or 11), int(m[5] or 0))
+    except ValueError:
+        return None
+    if not m[3] and d < hoy - timedelta(days=60):
+        d = d.replace(year=anio + 1)  # "15/1" escrito en diciembre es del año que viene
+    return fmt(d)
 
 
 def filas_a_prospectos(filas: list[list]) -> list[dict]:
@@ -1993,6 +2040,7 @@ def filas_a_prospectos(filas: list[list]) -> list[dict]:
         if d.get("maps_url") and not str(d["maps_url"]).startswith("http"):
             d["maps_url"] = None
         d["estado"] = _ESTADO_EXCEL.get(normalizar(d.get("estado")), "sin_contactar")
+        d["proxima_llamada"] = _fecha_excel(d.get("proxima_llamada"))
         out.append(d)
     return out
 
@@ -2011,7 +2059,14 @@ def importar(db: str, contenido: bytes) -> dict:
     for d in prospectos:
         d["guardar_fuera_de_zona"] = True
         pid, que = crear_prospecto(db, d, fuente="excel")
-        if que == "creado" and not normalizar_zona(d.get("zona"), d.get("barrio")):
+        if que == "creado" and d.get("proxima_llamada"):
+            c = _conn(db)
+            try:
+                c.execute("UPDATE fid_prospectos SET proxima_llamada = ? WHERE id = ?", (d["proxima_llamada"], pid))
+                c.commit()
+            finally:
+                c.close()
+        if que == "creado" and normalizar_ciudad(d.get("ciudad")) == "Montevideo"                 and not normalizar_zona(d.get("zona"), d.get("barrio")):
             que = "fuera_de_zona"
         cuenta[que] += 1
     return {"ok": True, "leidos": len(prospectos), "creados": cuenta["creado"],

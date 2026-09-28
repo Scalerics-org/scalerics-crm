@@ -71,7 +71,9 @@ def api_listar():
 @fidelidad_bp.route("/api/fidelidad/pipeline")
 def api_pipeline():
     return jsonify(fid.armar_pipeline(_db(), zona=request.args.get("zona") or None,
-                                      cat=request.args.get("categoria") or None))
+                                      cat=request.args.get("categoria") or None,
+                                      ciudad=request.args.get("ciudad") or None,
+                                      rubro=request.args.get("rubro") or None))
 
 
 @fidelidad_bp.route("/api/fidelidad/reuniones")
