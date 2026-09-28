@@ -533,6 +533,20 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **28/9 — J (agente de marketing): LinkedIn, la foto se dibuja en el CRM al toque (pedido de Juan).**
+  Rama `fix/linkedin-foto-al-toque`, sale de `main`. Juan veía borradores con
+  "Falta la imagen: sale en la próxima corrida del cron". Nuevo
+  `services/linkedin_render.py`: la tarjeta de `templates/linkedin_card.html`
+  copiada con Pillow (DM Sans, misma `variante` por hash de la frase).
+  `GET /api/linkedin/borradores` llama a `lb.dibujar_faltantes(semana)` antes de
+  listar: todo borrador no descartado de esa semana sin `imagen_png` se dibuja
+  (con su `frase`, o la primera oración si no tiene). El runner de GitHub sigue
+  igual para el mail; si su PNG llega, `guardar_imagenes` reemplaza a la de
+  Pillow (UPDATE sin condición, a propósito: es la misma tarjeta que salió en el mail). `/imagen` pasa a
+  `no-cache` porque "Otra idea" cambia la tarjeta con la misma URL.
+  Publicar solo en LinkedIn sigue esperando la Community Management API (LinkedIn
+  no respondió al 28/9).
+
 - **28/9 — Fidelidad y bot del grupo de captación (PRs #108–#114, todo deployado: CRM v292, `scalerics-wa` v113).**
   - **Mail** desde el Gmail de cada usuario (`services/gmail_usuario.py`, token cifrado con `CREDENCIALES_KEY`) con plantillas editables (`fid_plantillas`). **No manda hasta que Juan cree el cliente OAuth web** y cargue `GMAIL_WEB_CLIENT_ID` / `GMAIL_WEB_CLIENT_SECRET` en Fly (redirect `https://scalerics-crm.fly.dev/oauth/gmail/callback`, scope `gmail.send`).
   - Agenda arranca en el mes; vuelve el Pipeline; rubro **Otros** (`rubro_de`); entra **todo Montevideo** (se sacó la restricción a CH/Carrasco; al buscar comercios nuevos, priorizar CH y Carrasco).

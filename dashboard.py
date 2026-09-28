@@ -15225,13 +15225,10 @@ function liTarjeta(b, limite) {
       '<a class="li-btn" href="/api/linkedin/borradores/' + id + '/imagen?descargar=1" download="linkedin-' + id +
       '.png">Descargar imagen</a></div>'
     : '';
-  // Sin imagen: la tarjeta la dibuja el runner de Actions en la proxima
-  // corrida (no hay Chromium en Fly). Pasa con lo recien generado y con lo
-  // que cambio "Otra idea" o una correccion de Claude. Solo en borrador: uno
-  // descartado no la va a tener nunca, y uno viejo ya publicado sin imagen es
-  // historico (de antes de que el panel las guardara) y tampoco la consigue.
+  // Sin imagen: el servidor la dibuja con Pillow al pedir la semana
+  // (services/linkedin_render.py). Si igual falta, fallo el dibujo.
   const pendiente = !b.tiene_imagen && b.estado === 'borrador'
-    ? '<span class="li-meta">Falta la imagen: sale en la próxima corrida del cron (martes o viernes a las 08:00)</span>' : '';
+    ? '<span class="li-meta">No se pudo dibujar la imagen: recargá la página en un rato</span>' : '';
   const puedeCambiar = b.estado === 'borrador' || b.estado === 'descartado';
   const acciones = [
     '<button type="button" class="li-btn" id="li-copiar-' + id + '" onclick="liCopiar(' + id + ')">Copiar texto</button>',

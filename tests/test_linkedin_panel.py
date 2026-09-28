@@ -225,14 +225,17 @@ def test_la_imagen_que_va_al_mail_queda_en_el_panel(app, jefe, monkeypatch):
     assert r.status_code == 200
 
     lista = {b["post_id"]: b for b in jefe.get("/api/linkedin/borradores").get_json()["borradores"]}
-    assert lista[uno]["tiene_imagen"] is True and lista[dos]["tiene_imagen"] is False, "solo un PNG de verdad"
+    # El que no mandó un PNG de verdad no se queda con eso: el panel le dibuja
+    # la tarjeta con Pillow (pedido de Juan, 28/9). La del mail se respeta tal cual.
+    assert lista[uno]["tiene_imagen"] is True and lista[dos]["tiene_imagen"] is True
     bid = lista[uno]["id"]
     r = jefe.get(f"/api/linkedin/borradores/{bid}/imagen")
     assert r.status_code == 200 and r.mimetype == "image/png" and r.data == PNG
     assert r.headers["X-Content-Type-Options"] == "nosniff" and "Content-Disposition" not in r.headers
     r = jefe.get(f"/api/linkedin/borradores/{bid}/imagen?descargar=1")
     assert r.headers["Content-Disposition"] == 'attachment; filename="linkedin-2026-09-14-1.png"'
-    assert jefe.get(f"/api/linkedin/borradores/{lista[dos]['id']}/imagen").status_code == 404
+    dibujada = jefe.get(f"/api/linkedin/borradores/{lista[dos]['id']}/imagen")
+    assert dibujada.status_code == 200 and dibujada.data != PNG and dibujada.data[:8] == PNG[:8]
     otro = _cli(app, "sinpanel@scalerics.com", ["marketing"])
     assert otro.get(f"/api/linkedin/borradores/{bid}/imagen").status_code == 403
 
@@ -655,8 +658,11 @@ globalThis.fetch = (url, opciones) => {
 
 
 @sin_node
-def test_el_panel_se_pinta_copia_edita_y_cambia_estados(app, jefe, tmp_path):
+def test_el_panel_se_pinta_copia_edita_y_cambia_estados(app, jefe, tmp_path, monkeypatch):
     db_path = app.config["DB_PATH"]
+    # Esta prueba es de la pantalla con un borrador sin imagen y otro con: que
+    # el servidor no le dibuje la que falta (eso se prueba aparte).
+    monkeypatch.setattr(lb, "dibujar_faltantes", lambda *a, **k: 0)
     uno, _ = _borrador(db_path, TEXTO_1)
     largo = "x" * 3001
     dos, dos_post = _borrador(db_path, largo, tema="Un post muy largo")
