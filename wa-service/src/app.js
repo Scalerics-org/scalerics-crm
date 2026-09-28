@@ -392,7 +392,7 @@ function construir(cfg, {
   const limpiezaMedia = setInterval(() => media.limpiar(), 24 * 3600_000);
   limpiezaMedia.unref?.();
 
-  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo, media, logger: log });
+  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo, media, captacion, logger: log });
 
   const vigilanteReservas = crearVigilanteDeReservas({
     agenda, repo, servicioLeads, cfg, logger: log, ahora,

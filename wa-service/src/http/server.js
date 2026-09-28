@@ -29,7 +29,7 @@ const envioSchema = z.object({
   skip_delay: z.boolean().optional().default(false),
 });
 
-function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo = null, media = null, logger }) {
+function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo = null, media = null, captacion = null, logger }) {
   const app = Fastify({ logger: false });
 
   // x-api-key en todo menos /health y /api/*. El servicio no se expone a
@@ -232,6 +232,16 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, e
 
   // Util para operar: dispara los jobs vencidos sin esperar al intervalo.
   app.post('/jobs/run', async () => ({ ok: true, procesados: await scheduler.correrVencidos() }));
+
+  /** El bot saluda en el grupo de captacion (src/captacion.js: arregla el cifrado). */
+  app.post('/captacion/saludar', async (req, reply) => {
+    if (!captacion) return reply.code(400).send({ ok: false, error: 'sin captacion' });
+    try {
+      return { ok: true, ...(await captacion.saludar()) };
+    } catch (e) {
+      return reply.code(400).send({ ok: false, error: String(e.message || e) });
+    }
+  });
 
   /** Que respaldos hay. Sirve para saber si de verdad se estan haciendo. */
   app.get('/backups', async () => ({ ok: true, backups: listarBackups(cfg) }));

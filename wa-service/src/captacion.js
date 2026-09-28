@@ -134,7 +134,11 @@ function crearCaptacion({ cfg, modelo, proveedor, repo = null, logger = null, ah
       maxTokens: 900,
     });
     const a = r?.argumentos;
-    if (!a || !a.es_avance || !Array.isArray(a.visitas) || !a.visitas.length) return;
+    if (!a || !a.es_avance || !Array.isArray(a.visitas) || !a.visitas.length) {
+      logger?.info({ id: m.id, ia: Boolean(r) }, 'captación: el mensaje no es un avance');
+      return;
+    }
+    logger?.info({ id: m.id, visitas: a.visitas.length }, 'captación: avance');
 
     const partes = [];
     for (const v of a.visitas.slice(0, 6)) {
@@ -150,7 +154,19 @@ function crearCaptacion({ cfg, modelo, proveedor, repo = null, logger = null, ah
     await proveedor.enviarTexto(grupo, titulo + partes.join('\n\n'));
   }
 
-  return { activo, recibir };
+  /**
+   * Un mensaje del bot al grupo. Ademas de avisarle al equipo, arregla el
+   * cifrado: al mandar a un grupo, WhatsApp arma una sesion nueva con cada
+   * miembro. Sin eso, a un bot recien agregado le llegan mensajes de algunos
+   * miembros que no puede descifrar ("No session found").
+   */
+  async function saludar() {
+    if (!grupo) throw new Error('no hay GRUPO_CAPTACION_JID');
+    return proveedor.enviarTexto(grupo, 'Hola 👋 Soy el bot de Scalerics. Desde ahora leo este grupo: '
+      + 'cuando anoten una visita (el local, cómo salió y cuándo volver) la cargo en el CRM y les confirmo acá.');
+  }
+
+  return { activo, recibir, saludar };
 }
 
 module.exports = { crearCaptacion, HERRAMIENTA, resumen, fechaCorta };
