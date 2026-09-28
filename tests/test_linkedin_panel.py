@@ -658,8 +658,11 @@ globalThis.fetch = (url, opciones) => {
 
 
 @sin_node
-def test_el_panel_se_pinta_copia_edita_y_cambia_estados(app, jefe, tmp_path):
+def test_el_panel_se_pinta_copia_edita_y_cambia_estados(app, jefe, tmp_path, monkeypatch):
     db_path = app.config["DB_PATH"]
+    # Esta prueba es de la pantalla con un borrador sin imagen y otro con: que
+    # el servidor no le dibuje la que falta (eso se prueba aparte).
+    monkeypatch.setattr(lb, "dibujar_faltantes", lambda *a, **k: 0)
     uno, _ = _borrador(db_path, TEXTO_1)
     largo = "x" * 3001
     dos, dos_post = _borrador(db_path, largo, tema="Un post muy largo")
