@@ -129,8 +129,6 @@ def api_crear():
     pid, que = fid.crear_prospecto(_db(), datos, fuente=datos.get("fuente") or "manual")
     if que == "sin_nombre":
         return _error("falta el nombre del restaurante", 400)
-    if que == "fuera_de_zona":
-        return _error("en Montevideo, por ahora solo Municipio CH y Carrasco", 400)
     return jsonify({"ok": True, "id": pid, "duplicado": que == "duplicado"}), 200 if que == "duplicado" else 201
 
 
@@ -183,7 +181,7 @@ def api_visita():
     p, error, nuevo = fid.registrar_visita(_db(), d, autor, fuente=d.get("fuente") or "calle", cuando=_ahora())
     if error:
         return _error(error, 400)
-    return jsonify({"ok": True, "nuevo": nuevo, "oculto": bool(p.get("archivado")),
+    return jsonify({"ok": True, "nuevo": nuevo,
                     "resultado": fid.RESULTADOS_VISITA[d.get("resultado") or "visitado"],
                     "prospecto": {k: p.get(k) for k in ("id", "nombre", "barrio", "ciudad", "zona", "estado", "contacto",
                                                         "contacto_tel", "telefono", "proxima_llamada", "fecha_reunion")}}), 201

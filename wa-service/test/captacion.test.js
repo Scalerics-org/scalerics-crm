@@ -44,7 +44,7 @@ async function armar(argumentos, cfg = CFG) {
 const CREADO = {
   status: 201,
   datos: {
-    ok: true, nuevo: true, oculto: false, resultado: 'Interesado',
+    ok: true, nuevo: true, resultado: 'Interesado',
     prospecto: { nombre: 'La Pizzería de Juan', barrio: 'Pocitos', estado: 'contactado', contacto: 'Martín',
       contacto_tel: '099 123 456', proxima_llamada: '2026-10-01 16:00' },
   },
@@ -107,14 +107,13 @@ test('si el CRM rechaza uno, lo dice y carga los demás', async () => {
   });
   await conFetch((b) => (b.nombre === 'Uno'
     ? { status: 400, datos: { ok: false, error: 'la fecha no puede quedar en el pasado' } }
-    : { status: 201, datos: { ok: true, nuevo: false, oculto: true, resultado: 'No le interesa',
+    : { status: 201, datos: { ok: true, nuevo: false, resultado: 'No le interesa',
       prospecto: { nombre: 'Dos', barrio: 'Cordón', estado: 'descartado' } } }),
   () => captacion.recibir({ grupo: GRUPO, id: 'd', texto: 'Uno y Dos' }));
   const [r] = proveedor.getEnviados();
   assert.match(r.texto, /No pude cargar \*Uno\*: la fecha no puede quedar en el pasado/);
   assert.match(r.texto, /\*Dos\* · Cordón \(ya estaba: actualizado\)/);
   assert.match(r.texto, /No le interesa · vuelve en un año/);
-  assert.match(r.texto, /Quedó oculto/);
 });
 
 test('fechas cortas y resumen de una reunión', () => {

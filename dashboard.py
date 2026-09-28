@@ -700,8 +700,7 @@ async function fidVisitaGuardar() {
   let d;
   try { d = await _fidJson('/api/fidelidad/visitas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
   catch(e) { err.textContent = e.message; return; }
-  fidAviso('✓ '+esc(d.prospecto.nombre)+(d.nuevo ? ' cargado' : ' actualizado')+' · '+esc(d.resultado)
-    + (d.oculto ? ' · <span class="fid-dn">quedó oculto: en Montevideo, por ahora solo Municipio CH y Carrasco</span>' : ''));
+  fidAviso('✓ '+esc(d.prospecto.nombre)+(d.nuevo ? ' cargado' : ' actualizado')+' · '+esc(d.resultado));
   fidVisitaAbrir();
   if (_fid.vista === 'lista') fidCargarLista();
 }
@@ -836,7 +835,6 @@ function fidNuevoAbrir() {
     + campo('nombre', 'Nombre del comercio *', ' class="full"')
     + '<div><label for="fid-n-ciudad">Ciudad</label><select class="fid-in" id="fid-n-ciudad">'+opc([['Montevideo','Montevideo'],['Buenos Aires','Buenos Aires']], _fl.ciudad)+'</select></div>'
     + '<div><label for="fid-n-rubro">Rubro</label><select class="fid-in" id="fid-n-rubro">'+opc([['restaurante','Restaurante'],['peluqueria','Peluquería']], _fl.rubro)+'</select></div>'
-    + '<div><label for="fid-n-zona">Zona (en Montevideo)</label><select class="fid-in" id="fid-n-zona"><option>Municipio CH</option><option>Carrasco</option></select></div>'
     + campo('barrio', 'Barrio') + campo('tipo', 'Tipo (pizzería, barbería…)') + campo('telefono', 'Teléfono del local')
     + campo('direccion', 'Dirección', ' class="full"') + campo('contacto', 'Dueño o encargado') + campo('contacto_tel', 'Celular del dueño')
     + '<div><label for="fid-n-facilidad">Facilidad</label><select class="fid-in" id="fid-n-facilidad"><option value="">Sin clasificar</option><option>Alta</option><option>Media</option><option>Baja</option></select></div>'
@@ -847,7 +845,7 @@ function fidNuevoAbrir() {
 }
 async function fidNuevoGuardar() {
   const body = {};
-  ['nombre','ciudad','rubro','zona','barrio','tipo','telefono','direccion','contacto','contacto_tel','facilidad','maps_url','notas'].forEach(k => { body[k] = document.getElementById('fid-n-'+k).value; });
+  ['nombre','ciudad','rubro','barrio','tipo','telefono','direccion','contacto','contacto_tel','facilidad','maps_url','notas'].forEach(k => { body[k] = document.getElementById('fid-n-'+k).value; });
   try {
     const d = await _fidJson('/api/fidelidad/prospectos', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     fidCerrarModal();
@@ -861,8 +859,7 @@ async function fidImportar(input) {
   fidAviso('Importando '+esc(f.name)+'…');
   try {
     const d = await _fidJson('/api/fidelidad/importar', {method:'POST', body: fd});
-    fidAviso('<b>'+d.creados+' prospectos nuevos</b> de '+d.leidos+' filas. '+(d.duplicados ? d.duplicados+' ya estaban cargados. ' : '')
-      + (d.fuera_de_zona ? d.fuera_de_zona+' son de fuera de Municipio CH y Carrasco: quedaron guardados pero ocultos.' : ''));
+    fidAviso('<b>'+d.creados+' prospectos nuevos</b> de '+d.leidos+' filas. '+(d.duplicados ? d.duplicados+' ya estaban cargados.' : ''));
     fidVista(_fid.vista);
   } catch(e) { fidAviso(esc(e.message), 'error'); }
   input.value = '';

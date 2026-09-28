@@ -98,7 +98,6 @@ function resumen(r) {
   else if (p.estado === 'descartado') estado += ' · vuelve en un año';
   else if (p.estado !== 'cerrado' && p.proxima_llamada) estado += ` · llamar ${fechaCorta(p.proxima_llamada)}`;
   lineas.push(estado);
-  if (r.oculto) lineas.push('⚠ Quedó oculto: en Montevideo, por ahora solo Municipio CH y Carrasco.');
   return lineas.join('\n');
 }
 

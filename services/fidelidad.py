@@ -406,6 +406,9 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
     conn.execute("UPDATE fid_prospectos SET ciudad = 'Montevideo' WHERE ciudad IS NULL")
+    # Todo Montevideo abierto (28/9): lo que quedó oculto por estar fuera de
+    # Municipio CH y Carrasco vuelve a la lista.
+    conn.execute("UPDATE fid_prospectos SET archivado = 0 WHERE archivado = 1 AND ciudad = 'Montevideo'")
     for pid, tipo, nombre in conn.execute("SELECT id, tipo, nombre FROM fid_prospectos WHERE rubro IS NULL").fetchall():
         conn.execute("UPDATE fid_prospectos SET rubro = ? WHERE id = ?", (rubro_de(tipo, nombre), pid))
     # El rol del socio. Solo ve estas dos pantallas; el candado real está en
@@ -526,7 +529,7 @@ def buscar_duplicado(c: sqlite3.Connection, nombre: str, telefono: str | None, m
 
 
 def crear_prospecto(db: str, datos: dict, fuente: str = "manual") -> tuple[int | None, str]:
-    """Devuelve (id, 'creado'|'duplicado'|'fuera_de_zona'|'sin_nombre')."""
+    """Devuelve (id, 'creado'|'duplicado'|'sin_nombre')."""
     campos = _limpiar_campos(datos)
     if not campos.get("nombre"):
         return None, "sin_nombre"
@@ -535,15 +538,12 @@ def crear_prospecto(db: str, datos: dict, fuente: str = "manual") -> tuple[int |
     if campos["ciudad"] == "Buenos Aires":
         zona = campos.get("zona") or campos.get("barrio") or "Buenos Aires"
     else:
-        zona = normalizar_zona(campos.get("zona"), campos.get("barrio"))
+        # Desde el 28/9 entra todo Montevideo (Juan). CH y Carrasco siguen
+        # agrupados como antes; el resto va con su barrio.
+        zona = normalizar_zona(campos.get("zona"), campos.get("barrio")) \
+            or campos.get("barrio") or campos.get("zona") or "Montevideo"
     archivado = 0
-    if not zona:
-        # Fuera de CH y Carrasco. No se descarta: queda guardado y oculto, igual
-        # que los prospectos viejos, por si un día se abre otra zona.
-        if not datos.get("guardar_fuera_de_zona"):
-            return None, "fuera_de_zona"
-        archivado = 1
-    campos["zona"] = zona or campos.get("zona")
+    campos["zona"] = zona
     estado = datos.get("estado") if datos.get("estado") in ESTADOS else "sin_contactar"
     c = _conn(db)
     try:
@@ -1538,7 +1538,7 @@ def registrar_visita(db: str, datos: dict, usuario: str, fuente: str = "calle",
         return None, "la fecha no puede quedar en el pasado", False
     base = {k: datos.get(k) for k in ("nombre", "ciudad", "zona", "barrio", "tipo", "direccion", "telefono",
                                       "contacto", "contacto_tel", "email", "instagram")}
-    pid, que = crear_prospecto(db, {**base, "guardar_fuera_de_zona": True}, fuente=fuente)
+    pid, que = crear_prospecto(db, base, fuente=fuente)
     if not pid:
         return None, "no se pudo cargar el local", False
     nuevo = que == "creado"
@@ -2171,7 +2171,6 @@ def importar(db: str, contenido: bytes) -> dict:
         return {"ok": False, "error": "no encontré la columna 'Restaurante' o 'Nombre'"}
     cuenta = Counter()
     for d in prospectos:
-        d["guardar_fuera_de_zona"] = True
         pid, que = crear_prospecto(db, d, fuente="excel")
         if que == "creado" and d.get("proxima_llamada"):
             c = _conn(db)
@@ -2180,11 +2179,9 @@ def importar(db: str, contenido: bytes) -> dict:
                 c.commit()
             finally:
                 c.close()
-        if que == "creado" and normalizar_ciudad(d.get("ciudad")) == "Montevideo"                 and not normalizar_zona(d.get("zona"), d.get("barrio")):
-            que = "fuera_de_zona"
         cuenta[que] += 1
     return {"ok": True, "leidos": len(prospectos), "creados": cuenta["creado"],
-            "duplicados": cuenta["duplicado"], "fuera_de_zona": cuenta["fuera_de_zona"]}
+            "duplicados": cuenta["duplicado"]}
 
 
 def exportar_csv(db: str) -> str:

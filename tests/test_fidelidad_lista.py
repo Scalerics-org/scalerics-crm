@@ -136,9 +136,9 @@ def test_rubro_sale_del_tipo_y_buenos_aires_entra_con_su_barrio(db):
     pa, pb = fid.get_prospecto(db, a), fid.get_prospecto(db, b)
     assert pa["rubro"] == "peluqueria" and pa["ciudad"] == "Montevideo"
     assert pb["ciudad"] == "Buenos Aires" and pb["zona"] == "Almagro" and pb["rubro"] == "restaurante"
-    # En Montevideo sigue valiendo el territorio del socio.
-    _, que = fid.crear_prospecto(db, {"nombre": "Pizzería del Cerro", "barrio": "Cerro"})
-    assert que == "fuera_de_zona"
+    # Desde el 28/9 entra todo Montevideo, con su barrio como zona.
+    cerro, que = fid.crear_prospecto(db, {"nombre": "Pizzería del Cerro", "barrio": "Cerro"})
+    assert que == "creado" and fid.get_prospecto(db, cerro)["zona"] == "Cerro"
 
 
 def test_los_prospectos_de_antes_quedan_en_montevideo_y_con_rubro(db):
@@ -366,7 +366,7 @@ def test_una_visita_crea_el_local_o_completa_el_que_estaba(db, cli):
                                                  "contacto": "Martín", "contacto_tel": "099 123 456",
                                                  "resultado": "interesado", "proxima": "2026-10-01T16:00",
                                                  "nota": "Quiere ver la demo"})
-    assert r.status_code == 201 and r.get_json()["nuevo"] and not r.get_json()["oculto"]
+    assert r.status_code == 201 and r.get_json()["nuevo"]
     pid = r.get_json()["prospecto"]["id"]
     p = fid.get_prospecto(db, pid)
     assert p["estado"] == "contactado" and p["proxima_llamada"] == "2026-10-01 16:00"
@@ -386,8 +386,8 @@ def test_una_visita_crea_el_local_o_completa_el_que_estaba(db, cli):
 def test_visita_no_interesa_cliente_y_fuera_de_zona(db, cli):
     r = cli.post("/api/fidelidad/visitas", json={"nombre": "Fade Club", "barrio": "Cordón", "tipo": "Barbería",
                                                  "resultado": "no_interesa"})
-    assert r.get_json()["oculto"]          # Cordón no es territorio del socio
     p = fid.get_prospecto(db, r.get_json()["prospecto"]["id"])
+    assert p["archivado"] == 0 and p["zona"] == "Cordón"      # todo Montevideo
     assert p["estado"] == "descartado" and p["proxima_llamada"].startswith("2027-09")
     r = cli.post("/api/fidelidad/visitas", json={"nombre": "Pizza Cliente", "barrio": "Pocitos", "resultado": "cliente"})
     assert fid.get_prospecto(db, r.get_json()["prospecto"]["id"])["estado"] == "cerrado"
