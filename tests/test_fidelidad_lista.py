@@ -407,3 +407,34 @@ def test_el_mismo_nombre_en_otra_ciudad_no_es_repetido(db):
     assert que == "creado" and b != a
     _, que = fid.crear_prospecto(db, {"nombre": "Esquina", "barrio": "Pocitos", "contacto_tel": "099 999 111"})
     assert que == "duplicado"                       # "La Esquina" = "Esquina" en Montevideo
+
+
+# ── pedidos del bot del grupo (28/9) ─────────────────────────────────────────
+
+def test_resumen_de_actividad_por_persona(db, cli):
+    a, b = _p(db, "Pizzería A"), _p(db, "Pizzería B")
+    cli.post("/api/fidelidad/visitas", json={"nombre": "Pizzería A", "resultado": "interesado", "autor": "Gonzalo"})
+    cli.post("/api/fidelidad/visitas", json={"nombre": "Pizzería B", "resultado": "reunion", "autor": "Lucas"})
+    fid.registrar_accion(db, a, "no_atendio", "Lucas", cuando=AHORA)
+    d = cli.get("/api/fidelidad/resumen").get_json()
+    assert d["desde"] == "2026-09-23" and d["visitas"]["total"] == 2
+    assert d["visitas"]["por_persona"] == {"Gonzalo": 1, "Lucas": 1}
+    assert d["visitas"]["por_resultado"] == {"interesado": 1, "reunion": 1}
+    assert d["llamadas"] == {"total": 1, "por_persona": {"Lucas": 1}}
+    assert [r["nombre"] for r in d["reuniones"]] == ["Pizzería B"]
+    assert cli.get("/api/fidelidad/resumen?desde=2026-09-30&hasta=2026-09-01").status_code == 400
+
+
+def test_agendar_y_anotar_desde_el_bot(db, cli):
+    pid = _p(db, "Rodelú")
+    r = cli.post(f"/api/fidelidad/prospectos/{pid}/agendar", json={"tipo": "reunion", "fecha": "2026-10-02T11:00"})
+    p = r.get_json()["prospecto"]
+    assert p["estado"] == "reunion_agendada" and p["fecha_reunion"] == "2026-10-02 11:00" and p["llamadas"] == []
+    r = cli.post(f"/api/fidelidad/prospectos/{pid}/agendar", json={"tipo": "llamada", "fecha": "2026-10-05 16:00"})
+    assert r.get_json()["prospecto"]["proxima_llamada"] == "2026-10-05 16:00"
+    assert cli.post(f"/api/fidelidad/prospectos/{pid}/agendar", json={"tipo": "llamada", "fecha": "2026-09-01 10:00"}).status_code == 400
+    assert cli.post(f"/api/fidelidad/prospectos/{pid}/agendar", json={"tipo": "llamada", "fecha": "2026-10-05"}).status_code == 400
+    cli.post(f"/api/fidelidad/prospectos/{pid}/nota", json={"nota": "El dueño es Pablo", "autor": "Gonzalo"})
+    cli.post(f"/api/fidelidad/prospectos/{pid}/nota", json={"nota": "Quiere la demo", "autor": "Juan"})
+    assert fid.get_prospecto(db, pid)["notas"] == "23/09 Juan: Quiere la demo\n23/09 Gonzalo: El dueño es Pablo"
+    assert cli.post("/api/fidelidad/prospectos/999/nota", json={"nota": "x"}).status_code == 404

@@ -8,7 +8,8 @@ const assert = require('node:assert');
 
 const { crearCaptacion, resumen, fechaCorta } = require('../src/captacion');
 const { crear: crearMock } = require('../src/providers/mock');
-const { textoDeMensaje } = require('../src/providers/baileys');
+const { textoDeMensaje, esParaElBot } = require('../src/providers/baileys');
+const { AYUDA } = require('../src/captacion-pedidos');
 
 const GRUPO = '120363000000000001@g.us';
 const CFG = { GRUPO_CAPTACION_JID: GRUPO, CRM_API_URL: 'https://crm.test/', CRM_ADMIN_TOKEN: 'token-del-crm' };
@@ -22,9 +23,9 @@ async function conFetch(responder, fn) {
   const original = global.fetch;
   const pedidos = [];
   global.fetch = async (url, opciones) => {
-    const body = JSON.parse(opciones.body);
+    const body = opciones.body ? JSON.parse(opciones.body) : null;
     pedidos.push({ url, opciones, body });
-    const { status, datos } = responder(body);
+    const { status, datos } = responder(body, url, opciones.method);
     return { ok: status < 400, status, json: async () => datos };
   };
   try { await fn(pedidos); } finally { global.fetch = original; }
@@ -138,4 +139,84 @@ test('el mock y baileys le pasan los grupos a quien escucha', async () => {
   proveedor.simularGrupo({ grupo: GRUPO, texto: 'hola', id: 'e' });
   assert.equal(recibidos.length, 1);
   assert.equal(textoDeMensaje({ message: { conversation: 'Pasé por X' } }), 'Pasé por X');
+});
+
+
+// ── pedidos al bot ───────────────────────────────────────────────────────────
+
+const LISTA = { status: 200, datos: { items: [
+  { id: 1, nombre: 'Smashico Burger', grupo: 0, cuando: '2026-09-27 11:00' },
+  { id: 2, nombre: 'Burger Club', grupo: 1, cuando: '2026-09-28 16:00' },
+  { id: 3, nombre: 'Rigor Pizza', grupo: 2, cuando: null },
+] } };
+
+test('pedido de resumen: consulta el CRM y contesta, sin cargar visitas', async () => {
+  const { proveedor, captacion } = await armar({ accion: 'resumen' });
+  const pedidos = await conFetch(() => ({ status: 200, datos: {
+    desde: '2026-09-28', hasta: '2026-09-28',
+    visitas: { total: 3, por_persona: { Gonzalo: 2, Lucas: 1 }, por_resultado: { interesado: 2, no_interesa: 1 } },
+    llamadas: { total: 5, por_persona: { Lucas: 5 } },
+    reuniones: [{ nombre: 'Rodelú', fecha_reunion: '2026-10-02 11:00' }], mails: 0,
+  } }), () => captacion.recibir({ grupo: GRUPO, id: 'p1', nombre: 'Juan', alBot: true, texto: '@bot cuántas visitas hicimos hoy' }));
+  assert.equal(pedidos.length, 1);
+  assert.match(pedidos[0].url, /\/api\/fidelidad\/resumen\?desde=2026-09-28&hasta=2026-09-28$/);
+  const [r] = proveedor.getEnviados();
+  assert.match(r.texto, /^Hoy: 3 visitas \(Gonzalo 2, Lucas 1\)\./);
+  assert.match(r.texto, /2 interesados, 1 no les interesa/);
+  assert.match(r.texto, /Llamadas: 5 \(Lucas 5\)/);
+  assert.match(r.texto, /Reuniones agendadas: Rodelú \(vie 2\/10 11:00\)/);
+});
+
+test('"bot, a quién llamo hoy" sin mencionarlo también es un pedido', async () => {
+  const { proveedor, captacion } = await armar({ accion: 'llamar_hoy' });
+  await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p2', texto: 'bot, a quién llamo hoy?' }));
+  const [r] = proveedor.getEnviados();
+  assert.match(r.texto, /Vencidas \(1\): Smashico Burger \(dom 27\/9\)/);
+  assert.match(r.texto, /Para hoy \(1\): Burger Club \(16:00\)/);
+  assert.doesNotMatch(r.texto, /Rigor/);
+});
+
+test('agendar: busca el local, pide la fecha si falta y agenda', async () => {
+  let armado = await armar({ accion: 'agendar_reunion', local: 'Rodelú' });
+  await conFetch(() => ({ status: 200, datos: { items: [{ id: 7, nombre: 'Rodelú' }] } }),
+    () => armado.captacion.recibir({ grupo: GRUPO, id: 'p3', alBot: true, texto: 'agendá con Rodelú' }));
+  assert.match(armado.proveedor.getEnviados()[0].texto, /¿Para cuándo la reunión con Rodelú\?/);
+
+  armado = await armar({ accion: 'agendar_reunion', local: 'rodelu', fecha: '2026-10-02T11:00' });
+  const pedidos = await conFetch((body, url) => (url.includes('/agendar')
+    ? { status: 200, datos: { prospecto: { nombre: 'Rodelú', fecha_reunion: '2026-10-02 11:00' } } }
+    : { status: 200, datos: { items: [{ id: 7, nombre: 'Rodelú' }, { id: 8, nombre: 'Rodelú Express' }] } }),
+  () => armado.captacion.recibir({ grupo: GRUPO, id: 'p4', nombre: 'Gonzalo', alBot: true, texto: 'reunión con rodelu el viernes a las 11' }));
+  assert.match(pedidos[1].url, /\/prospectos\/7\/agendar$/);          // el nombre exacto gana
+  assert.deepEqual(pedidos[1].body, { tipo: 'reunion', fecha: '2026-10-02T11:00', autor: 'Gonzalo' });
+  assert.equal(armado.proveedor.getEnviados()[0].texto, '✓ Rodelú · reunión vie 2/10 11:00');
+});
+
+test('si hay varios locales parecidos, pregunta cuál', async () => {
+  const { proveedor, captacion } = await armar({ accion: 'info_local', local: 'burger' });
+  await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p5', alBot: true, texto: 'qué sabemos de burger' }));
+  assert.match(proveedor.getEnviados()[0].texto, /Encontré varios: Smashico Burger, Burger Club, Rigor Pizza\. ¿Cuál\?/);
+});
+
+test('lo que no entiende lo contesta igual, con lo que sabe hacer', async () => {
+  const { proveedor, captacion } = await armar({ accion: 'no_entiendo' });
+  const pedidos = await conFetch(() => LISTA, () => captacion.recibir({ grupo: GRUPO, id: 'p6', alBot: true, texto: '@bot cantame algo' }));
+  assert.equal(pedidos.length, 0);
+  assert.equal(proveedor.getEnviados()[0].texto, `No entendí qué necesitás. ${AYUDA}`);
+});
+
+test('si el CRM falla, lo dice en el grupo', async () => {
+  const { proveedor, captacion } = await armar({ accion: 'llamar_hoy' });
+  await conFetch(() => ({ status: 500, datos: { error: 'se cayó' } }),
+    () => captacion.recibir({ grupo: GRUPO, id: 'p7', alBot: true, texto: 'a quién llamo' }));
+  assert.equal(proveedor.getEnviados()[0].texto, 'No pude hacerlo: se cayó');
+});
+
+test('reconoce cuándo le hablan al bot: mención o respuesta a un mensaje suyo', () => {
+  const propios = ['59892000713:12@s.whatsapp.net', '99887766554433:12@lid'];
+  const con = (contextInfo) => ({ message: { extendedTextMessage: { text: 'x', contextInfo } } });
+  assert.equal(esParaElBot(con({ mentionedJid: ['99887766554433@lid'] }), propios), true);
+  assert.equal(esParaElBot(con({ participant: '59892000713@s.whatsapp.net' }), propios), true);
+  assert.equal(esParaElBot(con({ mentionedJid: ['59811111111@s.whatsapp.net'] }), propios), false);
+  assert.equal(esParaElBot({ message: { conversation: 'hola' } }, propios), false);
 });

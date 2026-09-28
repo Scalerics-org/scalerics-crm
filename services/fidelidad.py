@@ -1582,6 +1582,84 @@ def registrar_visita(db: str, datos: dict, usuario: str, fuente: str = "calle",
     return get_prospecto(db, pid), None, nuevo
 
 
+# ── pedidos del bot del grupo (28/9) ─────────────────────────────────────────
+# Juan: al bot del grupo de captación se le piden cosas ("¿cuántas visitas
+# hicimos hoy?", "agendá reunión con Rodelú el viernes", "anotá que el dueño es
+# Pablo") y contesta en el grupo. Estas son las piezas del CRM que usa.
+
+def resumen_actividad(db: str, desde: str, hasta: str) -> dict:
+    """Visitas, llamadas, reuniones agendadas y mails entre dos días (inclusive),
+    en total y por persona."""
+    d0, d1 = (desde or "")[:10], (hasta or desde or "")[:10]
+    if not (parse_dt(d0) and parse_dt(d1)) or d1 < d0:
+        return {"error": "rango inválido"}
+    rango = (d0, d1 + " 23:59")
+    c = _conn(db)
+    try:
+        visitas = [dict(f) for f in c.execute(
+            "SELECT usuario, resultado FROM fid_visitas WHERE hecha_en BETWEEN ? AND ?", rango)]
+        llamadas = [dict(f) for f in c.execute(
+            "SELECT usuario, resultado FROM fid_llamadas WHERE hecha_en BETWEEN ? AND ?", rango)]
+        reuniones = [dict(f) for f in c.execute(
+            "SELECT p.nombre, p.fecha_reunion FROM fid_cambios x JOIN fid_prospectos p ON p.id = x.prospecto_id "
+            "WHERE x.a = 'reunion_agendada' AND x.en BETWEEN ? AND ? ORDER BY p.fecha_reunion", rango)]
+        mails = c.execute("SELECT COUNT(*) FROM fid_mails WHERE enviado_en BETWEEN ? AND ?", rango).fetchone()[0]
+    finally:
+        c.close()
+    return {
+        "desde": d0, "hasta": d1,
+        "visitas": {"total": len(visitas), "por_persona": dict(Counter(v["usuario"] or "?" for v in visitas)),
+                    "por_resultado": dict(Counter(v["resultado"] for v in visitas))},
+        "llamadas": {"total": len(llamadas), "por_persona": dict(Counter(v["usuario"] or "?" for v in llamadas))},
+        "reuniones": reuniones, "mails": mails,
+    }
+
+
+def agendar(db: str, pid: int, tipo: str, fecha: str, usuario: str,
+            cuando: datetime | None = None) -> tuple[dict | None, str | None]:
+    """Deja una llamada o una reunión en una fecha, sin registrar una llamada."""
+    cuando = cuando or ahora()
+    dt = parse_dt(fecha)
+    if not dt or len(str(fecha).strip()) < 16:
+        return None, "falta la fecha y la hora"
+    if dt < cuando - timedelta(minutes=5):
+        return None, "la fecha no puede quedar en el pasado"
+    if tipo == "reunion":
+        return mover_estado(db, pid, "reunion_agendada", usuario, fecha_reunion=fmt(dt))
+    if tipo != "llamada":
+        return None, "tipo inválido"
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None, "el prospecto no existe"
+        p = dict(f)
+        cambios = {"proxima_llamada": fmt(dt)}
+        if p["estado"] in ("cerrado", "descartado", "sin_contactar"):
+            cambios.update(_cambiar_estado(c, p, "contactado", cuando, usuario))
+        c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                  list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid), None
+
+
+def agregar_nota(db: str, pid: int, nota: str, autor: str, cuando: datetime | None = None) -> dict | None:
+    """Suma una línea fechada a las notas del local (no pisa lo que había)."""
+    nota = (nota or "").strip()[:1000]
+    p = get_prospecto(db, pid)
+    if not p or not nota:
+        return p
+    cuando = cuando or ahora()
+    previas = p.get("notas") or ""
+    if previas.startswith("Traído de Google Maps"):
+        previas = ""
+    linea = f"{cuando.strftime('%d/%m')} {autor}: {nota}" if autor else f"{cuando.strftime('%d/%m')}: {nota}"
+    editar_prospecto(db, pid, {"notas": (linea + ("\n" + previas if previas else ""))[:4000]})
+    return get_prospecto(db, pid)
+
+
 # ── agenda ───────────────────────────────────────────────────────────────────
 # El calendario del vendedor. Muestra SOLO lo de Fidelidad: sus reuniones, sus
 # llamadas agendadas y sus eventos. El calendario de la agencia (Google, las

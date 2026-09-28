@@ -380,3 +380,35 @@ def oauth_gmail_callback():
 def api_gmail_desconectar():
     gmail.desconectar(_db(), session.get("user_id"))
     return jsonify({"ok": True})
+
+
+# ── pedidos del bot del grupo (28/9) ─────────────────────────────────────────
+
+@fidelidad_bp.route("/api/fidelidad/resumen")
+def api_resumen():
+    hoy = _ahora().strftime("%Y-%m-%d")
+    d = fid.resumen_actividad(_db(), request.args.get("desde") or hoy, request.args.get("hasta") or hoy)
+    if d.get("error"):
+        return _error(d["error"], 400)
+    return jsonify(d)
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/agendar", methods=["POST"])
+def api_agendar(pid):
+    d = request.get_json(silent=True) or {}
+    autor = (d.get("autor") or "").strip()[:60] or _usuario()
+    p, error = fid.agendar(_db(), pid, d.get("tipo") or "", d.get("fecha") or "", autor, cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "el prospecto no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/nota", methods=["POST"])
+def api_nota(pid):
+    d = request.get_json(silent=True) or {}
+    if not (d.get("nota") or "").strip():
+        return _error("falta la nota", 400)
+    p = fid.agregar_nota(_db(), pid, d["nota"], (d.get("autor") or "").strip()[:60] or _usuario(), cuando=_ahora())
+    if not p:
+        return _error("el prospecto no existe", 404)
+    return jsonify({"ok": True, "prospecto": p})
