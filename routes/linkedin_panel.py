@@ -48,6 +48,10 @@ def api_borradores():
         semana = lb.lunes_de(dia).isoformat()
     else:
         semana = lb.semana_actual(ahora)
+    try:
+        lb.dibujar_faltantes(_db(), semana)
+    except Exception:
+        current_app.logger.exception("LinkedIn: no se pudieron dibujar las tarjetas que faltaban")
     borradores = lb.listar_semana(_db(), semana)
     pedidos = lb.correcciones_de(_db(), [b["id"] for b in borradores])
     for b in borradores:
@@ -124,7 +128,8 @@ def api_imagen(borrador_id):
         return jsonify({"ok": False, "error": "Este borrador no tiene imagen guardada"}), 404
     png, semana, orden = datos
     respuesta = Response(png, mimetype="image/png")
-    respuesta.headers["Cache-Control"] = "private, max-age=3600"
+    # Sin cache: "Otra idea" o una correccion cambian la tarjeta y la URL es la misma.
+    respuesta.headers["Cache-Control"] = "private, no-cache"
     respuesta.headers["X-Content-Type-Options"] = "nosniff"
     if request.args.get("descargar"):
         respuesta.headers["Content-Disposition"] = f'attachment; filename="linkedin-{semana}-{orden}.png"'

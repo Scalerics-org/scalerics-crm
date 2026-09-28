@@ -376,6 +376,44 @@ def otra_idea(db_path: str, borrador_id: int, ahora: datetime | None = None) -> 
     return obtener(db_path, borrador_id)
 
 
+def dibujar_faltantes(db_path: str, semana: str) -> int:
+    """Dibuja con Pillow la tarjeta de los borradores de la semana que no tienen.
+
+    Pedido de Juan (28/9): la foto abajo del texto de cada borrador, sin
+    esperar al cron. Si no hay `frase` guardada (históricos, o posts que
+    entraron sin tarjeta) se usa la primera oración del texto. Un borrador
+    que falla queda sin foto y el resto sigue: el panel tiene que cargar igual.
+    """
+    from services.linkedin_posts import primera_frase, recortar_frase
+    from services.linkedin_render import dibujar
+
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id, frase, texto FROM linkedin_borradores WHERE semana = ? AND imagen_png IS NULL "
+            "AND estado <> 'descartado'", (semana,)).fetchall()
+        dibujadas = 0
+        for f in filas:
+            if (f["frase"] or "").strip():
+                frase = recortar_frase(f["frase"])
+            else:
+                frase = primera_frase(f["texto"]) if (f["texto"] or "").strip() else ""
+            if not frase:
+                continue
+            try:
+                png = dibujar(frase)
+            except Exception:  # noqa: BLE001 - una tarjeta rota no tumba el panel
+                logger.exception(f"linkedin_borradores: no se pudo dibujar la tarjeta del borrador {f['id']}")
+                continue
+            dibujadas += conn.execute(
+                "UPDATE linkedin_borradores SET imagen_png = ?, frase = ? WHERE id = ? AND imagen_png IS NULL",
+                (sqlite3.Binary(png), frase, f["id"])).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return dibujadas
+
+
 def necesita_render(db_path: str) -> list[dict]:
     """Borradores con tarjeta pendiente de dibujar (otra_idea o una correccion).
 
