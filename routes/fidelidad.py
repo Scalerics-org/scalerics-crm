@@ -174,6 +174,21 @@ def api_estado(pid):
     return jsonify({"ok": True, "prospecto": p})
 
 
+@fidelidad_bp.route("/api/fidelidad/visitas", methods=["POST"])
+def api_visita():
+    """La carga rápida del celular y el bot del grupo de WhatsApp (que entra con
+    x-admin-token y dice quién escribió en `autor`)."""
+    d = request.get_json(silent=True) or {}
+    autor = (d.get("autor") or "").strip()[:60] or _usuario()
+    p, error, nuevo = fid.registrar_visita(_db(), d, autor, fuente=d.get("fuente") or "calle", cuando=_ahora())
+    if error:
+        return _error(error, 400)
+    return jsonify({"ok": True, "nuevo": nuevo, "oculto": bool(p.get("archivado")),
+                    "resultado": fid.RESULTADOS_VISITA[d.get("resultado") or "visitado"],
+                    "prospecto": {k: p.get(k) for k in ("id", "nombre", "barrio", "ciudad", "zona", "estado", "contacto",
+                                                        "contacto_tel", "telefono", "proxima_llamada", "fecha_reunion")}}), 201
+
+
 @fidelidad_bp.route("/api/fidelidad/importar", methods=["POST"])
 def api_importar():
     archivo = request.files.get("archivo")

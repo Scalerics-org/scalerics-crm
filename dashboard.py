@@ -459,6 +459,7 @@ function _fidFilaLista(p) {
     + '<div class="fl-top"><span class="fid-nm">'+esc(p.nombre)+'</span>'+_fidEstadoPill(p)
     + (lh ? '<span class="fid-pill b">✓ Llamado '+esc(lh.hecha_en.slice(11, 16))+' · '+esc(FID_RES_LABEL[lh.resultado] || lh.resultado)+'</span>' : '')
     + (p.n_no_atendio > 1 ? '<span class="fid-pill">No atendió ×'+p.n_no_atendio+'</span>' : '')
+    + (p.ultima_visita ? '<span class="fid-pill b">📍 '+esc(({visitado:'Visitado',interesado:'Interesado',reunion:'Reunión',no_interesa:'No le interesa',cliente:'Cliente'})[p.ultima_visita.resultado] || 'Visitado')+' '+esc(p.ultima_visita.hecha_en.slice(0, 10) === _fidTxt(new Date()).slice(0, 10) ? p.ultima_visita.hecha_en.slice(11, 16) : fidFecha(p.ultima_visita.hecha_en, false))+'</span>' : '')
     + (p.ultimo_mail ? '<span class="fid-pill b">✉ Mail enviado '+esc(p.ultimo_mail.slice(0, 10) === _fidTxt(new Date()).slice(0, 10) ? p.ultimo_mail.slice(11, 16) : fidFecha(p.ultimo_mail, false))+'</span>' : '')
     + '<span class="fl-target" title="Qué tan parecido es al cliente ideal de Fidelidad">'+p.target+'% target</span></div>'
     + '<div class="fid-meta fl-meta">'+meta.join(' · ')+'</div>'
@@ -642,6 +643,67 @@ async function fidMover(id, estado) {
   try { await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
   catch(e) { fidAviso(esc(e.message), 'error'); }
   fidCargarPipe();
+}
+
+// ── Cargar visita (28/9) ─────────────────────────────────────────────────────
+// La captación en la calle, desde el celular: el local, cómo salió y cuándo
+// volver. Si el local ya estaba cargado, se completa; no se duplica.
+const FID_RES_VISITA = [['visitado','Visitado'],['interesado','Interesado'],['reunion','Reunión'],['no_interesa','No le interesa'],['cliente','Cliente']];
+const _fv = {resultado: 'interesado', cuando: null};
+
+function _fidVisitaCuando() {
+  const a = new Date(), h = (d, hr) => { d.setHours(hr, 0, 0, 0); return _fidTxt(d); };
+  const dow = n => { const d = new Date(a); d.setDate(d.getDate() + ((n - d.getDay() + 7) % 7 || 7)); return d; };
+  return [['Mañana', h(_fidHabil(a, 1), 11)], ['En 2 días', h(_fidHabil(a, 2), 11)],
+          ['El jueves', h(dow(4), 16)], ['En 1 semana', h(new Date(a.getTime() + 7*864e5), 11)]];
+}
+
+function fidVisitaAbrir() {
+  _fv.resultado = 'interesado'; _fv.cuando = null;
+  const campo = (id, label, extra) => '<div class="full"><label for="fid-v-'+id+'">'+label+'</label><input class="fid-in" id="fid-v-'+id+'"'+(extra||'')+'></div>';
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Cargar visita</h3><div class="fid-form fv">'
+    + campo('nombre', 'Local *', ' autocomplete="off"')
+    + '<div><label for="fid-v-ciudad">Ciudad</label><select class="fid-in" id="fid-v-ciudad">'+[['Montevideo','Montevideo'],['Buenos Aires','Buenos Aires']].map(o => '<option'+(o[0] === _fl.ciudad ? ' selected' : '')+'>'+o[0]+'</option>').join('')+'</select></div>'
+    + '<div><label for="fid-v-barrio">Barrio</label><input class="fid-in" id="fid-v-barrio"></div>'
+    + '<div><label for="fid-v-contacto">Dueño o encargado</label><input class="fid-in" id="fid-v-contacto"></div>'
+    + '<div><label for="fid-v-contacto_tel">Celular</label><input class="fid-in" id="fid-v-contacto_tel" inputmode="tel"></div>'
+    + '<div class="full"><label>¿Cómo salió?</label><div class="fid-chips" id="fid-v-res">'+FID_RES_VISITA.map(r => '<button type="button" class="fid-chip'+(r[0] === _fv.resultado ? ' on' : '')+'" data-v="'+r[0]+'" onclick="fidVisitaRes(\''+r[0]+'\')">'+r[1]+'</button>').join('')+'</div></div>'
+    + '<div class="full" id="fid-v-cuando-box"><label id="fid-v-cuando-lbl">Volver a llamar</label><div class="fid-chips" id="fid-v-cuando">'+_fidVisitaCuando().map(o => '<button type="button" class="fid-chip" data-v="'+o[1]+'" onclick="fidVisitaCuando(\''+o[1]+'\')">'+o[0]+'</button>').join('')+'</div>'
+    + '<input type="datetime-local" class="fid-in" id="fid-v-fecha" style="margin-top:6px" onchange="fidVisitaCuando(this.value)"></div>'
+    + campo('tipo', 'Tipo de local', ' placeholder="Pizzería, barbería…"')
+    + '<div class="full"><label for="fid-v-nota">Nota</label><input class="fid-in" id="fid-v-nota" placeholder="Qué te dijo"></div>'
+    + '</div><div class="fid-err" id="fid-v-err"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:14px"><button class="fid-btn" onclick="fidCerrarModal()">Cerrar</button><span style="flex:1"></span><button class="fid-btn p" onclick="fidVisitaGuardar()">Guardar y cargar otra</button></div>');
+  setTimeout(() => document.getElementById('fid-v-nombre').focus(), 30);
+}
+
+function fidVisitaRes(r) {
+  _fv.resultado = r;
+  document.querySelectorAll('#fid-v-res .fid-chip').forEach(b => b.classList.toggle('on', b.dataset.v === r));
+  // No le interesa y Cliente no llevan fecha; Reunión lleva la de la reunión.
+  document.getElementById('fid-v-cuando-box').style.display = (r === 'no_interesa' || r === 'cliente') ? 'none' : '';
+  document.getElementById('fid-v-cuando-lbl').textContent = r === 'reunion' ? 'Fecha de la reunión' : 'Volver a llamar';
+}
+
+function fidVisitaCuando(v) {
+  _fv.cuando = v || null;
+  document.querySelectorAll('#fid-v-cuando .fid-chip').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  const f = document.getElementById('fid-v-fecha');
+  if (f.value !== v) f.value = v || '';
+}
+
+async function fidVisitaGuardar() {
+  const body = {resultado: _fv.resultado, proxima: _fv.cuando, fuente: 'calle'};
+  ['nombre','ciudad','barrio','contacto','contacto_tel','tipo','nota'].forEach(k => { body[k] = document.getElementById('fid-v-'+k).value; });
+  const err = document.getElementById('fid-v-err');
+  if (!body.nombre.trim()) { err.textContent = 'Poné el nombre del local.'; return; }
+  let d;
+  try { d = await _fidJson('/api/fidelidad/visitas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
+  catch(e) { err.textContent = e.message; return; }
+  fidAviso('✓ '+esc(d.prospecto.nombre)+(d.nuevo ? ' cargado' : ' actualizado')+' · '+esc(d.resultado)
+    + (d.oculto ? ' · <span class="fid-dn">quedó oculto: en Montevideo, por ahora solo Municipio CH y Carrasco</span>' : ''));
+  fidVisitaAbrir();
+  if (_fid.vista === 'lista') fidCargarLista();
 }
 
 // ── Mail con borrador ────────────────────────────────────────────────────────
@@ -2781,6 +2843,10 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .fid-kc .ft{margin-top:7px;display:flex;gap:4px;flex-wrap:wrap}
 .fid-mas{text-align:center;color:var(--texto-debil);font-size:.72rem;padding:6px}
 .fl-mail{flex-direction:column;align-items:stretch}
+.fid-form.fv .fid-chips{gap:6px}
+.fid-form.fv .fid-chip{padding:7px 12px;font-size:.78rem}
+.fid-chip.on{border-color:var(--azul);color:var(--azul-claro);background:var(--azul-tinte)}
+@media (max-width:700px){.fid-form.fv{grid-template-columns:1fr}.fid-form.fv .fid-in{font-size:16px}}
 .fl-mail .fid-in{flex:0 0 auto;width:100%}
 .fl-mail textarea.fid-in{min-height:220px;line-height:1.45}
 .fl-mail-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -4088,7 +4154,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <a class="fid-btn" href="/api/fidelidad/export.csv">Exportar CSV</a>
         <label class="fid-btn" for="fid-archivo">Importar Excel</label>
         <input type="file" id="fid-archivo" accept=".xlsx" style="display:none" onchange="fidImportar(this)">
-        <button class="fid-btn p" onclick="fidNuevoAbrir()">+ Comercio</button>
+        <button class="fid-btn" onclick="fidNuevoAbrir()">+ Comercio</button>
+        <button class="fid-btn p" onclick="fidVisitaAbrir()">+ Visita</button>
       </div>
     </div>
     <div id="fid-aviso"></div>
