@@ -14,6 +14,7 @@ const { crearScorer } = require('./funnel/scoring');
 const { crearTextos } = require('./templates/funnel');
 const { crearNotificadorCRM } = require('./crm-notify');
 const { crearAgrupador } = require('./inbound/agrupador');
+const { crearCaptacion } = require('./captacion');
 
 /**
  * Arma el servicio entero y devuelve las piezas.
@@ -265,6 +266,13 @@ function construir(cfg, {
     // que habia un esto.
     const medio = m.tipo ? (await bajarMedio(m)).medio : null;
     agrupador.recibir({ ...m, media: medio });
+  });
+
+  // El grupo de captacion en la calle: la IA saca los locales visitados y los
+  // carga en el Outbound de Fidelidad del CRM. Aparte del embudo de leads.
+  const captacion = crearCaptacion({ cfg, modelo: modeloIA, proveedor, repo, logger: log, ahora });
+  proveedor.alRecibirGrupo?.((m) => {
+    captacion.recibir(m).catch((e) => log.warn({ err: String(e.message || e) }, 'captación: falló'));
   });
 
   // Audios, fotos y archivos. No se puede leer el contenido, pero contestar

@@ -46,6 +46,11 @@ const esquema = z.object({
 
   // Coma-separado. Puede ser un JID de grupo (...@g.us) cuando el proveedor lo soporte.
   AM_PHONES: z.string().default(''),
+  // El grupo donde el equipo anota la captación en la calle (src/captacion.js).
+  // Es el unico grupo que el bot lee. Vacio, no lee ninguno. El JID sale en el
+  // log ("mensaje de un grupo que no es el de captación") la primera vez que
+  // alguien escribe en el grupo.
+  GRUPO_CAPTACION_JID: z.string().default(''),
 
   /**
    * Numeros del equipo. Coma-separado.

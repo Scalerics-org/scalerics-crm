@@ -245,15 +245,15 @@ def test_importa_el_excel_de_prospectos(db):
         [4, "El Otro Es Mercat", "Ciudad Vieja / Centro (Municipio B)", "Ciudad Vieja", "Tapas", "", "+598 2914 7078", 4.6, 285],
     ], links={"J4": "https://www.google.com/maps/place/?q=place_id:AAA"})
     r = fid.importar(db, contenido)
-    assert r == {"ok": True, "leidos": 4, "creados": 3, "duplicados": 0, "fuera_de_zona": 1}
+    assert r == {"ok": True, "leidos": 4, "creados": 4, "duplicados": 0}
     perdiz = _uno(db, "SELECT maps_url, resenas, rating, zona, notas FROM fid_prospectos WHERE nombre='La Perdiz'")
     assert tuple(perdiz) == ("https://www.google.com/maps/place/?q=place_id:AAA", 5489, 4.5, "Municipio CH", "Muy concurrido")
     massey = _uno(db, "SELECT estado, facilidad, contacto, zona FROM fid_prospectos WHERE nombre='Massey Familia'")
     assert tuple(massey) == ("contactado", "Alta", "Martín", "Carrasco")
     assert _uno(db, "SELECT zona, telefono FROM fid_prospectos WHERE nombre='La Parrillita'")[0] == "Carrasco"
-    # Ciudad Vieja no es territorio: queda guardado, oculto.
-    assert _uno(db, "SELECT archivado FROM fid_prospectos WHERE nombre='El Otro Es Mercat'")[0] == 1
-    assert "El Otro Es Mercat" not in [p["nombre"] for p in fid.listar(db)["items"]]
+    # Desde el 28/9 entra todo Montevideo: Ciudad Vieja va con su barrio.
+    assert tuple(_uno(db, "SELECT archivado, zona FROM fid_prospectos WHERE nombre='El Otro Es Mercat'")) == (0, "Ciudad Vieja")
+    assert "El Otro Es Mercat" in [p["nombre"] for p in fid.listar(db)["items"]]
     # Volver a importar no duplica.
     assert fid.importar(db, contenido)["duplicados"] == 4
 
@@ -277,9 +277,8 @@ def test_leer_el_excel_real_si_esta(db):
         pytest.skip("el Excel de prospectos no está en esta máquina")
     r = fid.importar(db, ruta.read_bytes())
     assert r["ok"] and r["leidos"] == 180
-    assert r["creados"] + r["fuera_de_zona"] + r["duplicados"] == 180
-    visibles = fid.listar(db, por_pagina=1000)["total"]
-    assert visibles == 150  # 89 CH + 50 Carrasco + 5 Buceo + 6 Barra de Carrasco
+    assert r["creados"] + r["duplicados"] == 180
+    assert fid.listar(db, por_pagina=1000)["total"] == r["creados"]   # todo Montevideo, nada oculto
     assert _uno(db, "SELECT COUNT(*) FROM fid_prospectos WHERE maps_url LIKE 'https://%'")[0] >= 150
 
 
@@ -382,9 +381,9 @@ def admin(app):
     return _cli(app, _usuario(app.config["_DB"], "jefe@scalerics.com"))
 
 
-def test_alta_manual_fuera_de_zona_se_rechaza(admin):
-    r = admin.post("/api/fidelidad/prospectos", json={"nombre": "X", "zona": "Ciudad Vieja"})
-    assert r.status_code == 400
+def test_alta_manual_en_cualquier_barrio_de_montevideo(admin):
+    r = admin.post("/api/fidelidad/prospectos", json={"nombre": "X", "barrio": "Ciudad Vieja"})
+    assert r.status_code == 201
     r = admin.post("/api/fidelidad/prospectos", json={"nombre": "Y", "zona": "Carrasco"})
     assert r.status_code == 201
 

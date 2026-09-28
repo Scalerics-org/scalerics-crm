@@ -378,6 +378,19 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_mails_p ON fid_mails(prospecto_id)")
+    # Las visitas en la calle (28/9), aparte de las llamadas.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_visitas (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospecto_id  INTEGER NOT NULL REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            hecha_en      TEXT NOT NULL,
+            resultado     TEXT NOT NULL,
+            nota          TEXT,
+            usuario       TEXT,
+            fuente        TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_visitas_p ON fid_visitas(prospecto_id)")
     init_plantillas_mail(conn)
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
@@ -393,6 +406,9 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass
     conn.execute("UPDATE fid_prospectos SET ciudad = 'Montevideo' WHERE ciudad IS NULL")
+    # Todo Montevideo abierto (28/9): lo que quedó oculto por estar fuera de
+    # Municipio CH y Carrasco vuelve a la lista.
+    conn.execute("UPDATE fid_prospectos SET archivado = 0 WHERE archivado = 1 AND ciudad = 'Montevideo'")
     for pid, tipo, nombre in conn.execute("SELECT id, tipo, nombre FROM fid_prospectos WHERE rubro IS NULL").fetchall():
         conn.execute("UPDATE fid_prospectos SET rubro = ? WHERE id = ?", (rubro_de(tipo, nombre), pid))
     # El rol del socio. Solo ve estas dos pantallas; el candado real está en
@@ -481,25 +497,39 @@ def _limpiar_campos(datos: dict) -> dict:
     return out
 
 
-def buscar_duplicado(c: sqlite3.Connection, nombre: str, telefono: str | None, maps_url: str | None) -> int | None:
-    """El mismo restaurante puede llegar del Excel, del scraper y a mano. Se
-    reconoce por el link de Maps, por el teléfono o por el nombre."""
+_ARTICULOS = re.compile(r"^(la|el|los|las|lo) ")
+
+
+def _nombre_base(nombre: str | None) -> str:
+    """Para comparar nombres: sin tildes, sin mayúsculas y sin el artículo del
+    principio ("La Pizzería de Juan" es "Pizzeria de Juan")."""
+    return _ARTICULOS.sub("", normalizar(nombre))
+
+
+def buscar_duplicado(c: sqlite3.Connection, nombre: str, telefono: str | None, maps_url: str | None,
+                     contacto_tel: str | None = None, ciudad: str | None = None) -> int | None:
+    """El mismo comercio puede llegar del Excel, del scraper, del grupo de
+    WhatsApp y a mano. Se reconoce por el link de Maps, por un teléfono (el del
+    local o el celular del dueño, cruzados) o por el nombre dentro de la misma
+    ciudad: "La Esquina" de Pocitos no es "La Esquina" de Almagro."""
     if maps_url:
         f = c.execute("SELECT id FROM fid_prospectos WHERE maps_url = ?", (maps_url,)).fetchone()
         if f:
             return f[0]
-    tel = digitos(telefono)
-    nom = normalizar(nombre)
-    for fila in c.execute("SELECT id, nombre, telefono FROM fid_prospectos"):
-        if tel and len(tel) >= 7 and digitos(fila["telefono"]) == tel:
+    tels = {t for t in (digitos(telefono), digitos(contacto_tel)) if len(t) >= 7}
+    nom = _nombre_base(nombre)
+    ciudad = normalizar_ciudad(ciudad) if ciudad else None
+    por_nombre = None
+    for fila in c.execute("SELECT id, nombre, telefono, contacto_tel, ciudad FROM fid_prospectos"):
+        if tels & {digitos(fila["telefono"]), digitos(fila["contacto_tel"])}:
             return fila["id"]
-        if nom and normalizar(fila["nombre"]) == nom:
-            return fila["id"]
-    return None
+        if por_nombre is None and nom and _nombre_base(fila["nombre"]) == nom                 and (not ciudad or (fila["ciudad"] or "Montevideo") == ciudad):
+            por_nombre = fila["id"]
+    return por_nombre
 
 
 def crear_prospecto(db: str, datos: dict, fuente: str = "manual") -> tuple[int | None, str]:
-    """Devuelve (id, 'creado'|'duplicado'|'fuera_de_zona'|'sin_nombre')."""
+    """Devuelve (id, 'creado'|'duplicado'|'sin_nombre')."""
     campos = _limpiar_campos(datos)
     if not campos.get("nombre"):
         return None, "sin_nombre"
@@ -508,19 +538,17 @@ def crear_prospecto(db: str, datos: dict, fuente: str = "manual") -> tuple[int |
     if campos["ciudad"] == "Buenos Aires":
         zona = campos.get("zona") or campos.get("barrio") or "Buenos Aires"
     else:
-        zona = normalizar_zona(campos.get("zona"), campos.get("barrio"))
+        # Desde el 28/9 entra todo Montevideo (Juan). CH y Carrasco siguen
+        # agrupados como antes; el resto va con su barrio.
+        zona = normalizar_zona(campos.get("zona"), campos.get("barrio")) \
+            or campos.get("barrio") or campos.get("zona") or "Montevideo"
     archivado = 0
-    if not zona:
-        # Fuera de CH y Carrasco. No se descarta: queda guardado y oculto, igual
-        # que los prospectos viejos, por si un día se abre otra zona.
-        if not datos.get("guardar_fuera_de_zona"):
-            return None, "fuera_de_zona"
-        archivado = 1
-    campos["zona"] = zona or campos.get("zona")
+    campos["zona"] = zona
     estado = datos.get("estado") if datos.get("estado") in ESTADOS else "sin_contactar"
     c = _conn(db)
     try:
-        dup = buscar_duplicado(c, campos["nombre"], campos.get("telefono"), campos.get("maps_url"))
+        dup = buscar_duplicado(c, campos["nombre"], campos.get("telefono"), campos.get("maps_url"),
+                               campos.get("contacto_tel"), campos.get("ciudad"))
         if dup:
             return dup, "duplicado"
         campos.update({"estado": estado, "fuente": fuente, "archivado": archivado,
@@ -563,6 +591,8 @@ def get_prospecto(db: str, pid: int) -> dict | None:
             "SELECT * FROM fid_cambios WHERE prospecto_id = ? ORDER BY en DESC, id DESC", (pid,))]
         p["mails"] = [dict(x) for x in c.execute(
             "SELECT * FROM fid_mails WHERE prospecto_id = ? ORDER BY enviado_en DESC, id DESC", (pid,))]
+        p["visitas"] = [dict(x) for x in c.execute(
+            "SELECT * FROM fid_visitas WHERE prospecto_id = ? ORDER BY hecha_en DESC, id DESC", (pid,))]
         return p
     finally:
         c.close()
@@ -1205,17 +1235,23 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
             f"WHERE {' AND '.join(cond)}", params)]
         rep = repetidos_en([{"nombre": f[0]} for f in c.execute("SELECT nombre FROM fid_prospectos")])
         ult = _ultimo_resultado(c)
-        notas, hoy_ll = {}, {}
+        notas, hoy_ll, llam_nota_en = {}, {}, {}
         for f in c.execute("SELECT id, prospecto_id, hecha_en, resultado, nota, proxima FROM fid_llamadas "
                            "ORDER BY hecha_en, id"):
             if f["nota"]:
                 notas[f["prospecto_id"]] = f["nota"]
+                llam_nota_en[f["prospecto_id"]] = f["hecha_en"]
             if f["hecha_en"][:10] == hoy:
                 hoy_ll[f["prospecto_id"]] = dict(f)
         llam_hoy = c.execute("SELECT COUNT(*) FROM fid_llamadas WHERE substr(hecha_en, 1, 10) = ?",
                              (hoy,)).fetchone()[0]
         mails = {f["prospecto_id"]: f["enviado_en"] for f in c.execute(
             "SELECT prospecto_id, MAX(enviado_en) AS enviado_en FROM fid_mails GROUP BY prospecto_id")}
+        visitas, nota_en = {}, {}
+        for f in c.execute("SELECT prospecto_id, hecha_en, resultado, nota FROM fid_visitas ORDER BY hecha_en, id"):
+            visitas[f["prospecto_id"]] = {"hecha_en": f["hecha_en"], "resultado": f["resultado"]}
+            if f["nota"]:
+                nota_en[f["prospecto_id"]] = (f["hecha_en"], f["nota"])
     finally:
         c.close()
     cfg = get_config(db)
@@ -1231,6 +1267,11 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
         f["ultima_nota"] = notas.get(f["id"])
         f["llamada_hoy"] = hoy_ll.get(f["id"])
         f["ultimo_mail"] = mails.get(f["id"])
+        f["ultima_visita"] = visitas.get(f["id"])
+        # La nota más nueva, sea de una llamada o de una visita.
+        nv = nota_en.get(f["id"])
+        if nv and (not f["ultima_nota"] or nv[0] >= (llam_nota_en.get(f["id"]) or "")):
+            f["ultima_nota"] = nv[1]
         f["target"] = target(f, rep)
         cuando_txt = f["fecha_reunion"] if f["estado"] == "reunion_agendada" else f["proxima_llamada"]
         f["cuando"] = cuando_txt
@@ -1466,6 +1507,79 @@ def registrar_mail(db: str, pid: int, usuario: str, de: str, para: str, asunto: 
     finally:
         c.close()
     return get_prospecto(db, pid)
+
+
+# ── visitas en la calle (28/9) ───────────────────────────────────────────────
+# Juan: hacen captación en la calle todos los días. Entra por la carga rápida
+# del celular o por el grupo de WhatsApp (el bot lee el mensaje y llama acá).
+# Una visita no es una llamada: va a su propia tabla para no inflar las
+# llamadas ni la tasa de contacto de Inteligencia comercial.
+
+RESULTADOS_VISITA = {
+    "visitado": "Visitado", "interesado": "Interesado", "reunion": "Reunión",
+    "no_interesa": "No le interesa", "cliente": "Cliente",
+}
+
+
+def registrar_visita(db: str, datos: dict, usuario: str, fuente: str = "calle",
+                     cuando: datetime | None = None) -> tuple[dict | None, str | None, bool]:
+    """Crea el comercio si no estaba (o lo encuentra por nombre o teléfono),
+    completa lo que falte y deja la próxima llamada o la reunión.
+    Devuelve (prospecto, error, era_nuevo)."""
+    cuando = cuando or ahora()
+    resultado = datos.get("resultado") or "visitado"
+    if resultado not in RESULTADOS_VISITA:
+        return None, "resultado inválido", False
+    nombre = (datos.get("nombre") or "").strip()
+    if not nombre:
+        return None, "falta el nombre del local", False
+    fecha = parse_dt(datos.get("proxima"))
+    if fecha and fecha < cuando - timedelta(minutes=5):
+        return None, "la fecha no puede quedar en el pasado", False
+    base = {k: datos.get(k) for k in ("nombre", "ciudad", "zona", "barrio", "tipo", "direccion", "telefono",
+                                      "contacto", "contacto_tel", "email", "instagram")}
+    pid, que = crear_prospecto(db, base, fuente=fuente)
+    if not pid:
+        return None, "no se pudo cargar el local", False
+    nuevo = que == "creado"
+    c = _conn(db)
+    try:
+        p = dict(c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone())
+        # Lo que ya estaba cargado no se pisa; lo que faltaba se completa.
+        cambios = {k: v for k, v in _limpiar_campos(base).items()
+                   if v and not p.get(k) and k not in ("nombre", "ciudad", "rubro")}
+        if resultado == "reunion":
+            cambios.update(_cambiar_estado(c, p, "reunion_agendada", cuando, usuario))
+            cambios["fecha_reunion"] = fmt(fecha or fecha_propuesta("reunion", cuando))
+            cambios["proxima_llamada"] = None
+        elif resultado == "no_interesa":
+            cambios.update(_cambiar_estado(c, p, "descartado", cuando, usuario))
+            cambios["motivo_descarte"] = "No le interesa"
+            cambios["proxima_llamada"] = fmt(fecha_propuesta("no_interesa", cuando))
+        elif resultado == "cliente":
+            cambios.update(_cambiar_estado(c, p, "cerrado", cuando, usuario))
+            cambios["proxima_llamada"] = None
+            if not p.get("mensual_usd"):
+                cambios["mensual_usd"] = get_config_conn(c)["precio_usd"]
+        else:
+            if p["estado"] in ("sin_contactar", "descartado"):
+                cambios.update(_cambiar_estado(c, p, "contactado", cuando, usuario))
+            # Interesado sin fecha: se lo llama a los dos días hábiles; visitado, a la semana.
+            dias = DIAS_SEGUIMIENTO_MAIL if resultado == "interesado" else 5
+            cambios["proxima_llamada"] = fmt(fecha or datetime.combine(
+                _sumar_habiles(cuando.date(), dias), datetime.min.time()).replace(hour=11))
+        if not p.get("primera_llamada"):
+            cambios["primera_llamada"] = fmt(cuando)
+        c.execute("INSERT INTO fid_visitas (prospecto_id, hecha_en, resultado, nota, usuario, fuente) "
+                  "VALUES (?,?,?,?,?,?)", (pid, fmt(cuando), resultado,
+                                           (datos.get("nota") or "").strip()[:2000] or None, usuario, fuente))
+        if cambios:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                      list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid), None, nuevo
 
 
 # ── agenda ───────────────────────────────────────────────────────────────────
@@ -2057,7 +2171,6 @@ def importar(db: str, contenido: bytes) -> dict:
         return {"ok": False, "error": "no encontré la columna 'Restaurante' o 'Nombre'"}
     cuenta = Counter()
     for d in prospectos:
-        d["guardar_fuera_de_zona"] = True
         pid, que = crear_prospecto(db, d, fuente="excel")
         if que == "creado" and d.get("proxima_llamada"):
             c = _conn(db)
@@ -2066,11 +2179,9 @@ def importar(db: str, contenido: bytes) -> dict:
                 c.commit()
             finally:
                 c.close()
-        if que == "creado" and normalizar_ciudad(d.get("ciudad")) == "Montevideo"                 and not normalizar_zona(d.get("zona"), d.get("barrio")):
-            que = "fuera_de_zona"
         cuenta[que] += 1
     return {"ok": True, "leidos": len(prospectos), "creados": cuenta["creado"],
-            "duplicados": cuenta["duplicado"], "fuera_de_zona": cuenta["fuera_de_zona"]}
+            "duplicados": cuenta["duplicado"]}
 
 
 def exportar_csv(db: str) -> str:

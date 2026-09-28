@@ -140,6 +140,7 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
   let handler = null;
   let handlerSinTexto = null;
   let handlerSaliente = null;
+  let handlerGrupo = null;
   let alActualizarEstado = null;
   let alPerderConexion = null;
   let intentos = 0;
@@ -319,9 +320,20 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           }
           continue;
         }
-        // Los grupos no son leads: el embudo es uno a uno.
+        // Los grupos no son leads: el embudo es uno a uno. Solo se le pasan a
+        // quien escucha grupos (la captacion, src/captacion.js), que filtra el
+        // suyo.
         if (jid?.endsWith('@g.us')) {
-          logger?.debug({ jid }, 'entrante ignorado: es de grupo');
+          const texto = textoDeMensaje(msg);
+          if (handlerGrupo && texto) {
+            const autor = msg.key?.participantAlt || msg.key?.participantPn || msg.key?.participant || '';
+            handlerGrupo({
+              grupo: jid, texto, id: msg.key?.id || null, nombre: msg.pushName || '',
+              from: autor.endsWith('@lid') ? null : telefonoDeJid(autor),
+            });
+          } else {
+            logger?.debug({ jid }, 'entrante ignorado: es de grupo');
+          }
           continue;
         }
 
@@ -479,6 +491,11 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
 
     alRecibirSinTexto(fn) {
       handlerSinTexto = fn;
+    },
+
+    /** Mensajes de texto de grupos: {grupo, texto, id, nombre, from}. */
+    alRecibirGrupo(fn) {
+      handlerGrupo = fn;
     },
 
     /** Se llama con (idDelProveedor, "delivered"|"read") al llegar el acuse. */

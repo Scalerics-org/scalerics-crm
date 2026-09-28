@@ -136,9 +136,9 @@ def test_rubro_sale_del_tipo_y_buenos_aires_entra_con_su_barrio(db):
     pa, pb = fid.get_prospecto(db, a), fid.get_prospecto(db, b)
     assert pa["rubro"] == "peluqueria" and pa["ciudad"] == "Montevideo"
     assert pb["ciudad"] == "Buenos Aires" and pb["zona"] == "Almagro" and pb["rubro"] == "restaurante"
-    # En Montevideo sigue valiendo el territorio del socio.
-    _, que = fid.crear_prospecto(db, {"nombre": "Pizzería del Cerro", "barrio": "Cerro"})
-    assert que == "fuera_de_zona"
+    # Desde el 28/9 entra todo Montevideo, con su barrio como zona.
+    cerro, que = fid.crear_prospecto(db, {"nombre": "Pizzería del Cerro", "barrio": "Cerro"})
+    assert que == "creado" and fid.get_prospecto(db, cerro)["zona"] == "Cerro"
 
 
 def test_los_prospectos_de_antes_quedan_en_montevideo_y_con_rubro(db):
@@ -357,3 +357,53 @@ def test_fechas_como_las_anotan():
     assert fid._fecha_excel("2026-10-02") == "2026-10-02 11:00"
     assert fid._fecha_excel("46295") == "2026-09-30 11:00"          # fecha de Excel
     assert fid._fecha_excel("mañana") is None and fid._fecha_excel("") is None
+
+
+# ── visitas en la calle (28/9) ───────────────────────────────────────────────
+
+def test_una_visita_crea_el_local_o_completa_el_que_estaba(db, cli):
+    r = cli.post("/api/fidelidad/visitas", json={"nombre": "La Pizzería de Juan", "barrio": "Pocitos",
+                                                 "contacto": "Martín", "contacto_tel": "099 123 456",
+                                                 "resultado": "interesado", "proxima": "2026-10-01T16:00",
+                                                 "nota": "Quiere ver la demo"})
+    assert r.status_code == 201 and r.get_json()["nuevo"]
+    pid = r.get_json()["prospecto"]["id"]
+    p = fid.get_prospecto(db, pid)
+    assert p["estado"] == "contactado" and p["proxima_llamada"] == "2026-10-01 16:00"
+    assert p["contacto_tel"] == "099 123 456" and p["llamadas"] == [] and p["visitas"][0]["usuario"] == "Lucas"
+    # El mismo local otra vez (lo reconoce por el celular): no duplica y deja la reunión.
+    r = cli.post("/api/fidelidad/visitas", json={"nombre": "Pizzeria de Juan", "contacto_tel": "099123456",
+                                                 "telefono": "2708 1234", "resultado": "reunion", "autor": "Gonzalo"})
+    assert r.get_json()["nuevo"] is False
+    p = fid.get_prospecto(db, pid)
+    assert p["estado"] == "reunion_agendada" and p["fecha_reunion"] == "2026-09-24 11:00"
+    assert p["telefono"] == "2708 1234" and p["visitas"][0]["usuario"] == "Gonzalo"
+    item = fid.armar_lista(db, "Montevideo", "restaurante", cuando=AHORA)["items"][0]
+    assert item["ultima_visita"]["resultado"] == "reunion" and item["ultima_nota"] == "Quiere ver la demo"
+    assert fid.armar_lista(db, "Montevideo", "restaurante", cuando=AHORA)["kpis"]["llamadas_hoy"] == 0
+
+
+def test_visita_no_interesa_cliente_y_fuera_de_zona(db, cli):
+    r = cli.post("/api/fidelidad/visitas", json={"nombre": "Fade Club", "barrio": "Cordón", "tipo": "Barbería",
+                                                 "resultado": "no_interesa"})
+    p = fid.get_prospecto(db, r.get_json()["prospecto"]["id"])
+    assert p["archivado"] == 0 and p["zona"] == "Cordón"      # todo Montevideo
+    assert p["estado"] == "descartado" and p["proxima_llamada"].startswith("2027-09")
+    r = cli.post("/api/fidelidad/visitas", json={"nombre": "Pizza Cliente", "barrio": "Pocitos", "resultado": "cliente"})
+    assert fid.get_prospecto(db, r.get_json()["prospecto"]["id"])["estado"] == "cerrado"
+    assert cli.post("/api/fidelidad/visitas", json={"nombre": "", "resultado": "visitado"}).status_code == 400
+    assert cli.post("/api/fidelidad/visitas", json={"nombre": "X", "resultado": "otra"}).status_code == 400
+
+
+def test_la_carga_rapida_esta_en_la_pantalla():
+    html = dashboard.DASHBOARD_HTML
+    assert "function fidVisitaAbrir" in html and "+ Visita</button>" in html
+
+
+def test_el_mismo_nombre_en_otra_ciudad_no_es_repetido(db):
+    a = _p(db, "La Esquina")
+    b, que = fid.crear_prospecto(db, {"nombre": "La Esquina", "ciudad": "Buenos Aires", "barrio": "Almagro",
+                                      "telefono": "1145559999"})
+    assert que == "creado" and b != a
+    _, que = fid.crear_prospecto(db, {"nombre": "Esquina", "barrio": "Pocitos", "contacto_tel": "099 999 111"})
+    assert que == "duplicado"                       # "La Esquina" = "Esquina" en Montevideo

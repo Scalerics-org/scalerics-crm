@@ -129,8 +129,6 @@ def api_crear():
     pid, que = fid.crear_prospecto(_db(), datos, fuente=datos.get("fuente") or "manual")
     if que == "sin_nombre":
         return _error("falta el nombre del restaurante", 400)
-    if que == "fuera_de_zona":
-        return _error("en Montevideo, por ahora solo Municipio CH y Carrasco", 400)
     return jsonify({"ok": True, "id": pid, "duplicado": que == "duplicado"}), 200 if que == "duplicado" else 201
 
 
@@ -172,6 +170,21 @@ def api_estado(pid):
     if error:
         return _error(error, 404 if error == "el prospecto no existe" else 400)
     return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/visitas", methods=["POST"])
+def api_visita():
+    """La carga rápida del celular y el bot del grupo de WhatsApp (que entra con
+    x-admin-token y dice quién escribió en `autor`)."""
+    d = request.get_json(silent=True) or {}
+    autor = (d.get("autor") or "").strip()[:60] or _usuario()
+    p, error, nuevo = fid.registrar_visita(_db(), d, autor, fuente=d.get("fuente") or "calle", cuando=_ahora())
+    if error:
+        return _error(error, 400)
+    return jsonify({"ok": True, "nuevo": nuevo,
+                    "resultado": fid.RESULTADOS_VISITA[d.get("resultado") or "visitado"],
+                    "prospecto": {k: p.get(k) for k in ("id", "nombre", "barrio", "ciudad", "zona", "estado", "contacto",
+                                                        "contacto_tel", "telefono", "proxima_llamada", "fecha_reunion")}}), 201
 
 
 @fidelidad_bp.route("/api/fidelidad/importar", methods=["POST"])
