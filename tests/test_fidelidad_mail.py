@@ -209,3 +209,41 @@ def test_busca_el_mail_en_la_web_del_comercio(db):
     assert fid.get_prospecto(db, sin_mail)["mail_buscado_en"]          # no se vuelve a abrir
     assert fid.get_prospecto(db, caido)["mail_buscado_en"] is None     # se reintenta
     assert fid.buscar_mails(db, lambda url: None, limite=10)["revisados"] == 1
+
+
+# ── las plantillas ───────────────────────────────────────────────────────────
+
+def test_vienen_plantillas_y_se_elige_cual_mandar(cli, db):
+    pid = _p(db, contacto="Nicolás Ruiz")
+    d = cli.get(f"/api/fidelidad/prospectos/{pid}/borrador").get_json()
+    nombres = [t["nombre"] for t in d["plantillas"]]
+    assert nombres[0] == "Primer contacto" and "Seguimiento: no respondió" in nombres
+    assert "Barbería" not in str(d["plantillas"]) and all(t["rubro"] in ("", "restaurante") for t in d["plantillas"])
+    seg = next(t for t in d["plantillas"] if t["nombre"] == "Propuesta de piloto")
+    b = cli.get(f"/api/fidelidad/prospectos/{pid}/borrador?plantilla={seg['id']}").get_json()
+    assert b["plantilla_id"] == seg["id"] and b["asunto"] == "Arrancamos con 30 días de prueba en Pizzería La Esquina"
+    assert b["cuerpo"].startswith("Hola Nicolás, ¿cómo va?") and "USD 150 por mes" in b["cuerpo"]
+    assert "{" not in b["cuerpo"]
+
+
+def test_se_crean_editan_y_borran_plantillas(cli, db):
+    r = cli.post("/api/fidelidad/plantillas", json={"nombre": "Invitación", "rubro": "peluqueria",
+                                                    "asunto": "Hola {comercio}", "cuerpo": "Te espero, {mi_primer_nombre} {😀}"})
+    assert r.status_code == 201
+    tid = r.get_json()["id"]
+    pelu = _p(db, "Barbería Don Pepe", tipo="Barbería", telefono="098 111 222")
+    b = cli.get(f"/api/fidelidad/prospectos/{pelu}/borrador?plantilla={tid}").get_json()
+    assert b["asunto"] == "Hola Barbería Don Pepe" and b["cuerpo"] == "Te espero, Lucas {😀}"
+    assert cli.put(f"/api/fidelidad/plantillas/{tid}", json={"nombre": "Invitación", "asunto": "Otro",
+                                                             "cuerpo": "x"}).status_code == 200
+    resto = _p(db, "Pizza X", telefono="099 777 888")
+    assert tid in [t["id"] for t in cli.get(f"/api/fidelidad/prospectos/{resto}/borrador").get_json()["plantillas"]]
+    assert cli.post("/api/fidelidad/plantillas", json={"nombre": "", "asunto": "a", "cuerpo": "b"}).status_code == 400
+    assert cli.delete(f"/api/fidelidad/plantillas/{tid}").status_code == 200
+    assert tid not in [t["id"] for t in cli.get("/api/fidelidad/plantillas").get_json()["plantillas"]]
+
+
+def test_la_agenda_arranca_en_el_mes():
+    html = dashboard.DASHBOARD_HTML
+    assert "_fid.agModo = 'mes';" in html and "async function _fidCargarMes" in html
+    assert 'id="fid-ag-modo"' in html and "function fidPlantillasAbrir" in html

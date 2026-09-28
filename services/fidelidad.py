@@ -377,6 +377,7 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_mails_p ON fid_mails(prospecto_id)")
+    init_plantillas_mail(conn)
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
                       ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT"),
@@ -1259,32 +1260,136 @@ def es_mail(texto: str | None) -> bool:
     return bool(_MAIL_OK.match((texto or "").strip()))
 
 
-def borrador(p: dict, firma_nombre: str, firma_tel: str | None = None) -> dict:
-    """El mail precargado para un comercio. El vendedor lo puede cambiar."""
+# Las plantillas (28/9): Juan pidió poder mandar distintas. Viven en
+# `fid_plantillas` y cualquiera del Outbound crea o edita las suyas; estas son
+# las que vienen de entrada. Llevan variables entre llaves (VARIABLES_MAIL).
+VARIABLES_MAIL = {
+    "comercio": "Nombre del local", "barrio": "Barrio", "resenas": "Cantidad de reseñas en Google",
+    "visto": "Frase armada con las reseñas («Vi que X tiene más de 400 reseñas…»)",
+    "dueno": "Nombre del dueño, si está cargado", "demo": "Link a la demo", "precio": "Precio por mes (USD)",
+    "mi_nombre": "Tu nombre completo", "mi_primer_nombre": "Tu primer nombre", "mi_telefono": "Tu teléfono",
+    "firma": "Tu nombre, Scalerics Fidelidad y tu teléfono",
+}
+PLANTILLAS_BASE = [
+    ("Primer contacto", "restaurante", "Que tus clientes de {barrio} vuelvan más seguido",
+     "Hola, ¿cómo va?\n\nSoy {mi_primer_nombre}, de Scalerics. {visto}\n\n"
+     "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada compra suma puntos en el "
+     "celular (sin descargar ninguna app) y los canjean por promos del local. Además incluye la carta digital."
+     "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
+    ("Primer contacto", "peluqueria", "Que tus clientes vuelvan más seguido a {comercio}",
+     "Hola, ¿cómo va?\n\nSoy {mi_primer_nombre}, de Scalerics. {visto}\n\n"
+     "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada visita suma puntos en el "
+     "celular (sin descargar ninguna app) y los canjean por descuentos o servicios del local."
+     "\n\nAcá podés ver cómo funciona: {demo}\n\n¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}"),
+    ("Después de hablar por teléfono", "", "Lo que hablamos recién · Scalerics Fidelidad",
+     "Hola{dueno}, ¿cómo va?\n\nGracias por el rato de recién. Como te conté, con el sistema de puntos tus "
+     "clientes suman con cada compra desde el celular, sin descargar nada, y canjean por promos que elegís vos. "
+     "Así vuelven más seguido.\n\nTe dejo la demo para que la mires con calma: {demo}\n\n"
+     "Son USD {precio} por mes, sin permanencia. Si te parece, coordinamos 20 minutos y te lo muestro "
+     "funcionando en tu local.\n\n{firma}"),
+    ("Seguimiento: no respondió", "", "¿Pudiste mirarlo?",
+     "Hola{dueno}, ¿cómo va?\n\nTe escribo por el sistema de puntos para {comercio} que te mandé hace unos "
+     "días. ¿Pudiste mirar la demo? {demo}\n\nSi te sirve, te llamo 5 minutos esta semana y te cuento cómo lo "
+     "usan otros locales.\n\n{firma}"),
+    ("Propuesta de piloto", "", "Arrancamos con 30 días de prueba en {comercio}",
+     "Hola{dueno}, ¿cómo va?\n\nComo quedamos, te propongo arrancar con un piloto de 30 días en {comercio}: "
+     "lo dejamos andando, tus clientes empiezan a sumar puntos y al final miramos juntos cuántos se registraron "
+     "y cuántos volvieron.\n\nSi te convence, sigue a USD {precio} por mes, sin permanencia.\n\n"
+     "¿Te queda bien que lo instalemos esta semana?\n\n{firma}"),
+]
+
+
+def init_plantillas_mail(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_plantillas (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre      TEXT NOT NULL,
+            rubro       TEXT NOT NULL DEFAULT '',
+            asunto      TEXT NOT NULL,
+            cuerpo      TEXT NOT NULL,
+            orden       INTEGER NOT NULL DEFAULT 0,
+            creado_por  TEXT,
+            borrada     INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    if not conn.execute("SELECT 1 FROM fid_plantillas LIMIT 1").fetchone():
+        for i, (nombre, rubro, asunto, cuerpo) in enumerate(PLANTILLAS_BASE):
+            conn.execute("INSERT INTO fid_plantillas (nombre, rubro, asunto, cuerpo, orden, creado_por) "
+                         "VALUES (?,?,?,?,?,?)", (nombre, rubro, asunto, cuerpo, i, "Scalerics"))
+
+
+def listar_plantillas(db: str, rubro: str | None = None) -> list[dict]:
+    """Las vigentes; con `rubro`, las de ese rubro y las que sirven para todos."""
+    c = _conn(db)
+    try:
+        filas = [dict(f) for f in c.execute("SELECT * FROM fid_plantillas WHERE borrada = 0 ORDER BY orden, id")]
+    finally:
+        c.close()
+    return [f for f in filas if not rubro or f["rubro"] in ("", rubro)]
+
+
+def guardar_plantilla(db: str, datos: dict, usuario: str, pid: int | None = None) -> tuple[int | None, str | None]:
+    nombre = (datos.get("nombre") or "").strip()[:80]
+    asunto = (datos.get("asunto") or "").strip()[:200]
+    cuerpo = (datos.get("cuerpo") or "").strip()[:8000]
+    rubro = datos.get("rubro") if datos.get("rubro") in RUBROS else ""
+    if not nombre or not asunto or not cuerpo:
+        return None, "falta el nombre, el asunto o el texto"
+    c = _conn(db)
+    try:
+        if pid:
+            cur = c.execute("UPDATE fid_plantillas SET nombre = ?, rubro = ?, asunto = ?, cuerpo = ? "
+                            "WHERE id = ? AND borrada = 0", (nombre, rubro, asunto, cuerpo, pid))
+            if not cur.rowcount:
+                return None, "la plantilla no existe"
+        else:
+            orden = c.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM fid_plantillas").fetchone()[0]
+            pid = c.execute("INSERT INTO fid_plantillas (nombre, rubro, asunto, cuerpo, orden, creado_por) "
+                            "VALUES (?,?,?,?,?,?)", (nombre, rubro, asunto, cuerpo, orden, usuario)).lastrowid
+        c.commit()
+    finally:
+        c.close()
+    return pid, None
+
+
+def borrar_plantilla(db: str, pid: int) -> bool:
+    c = _conn(db)
+    try:
+        cur = c.execute("UPDATE fid_plantillas SET borrada = 1 WHERE id = ?", (pid,))
+        c.commit()
+        return cur.rowcount > 0
+    finally:
+        c.close()
+
+
+def _completar(texto: str, valores: dict) -> str:
+    # Una llave que no es variable (un emoji, un texto entre llaves) queda como está.
+    return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), texto)
+
+
+def borrador(p: dict, firma_nombre: str, firma_tel: str | None = None, plantilla: dict | None = None,
+             precio: float = 150) -> dict:
+    """El mail precargado para un comercio con una plantilla. El vendedor lo
+    puede cambiar antes de mandar."""
     nombre = p.get("nombre") or "tu local"
     res = p.get("resenas") or 0
     visto = (f"Vi que {nombre} tiene más de {res // 10 * 10 if res >= 20 else res} reseñas en Google: "
              "se nota que tienen clientela fiel." if res >= 20 else f"Estuve mirando {nombre} y me pareció ideal para esto.")
-    primer_nombre = (firma_nombre or "").split(" ")[0] or "el equipo"
-    firma = "\n".join(x for x in (firma_nombre, "Scalerics Fidelidad", firma_tel) if x)
-    if (p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))) == "peluqueria":
-        asunto = f"Que tus clientes vuelvan más seguido a {nombre}"
-        cuerpo = (f"Hola, ¿cómo va?\n\nSoy {primer_nombre}, de Scalerics. {visto}\n\n"
-                  "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada visita suma "
-                  "puntos en el celular (sin descargar ninguna app) y los canjean por descuentos o servicios "
-                  "del local.\n\n"
-                  f"Acá podés ver cómo funciona: {DEMO_URL}\n\n"
-                  f"¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}")
-    else:
-        zona = f"de {p['barrio']} " if p.get("barrio") else ""
-        asunto = f"Que tus clientes {zona}vuelvan más seguido"
-        cuerpo = (f"Hola, ¿cómo va?\n\nSoy {primer_nombre}, de Scalerics. {visto}\n\n"
-                  "Armamos un sistema de puntos para que esos clientes vuelvan más seguido: cada compra suma "
-                  "puntos en el celular (sin descargar ninguna app) y los canjean por promos del local. "
-                  "Además incluye la carta digital.\n\n"
-                  f"Acá podés ver cómo funciona: {DEMO_URL}\n\n"
-                  f"¿Te puedo llamar mañana 5 minutos para contarte?\n\n{firma}")
-    return {"para": p.get("email") or "", "asunto": asunto, "cuerpo": cuerpo}
+    dueno = (p.get("contacto") or "").strip().split(" ")[0]
+    valores = {
+        "comercio": nombre, "barrio": p.get("barrio") or "tu barrio", "resenas": str(res), "visto": visto,
+        "dueno": f" {dueno}" if dueno and not any(ch.isdigit() for ch in dueno) else "",
+        "demo": DEMO_URL, "precio": f"{precio:g}",
+        "mi_nombre": firma_nombre or "", "mi_primer_nombre": (firma_nombre or "").split(" ")[0] or "el equipo",
+        "mi_telefono": firma_tel or "",
+        "firma": "\n".join(x for x in (firma_nombre, "Scalerics Fidelidad", firma_tel) if x),
+    }
+    if not plantilla:
+        rubro = p.get("rubro") or rubro_de(p.get("tipo"), p.get("nombre"))
+        nombre_base, _, asunto, cuerpo = next(x for x in PLANTILLAS_BASE if x[1] == rubro)
+        plantilla = {"id": None, "asunto": asunto, "cuerpo": cuerpo}
+    return {"para": p.get("email") or "", "plantilla_id": plantilla.get("id"),
+            "asunto": _completar(plantilla["asunto"], valores), "cuerpo": _completar(plantilla["cuerpo"], valores)}
 
 
 def buscar_mails(db: str, abrir, limite: int = 100) -> dict:

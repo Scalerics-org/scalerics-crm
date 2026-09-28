@@ -282,8 +282,37 @@ def api_borrador(pid):
     if not p:
         return _error("el prospecto no existe", 404)
     yo = _yo()
-    return jsonify({**fid.borrador(p, yo["name"], yo.get("phone")),
+    rubro = p.get("rubro") or fid.rubro_de(p.get("tipo"), p.get("nombre"))
+    plantillas = fid.listar_plantillas(_db(), rubro)
+    pedida = request.args.get("plantilla", type=int)
+    # La primera del rubro de entrada; si pidió una, esa.
+    elegida = next((x for x in plantillas if x["id"] == pedida), None) or \
+        next((x for x in plantillas if x["rubro"] == rubro), None) or (plantillas[0] if plantillas else None)
+    precio = fid.get_config(_db())["precio_usd"]
+    return jsonify({**fid.borrador(p, yo["name"], yo.get("phone"), elegida, precio),
+                    "plantillas": [{"id": x["id"], "nombre": x["nombre"], "rubro": x["rubro"]} for x in plantillas],
                     "gmail": gmail.estado(_db(), session.get("user_id"))})
+
+
+@fidelidad_bp.route("/api/fidelidad/plantillas")
+def api_plantillas():
+    return jsonify({"plantillas": fid.listar_plantillas(_db()), "variables": fid.VARIABLES_MAIL})
+
+
+@fidelidad_bp.route("/api/fidelidad/plantillas", methods=["POST"])
+@fidelidad_bp.route("/api/fidelidad/plantillas/<int:tid>", methods=["PUT"])
+def api_plantilla_guardar(tid=None):
+    pid, error = fid.guardar_plantilla(_db(), request.get_json(silent=True) or {}, _usuario(), tid)
+    if error:
+        return _error(error, 404 if error == "la plantilla no existe" else 400)
+    return jsonify({"ok": True, "id": pid}), 200 if tid else 201
+
+
+@fidelidad_bp.route("/api/fidelidad/plantillas/<int:tid>", methods=["DELETE"])
+def api_plantilla_borrar(tid):
+    if not fid.borrar_plantilla(_db(), tid):
+        return _error("la plantilla no existe", 404)
+    return jsonify({"ok": True})
 
 
 @fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/mail", methods=["POST"])
