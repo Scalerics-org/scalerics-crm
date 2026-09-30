@@ -68,9 +68,17 @@ def test_el_mail_pide_videollamada_ofrece_prototipo_y_no_lleva_la_demo():
     assert "workers.dev" not in texto and "http" not in texto
 
 
-def test_el_segundo_avisa_que_es_el_ultimo():
+def test_el_segundo_ya_no_dice_que_es_el_ultimo():
+    # Juan (30/9): se les vuelve a escribir cada mes.
     asunto, parrafos = cuerpo_fidelidad(2, "La Pasiva")
-    assert asunto.startswith("Último mail") and "último mail" in " ".join(parrafos)
+    assert "La Pasiva" in asunto and "último" not in (asunto + " ".join(parrafos)).lower()
+
+
+def test_el_del_mes_ofrece_el_prototipo_y_la_baja():
+    asunto, parrafos = cuerpo_fidelidad(5, "La Pasiva")
+    texto = " ".join(parrafos)
+    assert "prototipo" in asunto and "La Pasiva" in asunto
+    assert "videollamada" in texto and "baja" in texto and "http" not in texto
 
 
 def test_sale_del_subdominio_con_el_nombre_de_juan_y_baja(monkeypatch):
@@ -149,10 +157,10 @@ def test_los_de_mas_resenas_primero(db):
 # ─── la tanda ────────────────────────────────────────────────────────────────
 
 def test_respeta_el_tope_diario(db, enviados):
-    for n in range(1, auto.TOPE_DIARIO + 6):
+    for n in range(1, auto.RAMPA_INICIAL + 6):
         _local(db, n)
     r = auto.enviar(db, "https://crm")
-    assert r["enviados"] == auto.TOPE_DIARIO == len(enviados)
+    assert r["enviados"] == auto.RAMPA_INICIAL == len(enviados)
     assert auto.enviar(db, "https://crm")["enviados"] == 0
 
 
@@ -173,7 +181,7 @@ def test_segundo_mail_a_los_4_dias_y_despues_nada(db, enviados):
     _atrasar(db, 4)
     auto.enviar(db, "https://crm")
     assert [e["numero"] for e in enviados] == [1, 2]
-    _atrasar(db, 10)
+    _atrasar(db, 29)
     assert auto.enviar(db, "https://crm")["enviados"] == 0
 
 
@@ -307,3 +315,163 @@ def test_ver_mail_no_trae_el_link_de_baja_real(db, enviados):
     assert "Parrilla 1" in m["asunto"] and "prototipo" in m["html"]
     assert token not in m["html"]
     assert auto.mail_enviado(db, 999, "https://crm") is None
+
+
+# ─── «la máxima cantidad posible sin gastar plata» (Juan, 30/9) ───────────────
+
+def _otros_envios(db, n, tipo="recordatorio_meta", hace="0 hours"):
+    c = sqlite3.connect(db)
+    c.executemany("INSERT INTO emails_enviados (tipo, destinatario, enviado_at) "
+                  "VALUES (?, 'x@y.uy', datetime('now', ?))", [(tipo, f"-{hace}")] * n)
+    c.commit()
+    c.close()
+
+
+def test_el_cupo_arranca_en_la_rampa(db):
+    c = auto.cupo_del_dia(db)
+    assert c["por_dia"] == auto.RAMPA_INICIAL and c["limita"] == "rampa"
+
+
+def test_el_cupo_sube_con_los_dias_de_envio(db, enviados):
+    _local(db, 1)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 3)
+    assert auto.cupo_del_dia(db)["por_dia"] == auto.RAMPA_INICIAL + 3 * auto.RAMPA_POR_DIA
+
+
+def test_el_cupo_deja_lugar_a_las_otras_campanas_del_dia(db, monkeypatch):
+    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    # Meta ya mandó sus 20; discovery todavía no mandó nada hoy: se le guardan 50.
+    _otros_envios(db, 20)
+    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 20 - 50
+    _otros_envios(db, 50, tipo="discovery")
+    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 70
+
+
+def test_el_cupo_no_se_pasa_de_los_3000_del_mes(db, monkeypatch):
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    _otros_envios(db, auto.CUOTA_MES - auto.MARGEN_MES, tipo="aviso_equipo")
+    assert auto.cupo_del_dia(db)["por_dia"] == 0
+
+
+def test_sin_discovery_no_se_le_reserva_nada(db, monkeypatch):
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
+    sin = auto.cupo_del_dia(db)["por_dia"]
+    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
+    assert auto.cupo_del_dia(db)["por_dia"] < sin
+
+
+# ─── cada mes, de nuevo ──────────────────────────────────────────────────────
+
+def test_a_los_30_dias_del_segundo_sale_el_del_mes(db, enviados):
+    _local(db, 1)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 5)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 30)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 30)
+    auto.enviar(db, "https://crm")
+    assert [e["numero"] for e in enviados] == [1, 2, 3, 4]
+    asuntos = [m["asunto"] for m in fid.get_prospecto(db, 1)["mails"]]
+    assert auto.ASUNTO_FID_MES.format(n="Parrilla 1") in asuntos
+
+
+def test_si_contesto_no_le_llega_el_del_mes(db, enviados):
+    pid = _local(db, 1)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 5)
+    auto.enviar(db, "https://crm")
+    auto.marcar_respuesta(db, pid, "hola@parrilla1.uy", "Re: hola")
+    fid.mover_estado(db, pid, "sin_contactar", "Lucas")   # aunque lo vuelvan atrás
+    _atrasar(db, 40)
+    assert auto.enviar(db, "https://crm")["reenvios"] == 0
+
+
+def test_los_reenvios_no_se_comen_a_los_nuevos(db, enviados, monkeypatch):
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 10)
+    monkeypatch.setattr(auto, "RAMPA_POR_DIA", 0)
+    for n in range(1, 11):
+        _local(db, n)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 5)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 31)
+    for n in range(11, 31):
+        _local(db, n)
+    r = auto.enviar(db, "https://crm")
+    assert r["reenvios"] == 5 and r["nuevos"] == 5
+
+
+def test_el_reenvio_del_mes_se_reconoce_en_la_respuesta():
+    assert auto.negocio_del_asunto("RE: " + auto.ASUNTO_FID_MES.format(n="La Pasiva")) == "la pasiva"
+    assert auto.negocio_del_asunto("Re: " + auto.ASUNTO_FID_2.format(n="La Pasiva")) == "la pasiva"
+
+
+# ─── que no pare: el buscador de GitHub Actions ──────────────────────────────
+
+def test_webs_sin_buscar_y_guardar_lo_encontrado(db):
+    con_web = _local(db, 1, email="", web="https://p1.uy", resenas=10)
+    otro = _local(db, 2, email="", web="https://p2.uy", resenas=500)
+    caido = _local(db, 3, email="", web="https://p3.uy")
+    _local(db, 4, email="", web="")
+    assert [w["id"] for w in auto.webs_sin_buscar(db, 10)] == [otro, con_web, caido]
+    r = auto.guardar_mails_encontrados(db, [
+        {"id": con_web, "email": "Hola@P1.uy", "abrio": True},
+        {"id": otro, "email": None, "abrio": True},
+        {"id": caido, "email": None, "abrio": False},
+        {"id": "x"}])
+    assert r == {"encontrados": 1, "sin_mail": 1, "no_abrio": 1, "ignorados": 1}
+    assert fid.get_prospecto(db, con_web)["email"] == "hola@p1.uy"
+    assert [w["id"] for w in auto.webs_sin_buscar(db, 10)] == [caido]
+    assert [p["id"] for p in auto.a_contactar(db, 10)] == [con_web]
+
+
+def test_no_pisa_un_mail_cargado_a_mano(db):
+    pid = _local(db, 1, email="dueno@p1.uy", web="https://p1.uy")
+    auto.guardar_mails_encontrados(db, [{"id": pid, "email": "info@p1.uy", "abrio": True}])
+    assert fid.get_prospecto(db, pid)["email"] == "dueno@p1.uy"
+
+
+def test_las_busquedas_automaticas_cubren_montevideo_y_caba():
+    todas = fid.busquedas_automaticas()
+    assert len({(b["tipo"], b["barrio"], b["ciudad"]) for b in todas}) == len(todas)  # hay un Palermo en cada ciudad
+    assert {b["ciudad"] for b in todas} == {"Montevideo", "Buenos Aires"}
+    assert todas[0]["tipo"] == "restaurante"
+    assert any(b["barrio"] == "Barra de Carrasco" and b["depto"] == "Canelones" for b in todas)
+
+
+def test_el_estado_dice_cuantos_dias_de_cola_quedan(db):
+    for n in range(1, 51):
+        _local(db, n)
+    e = auto.estado(db)
+    assert e["dias_de_cola"] == 50 // auto.RAMPA_INICIAL and e["webs_sin_buscar"] == 0
+
+
+def test_avisa_si_se_queda_sin_cola_una_vez_cada_tres_dias(db, monkeypatch):
+    import services.email_service as es
+    avisos = []
+    monkeypatch.setattr(es, "send_fidelidad_alerta", lambda to, a, t: avisos.append(to) or True)
+    monkeypatch.setenv("ADMIN_EMAIL", "juan@x.uy")
+    assert auto.avisar_si_se_quedo_sin_cola(db, {"candidatos": 0, "cupo": 25})
+    assert not auto.avisar_si_se_quedo_sin_cola(db, {"candidatos": 0, "cupo": 25})
+    assert avisos == ["juan@x.uy"]
+    assert not auto.avisar_si_se_quedo_sin_cola(db, {"candidatos": 3, "cupo": 25})
+
+
+def test_la_api_del_buscador_pide_token(db, monkeypatch):
+    import dashboard
+    monkeypatch.setenv("ADMIN_TOKEN", "tok")
+    monkeypatch.setenv("CRM_SIN_PROCESOS_DE_FONDO", "true")
+    _local(db, 1, email="", web="https://p1.uy")
+    cli = dashboard.create_app(db).test_client()
+    assert cli.get("/api/fidelidad/mails-auto/webs").status_code in (302, 401, 403)
+    h = {"x-admin-token": "tok"}
+    webs = cli.get("/api/fidelidad/mails-auto/webs", headers=h).get_json()
+    assert webs == [{"id": 1, "web": "https://p1.uy"}]
+    r = cli.post("/api/fidelidad/mails-auto/encontrados", headers=h,
+                 json={"resultados": [{"id": 1, "email": "a@p1.uy", "abrio": True}]}).get_json()
+    assert r["encontrados"] == 1
+    assert cli.get("/api/fidelidad/mails-auto", headers=h).get_json()["sin_contactar_con_mail"] == 1

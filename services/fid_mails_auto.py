@@ -11,7 +11,7 @@ campaña en frío que anda para meterle esta es arriesgar las dos.
 
 Las guardas son las mismas:
 - dos contactos, el segundo a los `DIAS_SEGUNDO` días y solo si nadie lo tocó;
-- tope rodante de `TOPE_DIARIO` en 24 horas y marca de corrida (`corridas`),
+- el cupo que queda libre en el plan gratis de Resend (`cupo_del_dia`) y marca de corrida (`corridas`),
   para que un deploy no sea una tanda;
 - apagado salvo `FID_MAILS_AUTO=on`;
 - las respuestas se leen de Gmail ANTES de mandar, para no escribirle encima a
@@ -33,7 +33,7 @@ import uuid
 from datetime import datetime, timezone
 
 from services.corridas import marcar_corrida, puede_correr, siguiente_revision
-from services.email_service import (ASUNTO_FID_1, ASUNTO_FID_2, contexto_envio,
+from services.email_service import (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES, contexto_envio,
                                     send_fidelidad_email)
 
 logger = logging.getLogger(__name__)
@@ -42,12 +42,36 @@ _FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
 USUARIO = "Mail automático"
 NOMBRE_CORRIDA = "fid_mails_auto"
 
-# Juan (30/9): arrancar con lo que queda libre de la cuota gratis de Resend
-# (100 por día: 50 de discovery, ~15 de Meta y las notificaciones del CRM).
-# Además es un subdominio que ya tiene historia: sumarle 25 no es un salto.
-TOPE_DIARIO = 25
-TOTAL_CONTACTOS = 2
+# ─── Cuánto se puede mandar sin pagar (Juan, 30/9) ───────────────────────────
+# «La máxima cantidad posible por día sin gastar plata»: el plan gratis de
+# Resend da 100 mails por día y 3.000 por mes, compartidos con los
+# recordatorios de Meta, discovery y los avisos del CRM. El cupo de esta
+# campaña es lo que queda libre, calculado cada día (`cupo_del_dia`):
+#   - por día: 100, menos lo que ya salió en 24 h, menos lo que las otras
+#     campañas todavía tienen que mandar hoy (su reserva), menos un margen para
+#     los avisos del CRM que caen a cualquier hora;
+#   - por mes: lo que queda de los 3.000, menos lo que las otras van a gastar
+#     el resto del mes, repartido en los días que faltan. Es el que manda: con
+#     discovery prendido deja unos 30 por día.
+# Y una rampa: el subdominio es el mismo de discovery, y pasar de golpe a 80
+# por día es lo que dispara los filtros de spam. Arranca en `RAMPA_INICIAL` y
+# sube `RAMPA_POR_DIA` por cada día de envíos.
+CUOTA_DIA = 100
+CUOTA_MES = 3000
+MARGEN_DIA = 8
+MARGEN_MES = 150
+RAMPA_INICIAL = 25
+RAMPA_POR_DIA = 5
+# Lo que cada campaña manda en un día normal, para reservárselo aunque todavía
+# no haya salido. Discovery solo si está prendida.
+_RESERVAS = {"recordatorio_meta": 20, "discovery": 50}
+# Mientras haya restaurantes nuevos, los reenvíos del mes se llevan como mucho
+# la mitad del cupo: si no, en unos meses los reenvíos se comen todo y deja de
+# entrar gente nueva.
+_PARTE_REENVIOS = 0.5
 DIAS_SEGUNDO = 4
+# Juan (30/9): a quien no contesta, se le vuelve a escribir cada mes.
+DIAS_ENTRE_REENVIOS = 30
 CIUDADES = ("Montevideo", "Buenos Aires")
 _PAUSA_ENTRE_ENVIOS = 0.6
 # Meta arranca a los 180 s y discovery a los 600 s de cada boot; esta va a los
@@ -115,6 +139,72 @@ def enviados_ultimas_24h(db_path: str) -> int:
         conn.close()
 
 
+def _reservas() -> dict:
+    r = dict(_RESERVAS)
+    if os.environ.get("DISCOVERY_EMAILS", "").strip().lower() != "on":
+        r.pop("discovery")
+    return r
+
+
+def cupo_del_dia(db_path: str, ahora: datetime | None = None) -> dict:
+    """Cuántos mails puede mandar esta campaña por día, y cuántos le quedan hoy.
+
+    Cuenta todo lo que salió por Resend desde `emails_enviados`, que registra
+    cada envío del CRM sea de la campaña que sea. Ante la duda se queda corto:
+    pasarse de la cuota es que Resend rechace mails de Meta, que son de gente
+    que pidió que la contacten.
+    """
+    ahora = ahora or datetime.now(timezone.utc)
+    reservas = _reservas()
+    conn = _conn(db_path)
+    try:
+        por_tipo = dict(conn.execute(
+            "SELECT tipo, COUNT(*) FROM emails_enviados "
+            "WHERE enviado_at >= datetime(?, '-1 day') GROUP BY tipo",
+            (ahora.strftime(_FORMATO_FECHA),)).fetchall())
+        mes_total = conn.execute(
+            "SELECT COUNT(*) FROM emails_enviados WHERE substr(enviado_at, 1, 7) = ?",
+            (ahora.strftime("%Y-%m"),)).fetchone()[0]
+        # Lo que gastan las otras en un día, medido en la última semana.
+        otros_semana = conn.execute(
+            "SELECT COUNT(*) FROM emails_enviados WHERE tipo <> 'fidelidad' "
+            "AND enviado_at >= datetime(?, '-7 days')", (ahora.strftime(_FORMATO_FECHA),)).fetchone()[0]
+        primero = conn.execute("SELECT MIN(sent_at) FROM fid_mails_auto").fetchone()[0]
+    finally:
+        conn.close()
+    fid_24h = enviados_ultimas_24h(db_path)
+    otros_24h = sum(n for t, n in por_tipo.items() if t != "fidelidad")
+    pendiente_hoy = sum(max(0, r - por_tipo.get(t, 0)) for t, r in reservas.items())
+    libre_dia = CUOTA_DIA - MARGEN_DIA - otros_24h - pendiente_hoy
+
+    # El mes de Resend se toma como mes calendario: es lo más conservador.
+    if ahora.month == 12:
+        fin_mes = datetime(ahora.year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        fin_mes = datetime(ahora.year, ahora.month + 1, 1, tzinfo=timezone.utc)
+    dias_restantes = max(1, (fin_mes.date() - ahora.date()).days)
+    otros_por_dia = max(otros_semana / 7, sum(reservas.values()))
+    libre_mes = (CUOTA_MES - MARGEN_MES - mes_total - otros_por_dia * (dias_restantes - 1)) / dias_restantes
+    # Lo de fidelidad de hoy ya está adentro de mes_total: se lo devuelvo al día.
+    libre_mes += min(fid_24h, mes_total)
+
+    dias_enviando = 0
+    if primero:
+        try:
+            desde = datetime.strptime(primero, _FORMATO_FECHA).replace(tzinfo=timezone.utc)
+            dias_enviando = max(0, (ahora - desde).days)
+        except ValueError:
+            pass
+    rampa = RAMPA_INICIAL + RAMPA_POR_DIA * dias_enviando
+
+    # `libre_dia` no descuenta lo de esta campaña (otros_24h la deja afuera): ya
+    # es todo lo que le toca en la ventana de 24 horas.
+    topes = (("día", libre_dia), ("mes", libre_mes), ("rampa", rampa))
+    por_dia = int(max(0, min(t for _, t in topes)))
+    return {"por_dia": por_dia, "quedan_hoy": max(0, por_dia - fid_24h), "enviados_24h": fid_24h,
+            "limita": min(topes, key=lambda x: x[1])[0]}
+
+
 def a_contactar(db_path: str, limite: int) -> list[dict]:
     """Los que nunca recibieron nada. Los de más reseñas primero: son los que
     más clientes tienen para fidelizar.
@@ -167,6 +257,31 @@ def a_seguir(db_path: str, limite: int) -> list[dict]:
             for f in filas]
 
 
+def a_reenviar(db_path: str, limite: int) -> list[dict]:
+    """Los que ya recibieron los dos primeros y no contestaron: uno por mes,
+    `DIAS_ENTRE_REENVIOS` después del último. Se corta con cualquier señal:
+    respuesta, baja, rebote, o que alguien del equipo lo haya tocado."""
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(f"""
+            SELECT p.id, p.nombre, MAX(a.email) AS email, MAX(a.numero) AS ultimo_numero,
+                   MAX(a.sent_at) AS ultimo
+              FROM fid_prospectos p
+              JOIN fid_mails_auto a ON a.prospecto_id = p.id
+             WHERE {_SIN_TOCAR}
+          GROUP BY p.id
+            HAVING MAX(a.numero) >= 2
+               AND MAX(a.sent_at) <= datetime('now', '-{DIAS_ENTRE_REENVIOS} days')
+               AND MAX(a.respondio_at) IS NULL AND MAX(a.unsubscribed_at) IS NULL
+               AND MAX(a.email) NOT IN ({_VEDADAS})
+          ORDER BY ultimo ASC
+             LIMIT ?""", (int(limite),)).fetchall()
+    finally:
+        conn.close()
+    return [{"id": f["id"], "nombre": f["nombre"] or "", "email": f["email"],
+             "numero": f["ultimo_numero"] + 1} for f in filas]
+
+
 # ─── Registro y baja ─────────────────────────────────────────────────────────
 
 def registrar_envio(db_path: str, pid: int, numero: int, email: str) -> str:
@@ -187,7 +302,8 @@ def _anotar_en_historial(db_path: str, pid: int, email: str, numero: int, nombre
     """El mail queda en el historial del local, como los que se mandan a mano,
     pero SIN la llamada de seguimiento a los dos días: con 25 por día le
     llenaría la lista al vendedor de locales que no contestaron."""
-    asunto = (ASUNTO_FID_1 if numero <= 1 else ASUNTO_FID_2).format(n=nombre or "tu restaurante")
+    asunto = (ASUNTO_FID_1 if numero <= 1 else ASUNTO_FID_2 if numero == 2 else ASUNTO_FID_MES
+              ).format(n=nombre or "tu restaurante")
     de = (os.environ.get("FID_FROM_EMAIL") or os.environ.get("DISCOVERY_FROM_EMAIL") or "").strip()
     conn = _conn(db_path)
     try:
@@ -221,11 +337,11 @@ def dar_de_baja(db_path: str, token: str) -> bool:
 
 _PATRONES_ASUNTO = tuple(
     re.compile("^" + re.escape(a.lower()).replace(re.escape("{n}"), "(?P<n>.+)") + "$")
-    for a in (ASUNTO_FID_1, ASUNTO_FID_2)
+    for a in (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES)
 )
 # Gmail no entiende regex: los pedazos fijos de cada asunto, para encontrar al
 # dueño que contesta desde otra casilla.
-_FRAGMENTOS = ("sistema de puntos como el de McDonald", "Último mail sobre los puntos para")
+_FRAGMENTOS = ("sistema de puntos como el de McDonald", "Sobre los puntos para", "armamos el prototipo para")
 _PREFIJOS = ("re:", "rv:", "fwd:", "fw:")
 
 
@@ -353,20 +469,34 @@ def sincronizar_desde_gmail(db_path: str) -> dict:
 # ─── La tanda ────────────────────────────────────────────────────────────────
 
 def enviar(db_path: str, base_url: str, dry_run: bool = False) -> dict:
-    """Una tanda: primero los segundos contactos, después los nuevos."""
-    res = {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0, "seguimientos": 0, "nuevos": 0}
-    cupo = TOPE_DIARIO if dry_run else max(0, TOPE_DIARIO - enviados_ultimas_24h(db_path))
+    """Una tanda: los segundos contactos, los reenvíos del mes y los nuevos.
+
+    Los segundos primero porque uno a destiempo pierde sentido. Los reenvíos se
+    llevan como mucho `_PARTE_REENVIOS` del cupo mientras haya gente nueva: si
+    no, a los pocos meses son tantos que dejan de entrar restaurantes nuevos.
+    """
+    res = {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0,
+           "seguimientos": 0, "reenvios": 0, "nuevos": 0}
+    c = cupo_del_dia(db_path)
+    cupo = c["por_dia"] if dry_run else c["quedan_hoy"]
+    res["cupo"] = cupo
     if cupo <= 0:
         return res
     seguir = a_seguir(db_path, cupo)
-    nuevos = a_contactar(db_path, cupo - len(seguir)) if cupo > len(seguir) else []
-    res.update(candidatos=len(seguir) + len(nuevos), seguimientos=len(seguir), nuevos=len(nuevos))
+    resto = cupo - len(seguir)
+    hay_nuevos = bool(a_contactar(db_path, 1))
+    tope_reenvios = int(resto * _PARTE_REENVIOS) if hay_nuevos else resto
+    reenviar = a_reenviar(db_path, tope_reenvios) if tope_reenvios > 0 else []
+    resto -= len(reenviar)
+    nuevos = a_contactar(db_path, resto) if resto > 0 else []
+    lista = seguir + reenviar + nuevos
+    res.update(candidatos=len(lista), seguimientos=len(seguir), reenvios=len(reenviar), nuevos=len(nuevos))
     if dry_run:
-        res["lista"] = seguir + nuevos
+        res["lista"] = lista
         return res
 
-    for p in seguir + nuevos:
-        if enviados_ultimas_24h(db_path) >= TOPE_DIARIO:
+    for p in lista:
+        if enviados_ultimas_24h(db_path) >= c["por_dia"]:
             break
         try:
             token = registrar_envio(db_path, p["id"], p["numero"], p["email"])
@@ -397,11 +527,40 @@ def enviar(db_path: str, base_url: str, dry_run: bool = False) -> dict:
     return res
 
 
+# Juan (30/9): «no puede parar». El buscador de GitHub Actions trae
+# restaurantes y mails nuevos todos los días; si igual se queda sin a quién
+# escribirle, se avisa a los admins, como mucho cada tres días.
+_HORAS_ENTRE_AVISOS = 72
+
+
+def avisar_si_se_quedo_sin_cola(db_path: str, res: dict) -> bool:
+    if res.get("candidatos") or res.get("cupo", 0) <= 0:
+        return False
+    if not puede_correr(db_path, "fid_mails_sin_cola", cada_horas=_HORAS_ENTRE_AVISOS):
+        return False
+    from services.discovery_respuestas import _admins
+    from services.email_service import send_fidelidad_alerta
+    marcar_corrida(db_path, "fid_mails_sin_cola")
+    webs = len(webs_sin_buscar(db_path, 100000))
+    texto = ("Los mails automáticos a restaurantes no tuvieron a quién escribirle hoy: no queda "
+             "ningún restaurante sin contactar con mail. "
+             f"Hay {webs} restaurantes con web a los que todavía no se les buscó el mail. "
+             "El buscador de GitHub Actions («Fidelidad: captación») corre todos los días y trae "
+             "más; si esto se repite, fijate si está fallando.")
+    avisados = 0
+    for direccion in _admins(db_path):
+        try:
+            avisados += bool(send_fidelidad_alerta(direccion, "Mails a restaurantes: se quedó sin cola", texto))
+        except Exception as e:
+            logger.warning(f"Fidelidad: no se pudo avisar a {direccion}: {e}")
+    return avisados > 0
+
+
 def tanda_diaria(db_path: str, base_url: str):
     """Una revisión del hilo: la tanda de hoy, o None si no le toca."""
     if not puede_correr(db_path, NOMBRE_CORRIDA):
         return None
-    if enviados_ultimas_24h(db_path) >= TOPE_DIARIO:
+    if cupo_del_dia(db_path)["quedan_hoy"] <= 0:
         return None
     # Las respuestas antes que los envíos: si alguien contestó ayer y su
     # segundo mail vence hoy, hay que frenarlo antes de que salga.
@@ -410,26 +569,89 @@ def tanda_diaria(db_path: str, base_url: str):
     except Exception as e:
         logger.warning(f"Fidelidad respuestas: {e}")
     marcar_corrida(db_path, NOMBRE_CORRIDA)
-    return enviar(db_path, base_url)
+    res = enviar(db_path, base_url)
+    try:
+        avisar_si_se_quedo_sin_cola(db_path, res)
+    except Exception as e:
+        logger.warning(f"Fidelidad: no se pudo revisar la cola: {e}")
+    return res
+
+
+# ─── Lo que usa el buscador de GitHub Actions ────────────────────────────────
+# Fly no tiene navegador: buscar mails en las webs y restaurantes en Maps corre
+# en GitHub Actions (scripts/fid_captacion.py), que habla con el CRM por la API.
+
+def webs_sin_buscar(db_path: str, limite: int) -> list[dict]:
+    """Restaurantes con web y sin mail a los que nunca se les buscó. Los de más
+    reseñas primero, que son a los que más conviene escribirles."""
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(f"""
+            SELECT id, web FROM fid_prospectos
+             WHERE archivado = 0 AND rubro = 'restaurante' AND ciudad IN ({", ".join("?" * len(CIUDADES))})
+               AND COALESCE(web, '') <> '' AND COALESCE(email, '') = '' AND mail_buscado_en IS NULL
+          ORDER BY COALESCE(resenas, 0) DESC, id ASC LIMIT ?""", (*CIUDADES, int(limite))).fetchall()
+    finally:
+        conn.close()
+    return [{"id": f["id"], "web": f["web"]} for f in filas]
+
+
+def guardar_mails_encontrados(db_path: str, resultados: list) -> dict:
+    """Lo que trae el buscador: [{"id", "email" o null, "abrio"}]. Igual que
+    `fidelidad.buscar_mails`: un sitio que no abrió no se marca, así se
+    reintenta; uno que abrió y no tenía mail se marca para no volver."""
+    from services import fidelidad as fid
+    cuenta = {"encontrados": 0, "sin_mail": 0, "no_abrio": 0, "ignorados": 0}
+    conn = _conn(db_path)
+    try:
+        for r in resultados or []:
+            try:
+                pid = int(r.get("id"))
+            except (TypeError, ValueError, AttributeError):
+                cuenta["ignorados"] += 1
+                continue
+            mail = (r.get("email") or "").strip().lower()
+            if mail and not fid.es_mail(mail):
+                mail = ""
+            if mail:
+                cur = conn.execute("UPDATE fid_prospectos SET email = ?, mail_buscado_en = ? "
+                                   "WHERE id = ? AND COALESCE(email, '') = ''",
+                                   (mail, fid.fmt(fid.ahora()), pid))
+                cuenta["encontrados" if cur.rowcount else "ignorados"] += 1
+            elif r.get("abrio"):
+                conn.execute("UPDATE fid_prospectos SET mail_buscado_en = ? WHERE id = ?",
+                             (fid.fmt(fid.ahora()), pid))
+                cuenta["sin_mail"] += 1
+            else:
+                cuenta["no_abrio"] += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return cuenta
 
 
 def estado(db_path: str) -> dict:
-    """Para el panel y para mirar antes de prender: cómo va y a quién le toca."""
+    """Para el panel, para mirar antes de prender, y para que el buscador de
+    GitHub decida si hace falta traer restaurantes nuevos."""
     conn = _conn(db_path)
     try:
         f = conn.execute("""
             SELECT COUNT(DISTINCT prospecto_id) AS locales,
-                   SUM(numero = 1) AS primeros, SUM(numero = 2) AS segundos,
+                   SUM(numero = 1) AS primeros, SUM(numero = 2) AS segundos, SUM(numero >= 3) AS reenvios,
                    COUNT(DISTINCT CASE WHEN respondio_at IS NOT NULL THEN prospecto_id END) AS respondieron,
                    COUNT(DISTINCT CASE WHEN unsubscribed_at IS NOT NULL THEN email END) AS bajas
               FROM fid_mails_auto""").fetchone()
     finally:
         conn.close()
     pendientes = a_contactar(db_path, 100000)
+    cupo = cupo_del_dia(db_path)
     return {"activo": os.environ.get("FID_MAILS_AUTO", "").strip().lower() == "on",
-            "tope_diario": TOPE_DIARIO, "ultimas_24h": enviados_ultimas_24h(db_path),
+            "tope_diario": cupo["por_dia"], "cupo": cupo, "ultimas_24h": enviados_ultimas_24h(db_path),
             **{k: f[k] or 0 for k in f.keys()},
             "sin_contactar_con_mail": len(pendientes),
+            "webs_sin_buscar": len(webs_sin_buscar(db_path, 100000)),
+            # Días de envío que quedan con lo que hay: es lo que mira el buscador.
+            "dias_de_cola": len(pendientes) // max(1, cupo["por_dia"] or RAMPA_INICIAL),
             "proximos": [{"nombre": p["nombre"], "email": p["email"]} for p in pendientes[:10]]}
 
 
@@ -497,7 +719,7 @@ def panel(db_path: str, mes: str | None = None, ciudad: str | None = None) -> di
                        "numero": f["numero"], "estado": clave, "estado_texto": texto})
     return {"mes": mes, "ciudad": ciudad if ciudad in CIUDADES else "",
             "activo": os.environ.get("FID_MAILS_AUTO", "").strip().lower() == "on",
-            "tope_diario": TOPE_DIARIO, "en_cola": len(a_contactar(db_path, 100000)),
+            "tope_diario": cupo_del_dia(db_path)["por_dia"], "en_cola": len(a_contactar(db_path, 100000)),
             **cuenta, "envios": envios}
 
 
@@ -542,4 +764,4 @@ def start_fid_mails_auto(app) -> None:
             time.sleep(max(0.0, turno - time.monotonic()))
 
     threading.Thread(target=_loop, daemon=True, name="fid-mails-auto").start()
-    logger.info(f"Mails automáticos de Fidelidad ACTIVOS: hasta {TOPE_DIARIO} por día")
+    logger.info("Mails automáticos de Fidelidad ACTIVOS: lo que quede libre del plan gratis de Resend")

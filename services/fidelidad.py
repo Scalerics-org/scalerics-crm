@@ -116,6 +116,30 @@ BARRIOS_BSAS = ["Caballito", "Villa Crespo", "Almagro", "Villa Urquiza", "Belgra
                 "Villa Pueyrredón", "Coghlan", "Villa Ortúzar", "Chacarita", "Palermo"]
 
 
+# El buscador automático (scripts/fid_captacion.py, 30/9): Juan quiere que los
+# mails a restaurantes no paren, así que cuando se acaba la cola trae más. Todo
+# Montevideo (desde el 28/9 entra todo) y CABA, con más tipos de local que la
+# búsqueda a mano: los que suelen tener web propia (restaurante, parrillada,
+# sushi, bar) van primero, porque sin web no hay de dónde sacar el mail.
+_BARRIOS_MVD_AUTO = ["Cordón", "Parque Rodó", "Centro", "Ciudad Vieja", "Palermo", "Malvín",
+                     "Punta Gorda", "Unión", "La Comercial", "Jacinto Vera", "Brazo Oriental",
+                     "Atahualpa", "Prado", "Aguada", "Colón", "Sayago", "Villa Española", "Maroñas"]
+_TIPOS_AUTO = ["restaurante", "parrillada", "sushi", "bar", "cervecería", "pizzería",
+               "hamburguesería", "cafetería", "heladería", "empanadas", "rotisería"]
+
+
+def busquedas_automaticas() -> list[dict]:
+    """Todas las búsquedas (tipo × barrio) del buscador automático, en un orden
+    fijo: el script rota por esta lista día a día. El tipo va por fuera, así una
+    corrida recorre muchos barrios con el mismo tipo antes de cambiar."""
+    barrios = [(b, "Canelones" if b == "Barra de Carrasco" else "Montevideo", "Montevideo")
+               for lista in BARRIOS.values() for b in lista]
+    barrios += [(b, "Montevideo", "Montevideo") for b in _BARRIOS_MVD_AUTO]
+    barrios += [(b, "Buenos Aires", "Buenos Aires") for b in BARRIOS_BSAS]
+    return [{"tipo": t, "barrio": b, "depto": depto, "ciudad": ciudad}
+            for t in _TIPOS_AUTO for b, depto, ciudad in barrios]
+
+
 def es_del_rubro(categoria_maps: str | None, rubro: str) -> bool:
     if rubro == "peluqueria":
         return bool(categoria_maps) and rubro_de(categoria_maps) == "peluqueria"

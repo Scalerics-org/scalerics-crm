@@ -55,6 +55,28 @@ def api_mails_auto():
     return jsonify(fid_mails_auto.estado(_db()))
 
 
+@fidelidad_bp.route("/api/fidelidad/mails-auto/webs")
+def api_mails_auto_webs():
+    """Para el buscador de GitHub Actions: restaurantes con web a los que buscarles el mail."""
+    from services import fid_mails_auto
+    try:
+        limite = max(1, min(500, int(request.args.get("limite", 100))))
+    except ValueError:
+        limite = 100
+    return jsonify(fid_mails_auto.webs_sin_buscar(_db(), limite))
+
+
+@fidelidad_bp.route("/api/fidelidad/mails-auto/encontrados", methods=["POST"])
+def api_mails_auto_encontrados():
+    """Lo que encontró el buscador: [{"id", "email" o null, "abrio"}]."""
+    from services import fid_mails_auto
+    datos = request.get_json(silent=True) or {}
+    resultados = datos.get("resultados") if isinstance(datos, dict) else None
+    if not isinstance(resultados, list):
+        return _error("falta la lista de resultados", 400)
+    return jsonify({"ok": True, **fid_mails_auto.guardar_mails_encontrados(_db(), resultados[:1000])})
+
+
 @fidelidad_bp.route("/api/fidelidad/mails-auto/panel")
 def api_mails_auto_panel():
     """La sección Email marketing de Captación: solo los mails a restaurantes."""
