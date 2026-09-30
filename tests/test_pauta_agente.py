@@ -480,3 +480,18 @@ def test_solo_juan_prende_el_agente(app):
     assert d["nivel"] == "encendido"
     e = mkt.get("/api/pauta/estado").get_json()
     assert e["encendido"] and e["escritura"]
+
+
+def test_la_pieza_no_espera_aprobacion_y_se_sube_al_encender(db, monkeypatch):
+    monkeypatch.setenv("META_AD_ACCOUNT_ID", "act_1")
+    pa.fijar_modo(db, "aprobar", "Juan")
+    pa.guardar_pieza(db, "caso.png", PNG, "Texto", "", "Andrés")
+    meta = Meta()
+    datos = _datos([_ad("A1", 30, 3)])
+    pa.operador(db, MIE_11, traer=lambda hoy: datos, post=meta.post, get=meta.get)
+    [a] = [x for x in pa.listar(db) if x["tipo"] == "subir_pieza"]
+    assert a["estado"] == "ensayo" and a["cambios"] == [] and meta.escrito == []
+    _escribe(db)
+    pa.operador(db, MIE_11, traer=lambda hoy: datos, post=meta.post, get=meta.get, forzar=True)
+    [p] = pa.listar_piezas(db)
+    assert p["estado"] == "en_prueba" and p["ad_id"] == "AD_NUEVO"

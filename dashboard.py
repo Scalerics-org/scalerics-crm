@@ -16265,8 +16265,11 @@ function paPintar() {
   const d = paDatos;
   const frenado = d.agente.estado === 'frenado';
   const chip = document.getElementById('pa-chip-estado');
-  chip.className = 'so-chip ' + (frenado ? 'so-chip-rojo' : 'so-chip-verde');
-  chip.textContent = frenado ? 'Agente frenado' : 'Agente activo';
+  const chipDatos = frenado ? ['so-chip-rojo', 'Agente frenado']
+    : d.nivel === 'encendido' ? ['so-chip-verde', 'Agente encendido']
+    : d.nivel === 'ensayo' ? ['so-chip-azul', 'Modo prueba'] : ['', 'Agente apagado'];
+  chip.className = 'so-chip ' + chipDatos[0];
+  chip.textContent = chipDatos[1];
   document.getElementById('pa-btn-frenar').textContent = frenado ? 'Reactivar' : 'Frenar agente';
   liClase('pa-btn-correr', !d.es_admin, 'so-oculto');
   const ensayo = document.getElementById('pa-ensayo');

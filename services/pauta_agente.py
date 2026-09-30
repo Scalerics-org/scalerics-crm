@@ -660,10 +660,26 @@ def subir_a_meta(db_path: str, pieza: dict, campana_id: str, modelo_id: str,
     return anuncio["id"]
 
 
+def _insertar_directo(db_path: str, a: dict, objeto_id: str, estado_: str, ahora: datetime) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO pauta_acciones (creada_en, tipo, clave, objeto_id, objeto_nombre, "
+            "campana_nombre, descripcion, motivo, cambios_json, estado, aplicada_en) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (_txt(ahora), a["tipo"], a["clave"], objeto_id, a.get("objeto_nombre"),
+             a.get("campana_nombre"), a["descripcion"], a["motivo"], json.dumps(a["cambios"]),
+             estado_, _txt(ahora)))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def procesar_piezas(db_path: str, datos: dict, ahora: datetime, get=None, post=None) -> int:
     """Sube las recibidas (o registra en ensayo que las subiria). Devuelve cuantas movio."""
     movidas = 0
-    for pieza in [p for p in listar_piezas(db_path, 200) if p["estado"] == "recibida"]:
+    # Las que quedaron en ensayo se suben de verdad cuando el agente se enciende.
+    for pieza in [p for p in listar_piezas(db_path, 200) if p["estado"] in ("recibida", "ensayo")]:
         if pieza["tipo"] == "video":
             _actualizar_pieza(db_path, pieza["id"], estado="manual",
                               error="Los videos por ahora se suben a mano en Meta.")
@@ -682,12 +698,12 @@ def procesar_piezas(db_path: str, datos: dict, ahora: datetime, get=None, post=N
                                  f"{pieza['subida_por'] or 'marketing'} a «{nombre_camp}»",
                   "motivo": "Pieza nueva que mandó el de marketing; queda en prueba y se pausa "
                             "sola si en 7 días gasta sin traer leads."}
+        # La pieza la mando una persona: no pasa por la aprobacion, se sube directo.
         if not escritura(db_path):
-            accion["cambios"] = [{"id": "(anuncio nuevo)", "campo": "status",
-                                  "antes": "PAUSED", "despues": "ACTIVE"}]
-            registrar(db_path, accion, ahora)
-            _actualizar_pieza(db_path, pieza["id"], estado="ensayo", campana_id=campana)
-            movidas += 1
+            if pieza["estado"] == "recibida":
+                _insertar_directo(db_path, accion, accion["objeto_id"], "ensayo", ahora)
+                _actualizar_pieza(db_path, pieza["id"], estado="ensayo", campana_id=campana)
+                movidas += 1
             continue
         try:
             ad_id = subir_a_meta(db_path, pieza, campana, modelo, get=get, post=post)
@@ -695,18 +711,7 @@ def procesar_piezas(db_path: str, datos: dict, ahora: datetime, get=None, post=N
             _actualizar_pieza(db_path, pieza["id"], estado="error", error=str(e)[:300])
             continue
         accion["cambios"] = [{"id": ad_id, "campo": "status", "antes": "PAUSED", "despues": "ACTIVE"}]
-        conn = _connect(db_path)
-        try:
-            conn.execute(
-                "INSERT INTO pauta_acciones (creada_en, tipo, clave, objeto_id, objeto_nombre, "
-                "campana_nombre, descripcion, motivo, cambios_json, estado, aplicada_en) "
-                "VALUES (?,?,?,?,?,?,?,?,?, 'aplicada', ?)",
-                (_txt(ahora), "subir_pieza", accion["clave"], ad_id, pieza["nombre_archivo"],
-                 nombre_camp, accion["descripcion"], accion["motivo"],
-                 json.dumps(accion["cambios"]), _txt(ahora)))
-            conn.commit()
-        finally:
-            conn.close()
+        _insertar_directo(db_path, accion, ad_id, "aplicada", ahora)
         _actualizar_pieza(db_path, pieza["id"], estado="en_prueba", ad_id=ad_id,
                           campana_id=campana, en_meta_desde=_txt(ahora), error=None)
         movidas += 1
