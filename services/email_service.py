@@ -1425,7 +1425,22 @@ def send_fidelidad_email(to_email: str, negocio: str, unsub_url: str, numero: in
         logger.warning("Fidelidad: sin FID_FROM_EMAIL ni DISCOVERY_FROM_EMAIL validos, no se manda")
         return "fallo"
     direccion = remitente.split("<")[-1].strip(" >")
+    asunto, html_mail, texto = armar_fidelidad_email(negocio, unsub_url, numero)
+    return _send_estado(
+        to_email, asunto, html_mail,
+        from_email=f"Juan de Scalerics <{direccion}>",
+        headers={
+            "Reply-To": "contacto@scalerics.com",
+            "List-Unsubscribe": f"<{unsub_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+        text=texto,
+    )
 
+
+def armar_fidelidad_email(negocio: str, unsub_url: str, numero: int = 1) -> tuple[str, str, str]:
+    """(asunto, html, texto) del mail. Aparte del envío para que la sección de
+    Captación muestre el mail tal como salió, sin depender del remitente."""
     negocio_txt = " ".join((negocio or "").split())
     asunto, parrafos = cuerpo_fidelidad(int(numero or 1), negocio_txt)
     estilo_p = "margin:0 0 14px;font-size:15px;line-height:1.6;color:#1c2b40"
@@ -1446,16 +1461,7 @@ def send_fidelidad_email(to_email: str, negocio: str, unsub_url: str, numero: in
     texto = ("\n\n".join(parrafos)
              + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
-    return _send_estado(
-        to_email, asunto, html_mail,
-        from_email=f"Juan de Scalerics <{direccion}>",
-        headers={
-            "Reply-To": "contacto@scalerics.com",
-            "List-Unsubscribe": f"<{unsub_url}>",
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
-        text=texto,
-    )
+    return asunto, html_mail, texto
 
 
 # ── LinkedIn ────────────────────────────────────────────────────────────────────

@@ -433,6 +433,95 @@ def estado(db_path: str) -> dict:
             "proximos": [{"nombre": p["nombre"], "email": p["email"]} for p in pendientes[:10]]}
 
 
+# ─── La sección de Captación (Juan, 30/9) ────────────────────────────────────
+# «Email marketing» dentro de Captación: solo los mails a restaurantes. El
+# estado de Resend (entregado, abierto, rebote) sale de `emails_enviados`, que
+# llena el webhook; se cruza por dirección y número de contacto, que en esta
+# campaña no se repiten.
+
+# Montevideo no tiene horario de verano desde 2015: siempre UTC-3.
+_A_MVD = "'-3 hours'"
+
+
+def _estado_de(f) -> tuple[str, str]:
+    """(clave, texto) de un envío: lo más importante que le pasó."""
+    if f["respondio_at"]:
+        return "respondio", "Respondió"
+    if f["unsubscribed_at"]:
+        return "baja", "Pidió la baja"
+    if f["spam_at"]:
+        return "spam", "Marcó spam"
+    if f["rebotado_at"]:
+        return "rebote", "Rebotó"
+    if f["abierto_at"] or f["clic_at"]:
+        return "abierto", "Abierto"
+    if f["entregado_at"]:
+        return "entregado", "Entregado"
+    return "enviado", "Enviado"
+
+
+def panel(db_path: str, mes: str | None = None, ciudad: str | None = None) -> dict:
+    """Contadores y lista de envíos del mes (`AAAA-MM`, hora de Montevideo)."""
+    if not mes or not re.fullmatch(r"\d{4}-\d{2}", mes):
+        mes = datetime.now(timezone.utc).strftime("%Y-%m")
+    filtros, args = [f"strftime('%Y-%m', datetime(a.sent_at, {_A_MVD})) = ?"], [mes]
+    if ciudad in CIUDADES:
+        filtros.append("p.ciudad = ?")
+        args.append(ciudad)
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(f"""
+            SELECT a.id, a.numero, a.email, a.respondio_at, a.unsubscribed_at,
+                   strftime('%d/%m %H:%M', datetime(a.sent_at, {_A_MVD})) AS fecha,
+                   p.id AS pid, p.nombre, p.ciudad,
+                   e.entregado_at, e.abierto_at, e.clic_at, e.rebotado_at, e.spam_at
+              FROM fid_mails_auto a
+              JOIN fid_prospectos p ON p.id = a.prospecto_id
+         LEFT JOIN emails_enviados e ON e.id = (
+                     SELECT MAX(x.id) FROM emails_enviados x
+                      WHERE x.tipo = 'fidelidad' AND x.numero = a.numero
+                        AND LOWER(TRIM(x.destinatario)) = a.email)
+             WHERE {' AND '.join(filtros)}
+          ORDER BY a.sent_at DESC, a.id DESC""", args).fetchall()
+    finally:
+        conn.close()
+    envios, cuenta = [], {"enviados": 0, "abiertos": 0, "respondieron": 0, "bajas_rebotes": 0}
+    for f in filas:
+        clave, texto = _estado_de(f)
+        cuenta["enviados"] += 1
+        cuenta["abiertos"] += clave in ("abierto", "respondio") or bool(f["abierto_at"] or f["clic_at"])
+        cuenta["respondieron"] += clave == "respondio"
+        cuenta["bajas_rebotes"] += clave in ("baja", "spam", "rebote")
+        envios.append({"id": f["id"], "fecha": f["fecha"], "restaurante": f["nombre"] or "",
+                       "prospecto_id": f["pid"], "ciudad": f["ciudad"] or "", "email": f["email"],
+                       "numero": f["numero"], "estado": clave, "estado_texto": texto})
+    return {"mes": mes, "ciudad": ciudad if ciudad in CIUDADES else "",
+            "activo": os.environ.get("FID_MAILS_AUTO", "").strip().lower() == "on",
+            "tope_diario": TOPE_DIARIO, "en_cola": len(a_contactar(db_path, 100000)),
+            **cuenta, "envios": envios}
+
+
+def mail_enviado(db_path: str, envio_id: int, base_url: str) -> dict | None:
+    """El mail de un envío tal como salió, rearmado con la misma función."""
+    from services.email_service import armar_fidelidad_email
+    conn = _conn(db_path)
+    try:
+        f = conn.execute(f"""
+            SELECT a.numero, a.email, a.token, p.id AS pid, p.nombre,
+                   strftime('%d/%m/%Y %H:%M', datetime(a.sent_at, {_A_MVD})) AS fecha
+              FROM fid_mails_auto a JOIN fid_prospectos p ON p.id = a.prospecto_id
+             WHERE a.id = ?""", (int(envio_id),)).fetchone()
+    finally:
+        conn.close()
+    if not f:
+        return None
+    # El link de baja de la vista no es el real: abrir el mail desde el CRM no
+    # puede dar de baja a nadie por un clic distraído.
+    asunto, html_mail, texto = armar_fidelidad_email(f["nombre"], f"{base_url.rstrip('/')}/baja/…", f["numero"])
+    return {"asunto": asunto, "html": html_mail, "text": texto, "destinatario": f["email"],
+            "fecha": f["fecha"], "numero": f["numero"], "prospecto_id": f["pid"], "restaurante": f["nombre"]}
+
+
 def start_fid_mails_auto(app) -> None:
     """Revisa cada hora si toca la tanda. Arranca SOLO con FID_MAILS_AUTO=on."""
     if os.environ.get("FID_MAILS_AUTO", "").strip().lower() != "on":

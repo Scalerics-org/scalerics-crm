@@ -260,3 +260,50 @@ def test_estado_para_mirar_antes_de_prender(db, enviados):
     assert e["sin_contactar_con_mail"] == 2 and e["activo"] is False
     auto.enviar(db, "https://crm")
     assert auto.estado(db)["primeros"] == 2
+
+
+# ─── la sección de Captación ─────────────────────────────────────────────────
+
+def _evento(db, email, numero, **cols):
+    sets = ", ".join(f"{k} = datetime('now')" for k in cols)
+    _sql(db, "INSERT INTO emails_enviados (tipo, destinatario, numero, enviado_at) "
+             "VALUES ('fidelidad', ?, ?, datetime('now'))", (email, numero))
+    if sets:
+        _sql(db, f"UPDATE emails_enviados SET {sets} WHERE destinatario = ? AND numero = ?", (email, numero))
+
+
+def test_panel_cuenta_y_lista_solo_restaurantes(db, enviados):
+    _local(db, 1)
+    _local(db, 2, ciudad="Buenos Aires")
+    _local(db, 3)
+    auto.enviar(db, "https://crm")
+    _evento(db, "hola@parrilla1.uy", 1, entregado_at=1, abierto_at=1)
+    _evento(db, "hola@parrilla2.uy", 1, rebotado_at=1)
+    _sql(db, "INSERT INTO emails_enviados (tipo, destinatario, enviado_at) "
+             "VALUES ('discovery', 'otro@x.uy', datetime('now'))")
+    d = auto.panel(db)
+    assert d["enviados"] == 3 and d["abiertos"] == 1 and d["bajas_rebotes"] == 1
+    estados = {e["email"]: e["estado"] for e in d["envios"]}
+    assert estados == {"hola@parrilla1.uy": "abierto", "hola@parrilla2.uy": "rebote",
+                       "hola@parrilla3.uy": "enviado"}
+    assert auto.panel(db, ciudad="Buenos Aires")["enviados"] == 1
+    assert auto.panel(db, mes="2020-01")["envios"] == []
+
+
+def test_panel_marca_respondio(db, enviados):
+    pid = _local(db, 1)
+    auto.enviar(db, "https://crm")
+    auto.marcar_respuesta(db, pid, "hola@parrilla1.uy", "Re: hola")
+    d = auto.panel(db)
+    assert d["respondieron"] == 1 and d["envios"][0]["estado_texto"] == "Respondió"
+
+
+def test_ver_mail_no_trae_el_link_de_baja_real(db, enviados):
+    _local(db, 1)
+    auto.enviar(db, "https://crm")
+    token = enviados[0]["unsub"].rsplit("/", 1)[-1]
+    envio_id = auto.panel(db)["envios"][0]["id"]
+    m = auto.mail_enviado(db, envio_id, "https://crm")
+    assert "Parrilla 1" in m["asunto"] and "prototipo" in m["html"]
+    assert token not in m["html"]
+    assert auto.mail_enviado(db, 999, "https://crm") is None
