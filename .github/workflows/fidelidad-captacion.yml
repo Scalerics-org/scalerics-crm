@@ -1,0 +1,66 @@
+name: "Fidelidad: captación"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Juan (30/9): los mails automáticos a restaurantes no pueden parar. Todos los
+# días esto busca el mail en la web de los restaurantes de la lista y, si quedan
+# menos de dos semanas de envíos, trae restaurantes nuevos de Google Maps.
+# Ver scripts/fid_captacion.py.
+#
+# Corre acá y no en Fly porque hace falta un navegador, y nunca en la notebook
+# de Juan. El repo es público: los minutos de Actions no cuestan nada.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    # 07:30 UTC = 04:30 en Montevideo: los mails nuevos quedan en la cola antes
+    # de la tanda del día.
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+    inputs:
+      forzar:
+        description: "Traer restaurantes nuevos aunque sobre cola"
+        type: boolean
+        default: false
+
+concurrency:
+  group: fidelidad-captacion
+  cancel-in-progress: false
+
+jobs:
+  captacion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias y Chromium
+        run: |
+          for intento in 1 2 3; do
+            pip install -r requirements.txt && break
+            sleep 20
+          done
+          for intento in 1 2 3; do
+            playwright install --with-deps chromium && break
+            echo "playwright install fallo (intento $intento), reintento en 20s"; sleep 20
+          done
+
+      - name: Esperar a que el CRM conteste
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+        run: |
+          curl -sS -f --retry 10 --retry-all-errors --retry-delay 15 --max-time 30 -o /dev/null "$CRM/"
+
+      - name: Buscar mails y, si hace falta, restaurantes nuevos
+        env:
+          CRM_URL: ${{ secrets.CRM_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.forzar }}" = "true" ]; then
+            python scripts/fid_captacion.py --forzar-busqueda
+          else
+            python scripts/fid_captacion.py
+          fi
