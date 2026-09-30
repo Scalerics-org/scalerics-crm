@@ -35,6 +35,7 @@ _FORMATO = "%Y-%m-%d %H:%M:%S"
 # Orden = orden del filtro en pantalla.
 TIPOS = {
     "discovery": "Discovery en frío",
+    "fidelidad": "Fidelidad en frío",
     "recordatorio_meta": "Recordatorios a leads de Meta",
     "aviso_equipo": "Avisos al equipo",
     "tarea": "Tareas asignadas",
@@ -46,7 +47,7 @@ TIPOS = {
 
 # Solo las campanas guardan extracto: en los avisos internos el texto puede
 # traer lo que un tercero escribio por WhatsApp o un link de reseteo.
-_CON_EXTRACTO = ("discovery", "recordatorio_meta")
+_CON_EXTRACTO = ("discovery", "fidelidad", "recordatorio_meta")
 _LARGO_EXTRACTO = 140
 
 # Evento del webhook -> columna. Un rebote blando tambien cuenta como rebote

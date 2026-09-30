@@ -48,6 +48,13 @@ def _candado():
     return require_panel(_db(), panel)
 
 
+@fidelidad_bp.route("/api/fidelidad/mails-auto")
+def api_mails_auto():
+    """Cómo van los mails automáticos en frío y a quién le tocan los próximos."""
+    from services import fid_mails_auto
+    return jsonify(fid_mails_auto.estado(_db()))
+
+
 @fidelidad_bp.route("/api/fidelidad/hoy")
 def api_hoy():
     datos = fid.armar_hoy(_db(), _ahora())

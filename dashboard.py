@@ -20823,13 +20823,14 @@ def create_app(db_path: str) -> Flask:
     def baja_recordatorios(token):
         from services.discovery_emails import dar_de_baja as baja_discovery
         from services.meta_reminders import dar_de_baja as baja_meta
+        from services.fid_mails_auto import dar_de_baja as baja_fidelidad
         # Los tokens son UUID, o sea unicos entre las dos tablas: llamar a las
         # dos campanas con el mismo token es seguro, y evita publicar una URL
         # nueva por campana.
         # Cada una en su propio try: si una campana falla, la otra tiene que
         # poder dar de baja igual. Si no, un problema en Meta deja sin salida a
         # quien recibio el mail en frio.
-        for baja in (baja_meta, baja_discovery):
+        for baja in (baja_meta, baja_discovery, baja_fidelidad):
             try:
                 baja(app.config["DB_PATH"], token)
             except Exception as e:
@@ -21928,6 +21929,10 @@ loadBackups();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Mails en frío a los restaurantes de Fidelidad. FID_MAILS_AUTO=on los prende.
+        from services.fid_mails_auto import start_fid_mails_auto
+        start_fid_mails_auto(app)
 
         # Mail diario de la pauta a contacto@. ALERTAS_META=off lo apaga.
         from services.alertas_meta import start_alertas_meta
