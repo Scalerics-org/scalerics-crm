@@ -533,6 +533,13 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **30/9 — L (bot de WhatsApp, caso lead 18): worktree `../scalerics-crm-wa-a-main`, rama
+  `fix/wa-fuga-prompt-y-nombre` (sale de `main`), solo `wa-service/`. Pedido de K. Tres arreglos:
+  el preámbulo meta del modelo ("Entendido. El mensaje que le mandás a X es:") se saca en código
+  antes de mandar; el nombre del formulario le gana al del perfil de WhatsApp (y el perfil se
+  guarda sin emojis); el retomar de la mañana, si el lead estaba eligiendo día u hora, sale con
+  la lista numerada recalculada. Sin merge ni deploy.
+
 - **28/9 — J (agente de marketing): LinkedIn, la foto se dibuja en el CRM al toque (pedido de Juan).**
   Rama `fix/linkedin-foto-al-toque`, sale de `main`. Juan veía borradores con
   "Falta la imagen: sale en la próxima corrida del cron". Nuevo

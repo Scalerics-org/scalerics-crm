@@ -2,6 +2,7 @@
 
 const { corregir: corregirVoseo } = require('./voseo');
 const { quitar: quitarJerga } = require('./jerga');
+const { quitarPreambulo } = require('./preambulo');
 
 const { construirRedaccion, situaciones } = require('./prompt');
 const { mencionaPlata } = require('./precio');
@@ -52,10 +53,17 @@ function crearRedactor({ modelo = null, calendly = '', logger = null } = {}) {
           maxTokens: 400,
         });
         if (!r) return null;
-        return String(r.texto || '').trim()
+        const limpio = String(r.texto || '').trim()
           // A veces devuelve el mensaje entre comillas, como si lo citara.
           .replace(/^["“”']+|["“”']+$/g, '')
           .trim();
+        // "Entendido. El mensaje que le mandás a X es:" salio al lead el 30-9.
+        // Va en pedir() y no despues para que el reintento tambien pase por aca.
+        const { texto: sinPreambulo, sacado } = quitarPreambulo(limpio);
+        if (sacado) {
+          logger?.warn({ leadId: lead.id, situacion, sacado }, 'se le saco el preambulo meta al modelo');
+        }
+        return sinPreambulo;
       };
 
       let crudo = await pedir();

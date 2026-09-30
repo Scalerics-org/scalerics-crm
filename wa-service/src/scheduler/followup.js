@@ -85,6 +85,22 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
      * sin eso no sabe donde quedo la charla.
      */
     if (job.type === 'followup' && job.motivo === 'retomar') {
+      /**
+       * Si estaba eligiendo dia u horario, se retoma con la lista numerada que
+       * arma el embudo: en prosa ("Jueves 1, viernes 2...") el lead no puede
+       * contestar con un "2" (lead 18, 30-9). Si el embudo no aplica —otra
+       * etapa, sin agenda— devuelve null y sigue el retomar de siempre.
+       */
+      const oferta = await embudo?.retomarOferta?.(lead.id);
+      if (oferta?.reintentar) return false;
+      if (oferta?.texto) {
+        cola.encolar({ to: lead.telefono, texto: oferta.texto, kind: 'followup', leadId: lead.id });
+        repo.actualizarLead(lead.id, {
+          followup_sent_at: momento.toISOString(), retomado_at: momento.toISOString(),
+        });
+        return true;
+      }
+
       const ultimoDelBot = repo.ultimosMensajes(lead.id, 6, lead.conversacion_desde)
         .filter((m) => m.direction === 'out' && m.body)
         .at(-1);

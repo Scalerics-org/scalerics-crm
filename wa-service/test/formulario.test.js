@@ -281,3 +281,49 @@ test('leerFormulario: "Menos de USD 500" en el formulario real da tramo 1', () =
   ].join('\n');
   assert.equal(leerFormulario(texto).budget, 1);
 });
+
+// ── el nombre del formulario le gana al del perfil de WhatsApp ──────────────
+
+/**
+ * Lead 18 (30-9): el formulario decia "Full name: ADÁN CLAUDIO BENÍTEZ DA SILVA"
+ * pero se mando desde el WhatsApp de "SILVANA RENEE DA COL 😍😍😍😍", y el bot le
+ * hablo a "Silvana": el nombre del perfil ya estaba y el del formulario se
+ * descartaba por "ya tenia nombre".
+ */
+const FORM_ADAN = FORM_PATRICIA.replace('Full name: Patricia Ejemplo', 'Full name: ADÁN CLAUDIO BENÍTEZ DA SILVA');
+
+test('formulario con nombre sobre un lead con nombre de perfil: queda el del formulario', async () => {
+  const TEL = '59898172388';
+  const s = await montar();
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola', 'SILVANA RENEE DA COL 😍😍😍😍');
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta(TEL, FORM_ADAN, 'SILVANA RENEE DA COL 😍😍😍😍');
+  await s.cola.vacia();
+  assert.equal(s.repo.leadPorTelefono(TEL).nombre, 'ADÁN CLAUDIO BENÍTEZ DA SILVA');
+});
+
+test('formulario sin nombre: queda el del perfil', async () => {
+  const TEL = '59898172389';
+  const s = await montar();
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola', 'Silvana');
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta(TEL, FORM_PATRICIA.replace('Full name: Patricia Ejemplo\n', ''), 'Silvana');
+  await s.cola.vacia();
+  assert.equal(s.repo.leadPorTelefono(TEL).nombre, 'Silvana');
+});
+
+test('el nombre de perfil se guarda sin emojis ni espacios de mas', async () => {
+  const TEL = '59898172390';
+  const s = await montar();
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola', '  SILVANA   RENEE DA COL 😍😍😍😍 ');
+  await s.cola.vacia();
+  assert.equal(s.repo.leadPorTelefono(TEL).nombre, 'SILVANA RENEE DA COL');
+});
+
+test('limpiarNombrePerfil: emojis compuestos, vacio y nulos', () => {
+  const { limpiarNombrePerfil } = require('../src/nombre');
+  assert.equal(limpiarNombrePerfil('Ana 👩‍💻❤️'), 'Ana');
+  assert.equal(limpiarNombrePerfil('José María'), 'José María', 'acentos intactos');
+  assert.equal(limpiarNombrePerfil('😍😍'), '');
+  assert.equal(limpiarNombrePerfil(null), '');
+});
