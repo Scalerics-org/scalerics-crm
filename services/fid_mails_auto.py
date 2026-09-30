@@ -10,7 +10,8 @@ cohorte vive en `businesses` y acá en `fid_prospectos`, y tocar la única
 campaña en frío que anda para meterle esta es arriesgar las dos.
 
 Las guardas son las mismas:
-- dos contactos, el segundo a los `DIAS_SEGUNDO` días y solo si nadie lo tocó;
+- cuatro contactos (hoy, a los 15 días, al mes y a los tres meses: `ESPERA_ANTES_DE`),
+  solo si nadie del equipo lo tocó; sin respuesta, se descarta;
 - el cupo que queda libre en el plan gratis de Resend (`cupo_del_dia`) y marca de corrida (`corridas`),
   para que un deploy no sea una tanda;
 - apagado salvo `FID_MAILS_AUTO=on`;
@@ -33,7 +34,8 @@ import uuid
 from datetime import datetime, timezone
 
 from services.corridas import marcar_corrida, puede_correr, siguiente_revision
-from services.email_service import (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES, contexto_envio,
+from services.email_service import (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES, ASUNTO_FID_ULTIMO,
+                                    contexto_envio,
                                     send_fidelidad_email)
 
 logger = logging.getLogger(__name__)
@@ -65,13 +67,17 @@ RAMPA_POR_DIA = 5
 # Lo que cada campaña manda en un día normal, para reservárselo aunque todavía
 # no haya salido. Discovery solo si está prendida.
 _RESERVAS = {"recordatorio_meta": 20, "discovery": 50}
-# Mientras haya restaurantes nuevos, los reenvíos del mes se llevan como mucho
-# la mitad del cupo: si no, en unos meses los reenvíos se comen todo y deja de
-# entrar gente nueva.
-_PARTE_REENVIOS = 0.5
-DIAS_SEGUNDO = 4
-# Juan (30/9): a quien no contesta, se le vuelve a escribir cada mes.
-DIAS_ENTRE_REENVIOS = 30
+# La secuencia (Juan, 30/9): uno, a los 15 días otro, al mes otro y a los tres
+# meses el último. Días de espera ANTES de cada mail, contados desde el
+# anterior. Si después del último no contesta, se descarta.
+ESPERA_ANTES_DE = {2: 15, 3: 30, 4: 90}
+TOTAL_CONTACTOS = 4
+# Lo que se le da para contestar el último antes de descartarlo.
+DIAS_PARA_DESCARTAR = 15
+MOTIVO_DESCARTE = "No respondió los mails"
+# Entre el tercer y el cuarto mail pasan 90 días: las respuestas se buscan más
+# atrás que eso, o alguien que contestó el tercero recibe igual el último.
+DIAS_DE_RESPUESTAS = 120
 CIUDADES = ("Montevideo", "Buenos Aires")
 _PAUSA_ENTRE_ENVIOS = 0.6
 # Meta arranca a los 180 s y discovery a los 600 s de cada boot; esta va a los
@@ -170,8 +176,16 @@ def cupo_del_dia(db_path: str, ahora: datetime | None = None) -> dict:
             "SELECT COUNT(*) FROM emails_enviados WHERE tipo <> 'fidelidad' "
             "AND enviado_at >= datetime(?, '-7 days')", (ahora.strftime(_FORMATO_FECHA),)).fetchone()[0]
         primero = conn.execute("SELECT MIN(sent_at) FROM fid_mails_auto").fetchone()[0]
+        # La reserva de cada campaña es lo más que mandó en un día de la última
+        # semana, no un número fijo: el 30/9 la reserva fija de 20 para Meta,
+        # que ese día no mandó ninguno, dejaba a esta campaña en 8.
+        maximos = dict(conn.execute(
+            "SELECT tipo, MAX(n) FROM (SELECT tipo, date(enviado_at) AS d, COUNT(*) AS n "
+            "FROM emails_enviados WHERE enviado_at >= datetime(?, '-7 days') GROUP BY tipo, d) "
+            "GROUP BY tipo", (ahora.strftime(_FORMATO_FECHA),)).fetchall())
     finally:
         conn.close()
+    reservas = {t: min(r, maximos.get(t, 0)) for t, r in reservas.items()}
     fid_24h = enviados_ultimas_24h(db_path)
     otros_24h = sum(n for t, n in por_tipo.items() if t != "fidelidad")
     pendiente_hoy = sum(max(0, r - por_tipo.get(t, 0)) for t, r in reservas.items())
@@ -232,35 +246,16 @@ def a_contactar(db_path: str, limite: int) -> list[dict]:
 
 
 def a_seguir(db_path: str, limite: int) -> list[dict]:
-    """Los que recibieron el primero hace `DIAS_SEGUNDO` días y no contestaron.
+    """Los que no contestaron y ya les toca el siguiente mail de la secuencia
+    (`ESPERA_ANTES_DE`): el 2 a los 15 días del 1, el 3 al mes del 2 y el 4 a
+    los tres meses del 3. Los más atrasados primero.
 
     La veda se mira de nuevo: entre un mail y otro pueden haber pedido la baja
     o haber rebotado.
     """
-    conn = _conn(db_path)
-    try:
-        filas = conn.execute(f"""
-            SELECT p.id, p.nombre, a.email
-              FROM fid_prospectos p
-              JOIN fid_mails_auto a ON a.prospecto_id = p.id AND a.numero = 1
-             WHERE {_SIN_TOCAR}
-               AND a.sent_at <= datetime('now', '-{DIAS_SEGUNDO} days')
-               AND a.respondio_at IS NULL AND a.unsubscribed_at IS NULL
-               AND NOT EXISTS (SELECT 1 FROM fid_mails_auto x
-                                WHERE x.prospecto_id = p.id AND x.numero >= 2)
-               AND a.email NOT IN ({_VEDADAS})
-          ORDER BY a.sent_at ASC
-             LIMIT ?""", (int(limite),)).fetchall()
-    finally:
-        conn.close()
-    return [{"id": f["id"], "nombre": f["nombre"] or "", "email": f["email"], "numero": 2}
-            for f in filas]
-
-
-def a_reenviar(db_path: str, limite: int) -> list[dict]:
-    """Los que ya recibieron los dos primeros y no contestaron: uno por mes,
-    `DIAS_ENTRE_REENVIOS` después del último. Se corta con cualquier señal:
-    respuesta, baja, rebote, o que alguien del equipo lo haya tocado."""
+    casos = " OR ".join(
+        f"(MAX(a.numero) = {n - 1} AND MAX(a.sent_at) <= datetime('now', '-{d} days'))"
+        for n, d in ESPERA_ANTES_DE.items())
     conn = _conn(db_path)
     try:
         filas = conn.execute(f"""
@@ -270,8 +265,7 @@ def a_reenviar(db_path: str, limite: int) -> list[dict]:
               JOIN fid_mails_auto a ON a.prospecto_id = p.id
              WHERE {_SIN_TOCAR}
           GROUP BY p.id
-            HAVING MAX(a.numero) >= 2
-               AND MAX(a.sent_at) <= datetime('now', '-{DIAS_ENTRE_REENVIOS} days')
+            HAVING ({casos})
                AND MAX(a.respondio_at) IS NULL AND MAX(a.unsubscribed_at) IS NULL
                AND MAX(a.email) NOT IN ({_VEDADAS})
           ORDER BY ultimo ASC
@@ -280,6 +274,35 @@ def a_reenviar(db_path: str, limite: int) -> list[dict]:
         conn.close()
     return [{"id": f["id"], "nombre": f["nombre"] or "", "email": f["email"],
              "numero": f["ultimo_numero"] + 1} for f in filas]
+
+
+def a_descartar(db_path: str) -> list[int]:
+    """Los que recibieron el último mail hace `DIAS_PARA_DESCARTAR` y no
+    contestaron: Juan (30/9), «si no, se descarta»."""
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(f"""
+            SELECT p.id
+              FROM fid_prospectos p
+              JOIN fid_mails_auto a ON a.prospecto_id = p.id
+             WHERE {_SIN_TOCAR}
+          GROUP BY p.id
+            HAVING MAX(a.numero) >= {TOTAL_CONTACTOS}
+               AND MAX(a.sent_at) <= datetime('now', '-{DIAS_PARA_DESCARTAR} days')
+               AND MAX(a.respondio_at) IS NULL AND MAX(a.unsubscribed_at) IS NULL""").fetchall()
+    finally:
+        conn.close()
+    return [f["id"] for f in filas]
+
+
+def descartar_sin_respuesta(db_path: str) -> int:
+    from services import fidelidad as fid
+    ids = a_descartar(db_path)
+    for pid in ids:
+        fid.mover_estado(db_path, pid, "descartado", USUARIO, motivo=MOTIVO_DESCARTE)
+        fid.agregar_nota(db_path, pid, f"Se descartó: no respondió ninguno de los "
+                                       f"{TOTAL_CONTACTOS} mails automáticos.", USUARIO)
+    return len(ids)
 
 
 # ─── Registro y baja ─────────────────────────────────────────────────────────
@@ -302,8 +325,8 @@ def _anotar_en_historial(db_path: str, pid: int, email: str, numero: int, nombre
     """El mail queda en el historial del local, como los que se mandan a mano,
     pero SIN la llamada de seguimiento a los dos días: con 25 por día le
     llenaría la lista al vendedor de locales que no contestaron."""
-    asunto = (ASUNTO_FID_1 if numero <= 1 else ASUNTO_FID_2 if numero == 2 else ASUNTO_FID_MES
-              ).format(n=nombre or "tu restaurante")
+    asunto = (ASUNTO_FID_1 if numero <= 1 else ASUNTO_FID_2 if numero == 2 else
+              ASUNTO_FID_MES if numero == 3 else ASUNTO_FID_ULTIMO).format(n=nombre or "tu restaurante")
     de = (os.environ.get("FID_FROM_EMAIL") or os.environ.get("DISCOVERY_FROM_EMAIL") or "").strip()
     conn = _conn(db_path)
     try:
@@ -337,11 +360,12 @@ def dar_de_baja(db_path: str, token: str) -> bool:
 
 _PATRONES_ASUNTO = tuple(
     re.compile("^" + re.escape(a.lower()).replace(re.escape("{n}"), "(?P<n>.+)") + "$")
-    for a in (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES)
+    for a in (ASUNTO_FID_1, ASUNTO_FID_2, ASUNTO_FID_MES, ASUNTO_FID_ULTIMO)
 )
 # Gmail no entiende regex: los pedazos fijos de cada asunto, para encontrar al
 # dueño que contesta desde otra casilla.
-_FRAGMENTOS = ("sistema de puntos como el de McDonald", "Sobre los puntos para", "armamos el prototipo para")
+_FRAGMENTOS = ("sistema de puntos como el de McDonald", "Sobre los puntos para", "armamos el prototipo para",
+              "Último mail sobre los puntos")
 _PREFIJOS = ("re:", "rv:", "fwd:", "fw:")
 
 
@@ -359,7 +383,7 @@ def negocio_del_asunto(asunto: str | None) -> str:
     return ""
 
 
-def _contactados(db_path: str) -> tuple[dict, dict, dict]:
+def _contactados(db_path: str, dias: int = DIAS_DE_RESPUESTAS) -> tuple[dict, dict, dict]:
     """({mail: pid}, {nombre: pid}, {pid: último envío}) de los que esperan respuesta.
     Un nombre repetido no se usa: marcar al local equivocado es peor que no marcar."""
     conn = _conn(db_path)
@@ -368,10 +392,10 @@ def _contactados(db_path: str) -> tuple[dict, dict, dict]:
             SELECT a.prospecto_id AS pid, a.email, LOWER(TRIM(p.nombre)) AS nombre,
                    MAX(a.sent_at) AS ultimo
               FROM fid_mails_auto a JOIN fid_prospectos p ON p.id = a.prospecto_id
-             WHERE a.sent_at >= datetime('now', '-30 days')
+             WHERE a.sent_at >= datetime('now', '-' || ? || ' days')
           GROUP BY a.prospecto_id
             HAVING MAX(a.respondio_at) IS NULL AND MAX(a.unsubscribed_at) IS NULL
-        """).fetchall()
+        """, (int(dias),)).fetchall()
     finally:
         conn.close()
     por_mail = {f["email"]: f["pid"] for f in filas}
@@ -418,11 +442,11 @@ def marcar_respuesta(db_path: str, pid: int, direccion: str, asunto: str) -> str
     return "respondio"
 
 
-def sincronizar_respuestas(db_path: str, buscar, days_back: int = 30) -> dict:
+def sincronizar_respuestas(db_path: str, buscar, days_back: int = DIAS_DE_RESPUESTAS) -> dict:
     """`buscar(query)` devuelve mensajes {"from", "subject", "date", "headers"},
     igual que en discovery_respuestas (y en producción es la misma función)."""
     from services.discovery_respuestas import es_respuesta_automatica, partir_en_consultas
-    por_mail, por_nombre, ultimo = _contactados(db_path)
+    por_mail, por_nombre, ultimo = _contactados(db_path, days_back)
     res = {"revisados": len(por_mail), "respondieron": 0, "bajas": 0}
     if not por_mail:
         return res
@@ -469,14 +493,14 @@ def sincronizar_desde_gmail(db_path: str) -> dict:
 # ─── La tanda ────────────────────────────────────────────────────────────────
 
 def enviar(db_path: str, base_url: str, dry_run: bool = False) -> dict:
-    """Una tanda: los segundos contactos, los reenvíos del mes y los nuevos.
+    """Una tanda: primero los seguimientos que vencen, después los nuevos.
 
-    Los segundos primero porque uno a destiempo pierde sentido. Los reenvíos se
-    llevan como mucho `_PARTE_REENVIOS` del cupo mientras haya gente nueva: si
-    no, a los pocos meses son tantos que dejan de entrar restaurantes nuevos.
+    Los seguimientos primero porque uno a destiempo pierde sentido. La cuenta:
+    cada restaurante recibe cuatro mails, así que con el cupo lleno entran unos
+    nuevos por día igual a un cuarto del cupo.
     """
     res = {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0,
-           "seguimientos": 0, "reenvios": 0, "nuevos": 0}
+           "seguimientos": 0, "nuevos": 0}
     c = cupo_del_dia(db_path)
     cupo = c["por_dia"] if dry_run else c["quedan_hoy"]
     res["cupo"] = cupo
@@ -484,13 +508,9 @@ def enviar(db_path: str, base_url: str, dry_run: bool = False) -> dict:
         return res
     seguir = a_seguir(db_path, cupo)
     resto = cupo - len(seguir)
-    hay_nuevos = bool(a_contactar(db_path, 1))
-    tope_reenvios = int(resto * _PARTE_REENVIOS) if hay_nuevos else resto
-    reenviar = a_reenviar(db_path, tope_reenvios) if tope_reenvios > 0 else []
-    resto -= len(reenviar)
     nuevos = a_contactar(db_path, resto) if resto > 0 else []
-    lista = seguir + reenviar + nuevos
-    res.update(candidatos=len(lista), seguimientos=len(seguir), reenvios=len(reenviar), nuevos=len(nuevos))
+    lista = seguir + nuevos
+    res.update(candidatos=len(lista), seguimientos=len(seguir), nuevos=len(nuevos))
     if dry_run:
         res["lista"] = lista
         return res
@@ -569,6 +589,12 @@ def tanda_diaria(db_path: str, base_url: str):
     except Exception as e:
         logger.warning(f"Fidelidad respuestas: {e}")
     marcar_corrida(db_path, NOMBRE_CORRIDA)
+    try:
+        descartados = descartar_sin_respuesta(db_path)
+        if descartados:
+            logger.info(f"Fidelidad: {descartados} descartados por no responder los {TOTAL_CONTACTOS} mails")
+    except Exception as e:
+        logger.warning(f"Fidelidad: no se pudo descartar a los que no respondieron: {e}")
     res = enviar(db_path, base_url)
     try:
         avisar_si_se_quedo_sin_cola(db_path, res)
@@ -637,7 +663,7 @@ def estado(db_path: str) -> dict:
     try:
         f = conn.execute("""
             SELECT COUNT(DISTINCT prospecto_id) AS locales,
-                   SUM(numero = 1) AS primeros, SUM(numero = 2) AS segundos, SUM(numero >= 3) AS reenvios,
+                   SUM(numero = 1) AS primeros, SUM(numero = 2) AS segundos, SUM(numero >= 3) AS terceros_o_mas,
                    COUNT(DISTINCT CASE WHEN respondio_at IS NOT NULL THEN prospecto_id END) AS respondieron,
                    COUNT(DISTINCT CASE WHEN unsubscribed_at IS NOT NULL THEN email END) AS bajas
               FROM fid_mails_auto""").fetchone()

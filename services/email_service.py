@@ -1379,9 +1379,9 @@ def remitente_frio(variable: str) -> str | None:
 # respondiendo el mail, sin link de agenda.
 ASUNTO_FID_1 = "Un sistema de puntos como el de McDonald's para {n}"
 ASUNTO_FID_2 = "Sobre los puntos para {n}"
-# Juan (30/9): a quien no contesta se le vuelve a escribir cada mes. Por eso el
-# segundo ya no dice "último mail".
+# Juan (30/9): la secuencia es hoy, a los 15 días, al mes y a los tres meses.
 ASUNTO_FID_MES = "¿Te armamos el prototipo para {n}?"
+ASUNTO_FID_ULTIMO = "Último mail sobre los puntos para {n}"
 # El celular de Juan (30/9), no el de la agencia. En formato internacional
 # porque también les llega a restaurantes de Buenos Aires.
 _TELEFONO_FID = "+598 94 053 389"
@@ -1409,13 +1409,21 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
     if numero == 2:
         return ASUNTO_FID_2.format(n=n), [
             "Hola, ¿cómo va?",
-            f"Te escribí hace unos días por el sistema de puntos para {n}, para que "
+            f"Te escribí hace un par de semanas por el sistema de puntos para {n}, para que "
             f"tus clientes vuelvan más seguido.",
             "Si te interesa, te armamos un prototipo con tu marca y lo vemos en una "
             "videollamada de 15 minutos: respondé este mail y coordinamos.",
             "Gracias por el tiempo.",
         ]
-    # Del tercero en adelante, uno por mes.
+    if numero >= 4:
+        return ASUNTO_FID_ULTIMO.format(n=n), [
+            "Hola, ¿cómo va?",
+            f"Hace un tiempo te escribí por el sistema de puntos para {n}. No quiero "
+            f"insistir de más, así que este es el último mail: no te escribo más.",
+            "Si en algún momento te interesa, respondé este mail y te armamos un "
+            "prototipo con tu marca para verlo en una videollamada de 15 minutos.",
+            "Gracias por el tiempo.",
+        ]
     return ASUNTO_FID_MES.format(n=n), [
         "Hola, ¿cómo va?",
         f"Te vuelvo a escribir por el sistema de puntos para {n}: cada cliente suma "
@@ -1424,7 +1432,6 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
         "Te armamos un prototipo con tu marca, sin compromiso, y te lo mostramos en "
         "una videollamada de 15 minutos. Si te interesa, respondé este mail con el "
         "día y el horario que te queden cómodos.",
-        "Si preferís que no te escriba más, abajo está el link para darte de baja.",
     ]
 
 

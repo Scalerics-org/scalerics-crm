@@ -74,11 +74,6 @@ def test_el_segundo_ya_no_dice_que_es_el_ultimo():
     assert "La Pasiva" in asunto and "último" not in (asunto + " ".join(parrafos)).lower()
 
 
-def test_el_del_mes_ofrece_el_prototipo_y_la_baja():
-    asunto, parrafos = cuerpo_fidelidad(5, "La Pasiva")
-    texto = " ".join(parrafos)
-    assert "prototipo" in asunto and "La Pasiva" in asunto
-    assert "videollamada" in texto and "baja" in texto and "http" not in texto
 
 
 def test_sale_del_subdominio_con_el_nombre_de_juan_y_baja(monkeypatch):
@@ -173,16 +168,6 @@ def test_anota_en_el_historial_sin_llenar_la_lista_del_vendedor(db, enviados):
     assert enviados[0]["unsub"].startswith("https://crm/baja/")
 
 
-def test_segundo_mail_a_los_4_dias_y_despues_nada(db, enviados):
-    _local(db, 1)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 3)
-    assert auto.enviar(db, "https://crm")["enviados"] == 0
-    _atrasar(db, 4)
-    auto.enviar(db, "https://crm")
-    assert [e["numero"] for e in enviados] == [1, 2]
-    _atrasar(db, 29)
-    assert auto.enviar(db, "https://crm")["enviados"] == 0
 
 
 def test_si_el_vendedor_lo_llamo_no_sale_el_segundo(db, enviados):
@@ -339,14 +324,6 @@ def test_el_cupo_sube_con_los_dias_de_envio(db, enviados):
     assert auto.cupo_del_dia(db)["por_dia"] == auto.RAMPA_INICIAL + 3 * auto.RAMPA_POR_DIA
 
 
-def test_el_cupo_deja_lugar_a_las_otras_campanas_del_dia(db, monkeypatch):
-    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
-    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
-    # Meta ya mandó sus 20; discovery todavía no mandó nada hoy: se le guardan 50.
-    _otros_envios(db, 20)
-    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 20 - 50
-    _otros_envios(db, 50, tipo="discovery")
-    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 70
 
 
 def test_el_cupo_no_se_pasa_de_los_3000_del_mes(db, monkeypatch):
@@ -355,54 +332,14 @@ def test_el_cupo_no_se_pasa_de_los_3000_del_mes(db, monkeypatch):
     assert auto.cupo_del_dia(db)["por_dia"] == 0
 
 
-def test_sin_discovery_no_se_le_reserva_nada(db, monkeypatch):
-    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
-    monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
-    sin = auto.cupo_del_dia(db)["por_dia"]
-    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
-    assert auto.cupo_del_dia(db)["por_dia"] < sin
 
 
-# ─── cada mes, de nuevo ──────────────────────────────────────────────────────
-
-def test_a_los_30_dias_del_segundo_sale_el_del_mes(db, enviados):
-    _local(db, 1)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 5)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 30)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 30)
-    auto.enviar(db, "https://crm")
-    assert [e["numero"] for e in enviados] == [1, 2, 3, 4]
-    asuntos = [m["asunto"] for m in fid.get_prospecto(db, 1)["mails"]]
-    assert auto.ASUNTO_FID_MES.format(n="Parrilla 1") in asuntos
+# ─── la secuencia: hoy, 15 días, un mes, tres meses ──────────────────────────────────────────────────────
 
 
-def test_si_contesto_no_le_llega_el_del_mes(db, enviados):
-    pid = _local(db, 1)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 5)
-    auto.enviar(db, "https://crm")
-    auto.marcar_respuesta(db, pid, "hola@parrilla1.uy", "Re: hola")
-    fid.mover_estado(db, pid, "sin_contactar", "Lucas")   # aunque lo vuelvan atrás
-    _atrasar(db, 40)
-    assert auto.enviar(db, "https://crm")["reenvios"] == 0
 
 
-def test_los_reenvios_no_se_comen_a_los_nuevos(db, enviados, monkeypatch):
-    monkeypatch.setattr(auto, "RAMPA_INICIAL", 10)
-    monkeypatch.setattr(auto, "RAMPA_POR_DIA", 0)
-    for n in range(1, 11):
-        _local(db, n)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 5)
-    auto.enviar(db, "https://crm")
-    _atrasar(db, 31)
-    for n in range(11, 31):
-        _local(db, n)
-    r = auto.enviar(db, "https://crm")
-    assert r["reenvios"] == 5 and r["nuevos"] == 5
+
 
 
 def test_el_reenvio_del_mes_se_reconoce_en_la_respuesta():
@@ -475,3 +412,97 @@ def test_la_api_del_buscador_pide_token(db, monkeypatch):
                  json={"resultados": [{"id": 1, "email": "a@p1.uy", "abrio": True}]}).get_json()
     assert r["encontrados"] == 1
     assert cli.get("/api/fidelidad/mails-auto", headers=h).get_json()["sin_contactar_con_mail"] == 1
+
+
+
+# ─── la secuencia de Juan (30/9): hoy, a los 15 días, al mes, a los 3 meses ──
+
+def test_el_tercero_ofrece_el_prototipo():
+    asunto, parrafos = cuerpo_fidelidad(3, "La Pasiva")
+    texto = " ".join(parrafos)
+    assert "prototipo" in asunto and "La Pasiva" in asunto
+    assert "videollamada" in texto and "http" not in texto
+
+
+def test_el_cuarto_es_el_ultimo():
+    asunto, parrafos = cuerpo_fidelidad(4, "La Pasiva")
+    assert asunto.startswith("Último mail") and "último mail" in " ".join(parrafos)
+    assert auto.negocio_del_asunto("Re: " + asunto) == "la pasiva"
+
+
+def test_la_secuencia_es_15_30_90_y_despues_se_descarta(db, enviados):
+    pid = _local(db, 1)
+    auto.enviar(db, "https://crm")
+    for espera, numero in ((15, 2), (30, 3), (90, 4)):
+        _atrasar(db, espera - 1)
+        assert auto.enviar(db, "https://crm")["enviados"] == 0, f"antes del {numero}"
+        _atrasar(db, espera)
+        auto.enviar(db, "https://crm")
+        assert enviados[-1]["numero"] == numero
+    assert [e["numero"] for e in enviados] == [1, 2, 3, 4]
+    _atrasar(db, 200)
+    assert auto.enviar(db, "https://crm")["enviados"] == 0
+    _atrasar(db, auto.DIAS_PARA_DESCARTAR - 1)
+    assert auto.descartar_sin_respuesta(db) == 0
+    _atrasar(db, auto.DIAS_PARA_DESCARTAR)
+    assert auto.descartar_sin_respuesta(db) == 1
+    p = fid.get_prospecto(db, pid)
+    assert p["estado"] == "descartado" and p["motivo_descarte"] == auto.MOTIVO_DESCARTE
+    assert auto.descartar_sin_respuesta(db) == 0
+
+
+def test_si_contesto_no_sigue_la_secuencia_ni_se_descarta(db, enviados):
+    pid = _local(db, 1)
+    auto.enviar(db, "https://crm")
+    auto.marcar_respuesta(db, pid, "hola@parrilla1.uy", "Re: hola")
+    fid.mover_estado(db, pid, "sin_contactar", "Lucas")   # aunque lo vuelvan atrás
+    _atrasar(db, 200)
+    assert auto.enviar(db, "https://crm")["seguimientos"] == 0
+    assert auto.descartar_sin_respuesta(db) == 0
+
+
+def test_los_seguimientos_van_antes_que_los_nuevos(db, enviados, monkeypatch):
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 10)
+    monkeypatch.setattr(auto, "RAMPA_POR_DIA", 0)
+    for n in range(1, 9):
+        _local(db, n)
+    auto.enviar(db, "https://crm")
+    _atrasar(db, 15)
+    for n in range(9, 30):
+        _local(db, n)
+    r = auto.enviar(db, "https://crm")
+    assert r["seguimientos"] == 8 and r["nuevos"] == 2
+
+
+def test_las_respuestas_se_buscan_mas_atras_que_la_espera_mas_larga():
+    assert auto.DIAS_DE_RESPUESTAS > max(auto.ESPERA_ANTES_DE.values())
+
+
+# ─── la reserva de las otras campañas sale de lo que mandan de verdad ────────
+
+def test_el_cupo_deja_lugar_a_lo_que_las_otras_mandan_en_un_dia(db, monkeypatch):
+    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    # Hace dos días: Meta mandó 15 y discovery 50. Hoy todavía nada.
+    _otros_envios(db, 15, hace="2 days")
+    _otros_envios(db, 50, tipo="discovery", hace="2 days")
+    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 65
+    _otros_envios(db, 15)
+    _otros_envios(db, 50, tipo="discovery")
+    assert auto.cupo_del_dia(db)["por_dia"] <= auto.CUOTA_DIA - auto.MARGEN_DIA - 65
+
+
+def test_si_meta_no_manda_no_se_le_guarda_lugar(db, monkeypatch):
+    # El 30/9: la reserva fija de 20 para Meta dejaba el cupo en 8.
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
+    assert auto.cupo_del_dia(db)["por_dia"] == auto.CUOTA_DIA - auto.MARGEN_DIA
+
+
+def test_sin_discovery_no_se_le_reserva_nada(db, monkeypatch):
+    monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
+    _otros_envios(db, 50, tipo="discovery", hace="2 days")
+    monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
+    sin = auto.cupo_del_dia(db)["por_dia"]
+    monkeypatch.setenv("DISCOVERY_EMAILS", "on")
+    assert auto.cupo_del_dia(db)["por_dia"] == sin - 50

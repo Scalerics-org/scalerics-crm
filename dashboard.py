@@ -16254,7 +16254,7 @@ async function fmCargar() {
       '<td><button type="button" class="fm-ficha" onclick="event.stopPropagation();fmFicha(' + Number(e.prospecto_id) + ')">' + esc(e.restaurante) + '</button>' +
       '<span class="em-extracto">' + esc(e.email) + '</span></td>' +
       '<td>' + esc(e.ciudad) + '</td>' +
-      '<td>' + (e.numero > 1 ? '2º' : '1º') + '</td>' +
+      '<td>' + Number(e.numero) + 'º</td>' +
       '<td><span class="em-chip ' + (FM_CHIP[e.estado] || '') + '">' + esc(e.estado_texto) + '</span></td></tr>').join('') +
     '</tbody></table>';
 }
@@ -16281,7 +16281,7 @@ async function fmVerMail(id) {
   document.getElementById('fm-mail-asunto').textContent = d.asunto;
   document.getElementById('fm-mail-datos').innerHTML = [
     ['Para', esc(d.destinatario)], ['Fecha', esc(d.fecha) + ' (Montevideo)'],
-    ['Contacto', d.numero > 1 ? 'Segundo y último' : 'Primero'],
+    ['Contacto', (['', 'Primero', 'Segundo (15 días)', 'Tercero (al mes)', 'Cuarto y último (a los 3 meses)'][d.numero] || (Number(d.numero) + 'º'))],
     ['Estado', envio.estado ? '<span class="em-chip ' + (FM_CHIP[envio.estado] || '') + '">' + esc(envio.estado_texto) + '</span>' : '—'],
     ['Restaurante', '<button type="button" class="fm-ficha" onclick="fmCerrarMail();fmFicha(' + Number(d.prospecto_id) + ')">' + esc(d.restaurante) + ' · ver ficha</button>']
   ].map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('');
