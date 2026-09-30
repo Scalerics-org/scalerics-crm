@@ -4,6 +4,7 @@ const { construirSystem, faltantes } = require('./prompt');
 const { CAJONES } = require('../funnel/nurture');
 const { corregir: corregirVoseo } = require('./voseo');
 const { quitar: quitarJerga } = require('./jerga');
+const { quitarPreambulo } = require('./preambulo');
 const { recortarEnOracion } = require('./modelo');
 const { nombroAlgunDia } = require('../agenda/eleccion');
 
@@ -385,7 +386,13 @@ function crearAgente({ modelo = null, textos, calendly = '', agendaPropia = fals
       // texto suelto. Se recorta en la ultima oracion completa: media frase
       // colgada se lee como que el bot se rompio.
       const entero = String(argumentos.mensaje || '').trim();
-      const crudo = r.truncado ? recortarEnOracion(entero) : entero;
+      const conPreambulo = r.truncado ? recortarEnOracion(entero) : entero;
+      // El 30-9 el modelo contesto como a un operador ("Entendido. El mensaje
+      // que le mandás a X es:") y eso salio al lead. Se saca antes de todo.
+      const { texto: crudo, sacado: preambulo } = quitarPreambulo(conPreambulo);
+      if (preambulo) {
+        logger?.warn({ leadId: lead.id, sacado: preambulo }, 'se le saco el preambulo meta al modelo');
+      }
       // El prompt prohibe el tuteo con todas las letras y el modelo se va igual.
       // Es una conversion mecanica: la hace el codigo, que no se equivoca.
       // El registro tambien lo arregla el codigo. El prompt lo prohibe y el

@@ -509,23 +509,25 @@ function crearEmbudo({
    * corto): las dos veces hay que ir a buscar los dias de nuevo y guardar el
    * estado igual.
    */
-  async function ofrecerDias(lead, situacion, entrada) {
-    /**
-     * Lo que queda de la semana en curso y, ultima, "La semana que viene".
-     * Sin dias con hueco esta semana (viernes de tarde, sabado, domingo) se
-     * muestra directo la semana que viene, sin la opcion extra y sin nombrar la
-     * semana en curso: el lead no tiene por que enterarse de que esta vacia.
-     */
+  /**
+   * Lo que queda de la semana en curso y, ultima, "La semana que viene".
+   * Sin dias con hueco esta semana (viernes de tarde, sabado, domingo) se
+   * muestra directo la semana que viene, sin la opcion extra y sin nombrar la
+   * semana en curso: el lead no tiene por que enterarse de que esta vacia.
+   */
+  async function diasParaOfrecer() {
     const estaSemana = await agenda.diasConHueco(ahora(), { semana: 'actual' });
-    let dias = estaSemana;
-    let conSemanaQueViene = false;
-    if (estaSemana.length) {
-      // Solo se ofrece si la semana siguiente tiene algo: una opcion que lleva
-      // a una lista vacia es peor que no ofrecerla.
-      conSemanaQueViene = (await agenda.diasConHueco(ahora(), { semana: 'proxima' })).length > 0;
-    } else {
-      dias = await agenda.diasConHueco(ahora(), { semana: 'proxima' });
+    if (!estaSemana.length) {
+      return { dias: await agenda.diasConHueco(ahora(), { semana: 'proxima' }), conSemanaQueViene: false };
     }
+    // Solo se ofrece si la semana siguiente tiene algo: una opcion que lleva
+    // a una lista vacia es peor que no ofrecerla.
+    const conSemanaQueViene = (await agenda.diasConHueco(ahora(), { semana: 'proxima' })).length > 0;
+    return { dias: estaSemana, conSemanaQueViene };
+  }
+
+  async function ofrecerDias(lead, situacion, entrada) {
+    const { dias, conSemanaQueViene } = await diasParaOfrecer();
 
     // Que Google deje de contestar no puede pasar en silencio. El lead igual
     // puede agendar —cae al camino del link— pero el bot deja de hacer lo
@@ -1008,6 +1010,68 @@ function crearEmbudo({
       derivar(lead, 'abandono');
       repo.actualizarFunnel(lead.id, { human_requested: 1, fsm_state: S.HUMAN_QUEUED });
       return true;
+    },
+
+    /**
+     * Retoma al lead que estaba ELIGIENDO dia u horario y se durmio.
+     *
+     * Lead 18 (30-9): a las 03:03 se le ofrecio "1. Jueves 1 / 2. Viernes 2 /
+     * 3. La semana que viene"; a las 12:13 el job 'retomar' le escribio en
+     * prosa ("¿Alguno de esos días te viene bien? Jueves 1, viernes 2, o la
+     * semana que viene") y repitio el pitch. Sin numeros, el lead no tenia como
+     * elegir con un "2". Aca la lista se RECALCULA (pudo pasar un dia, o
+     * llenarse uno) y la arma el codigo, igual que en el resto del flujo; el
+     * modelo solo escribe el "retomamos donde quedamos".
+     *
+     * @returns {Promise<{texto: string}|{reintentar: true}|null>} null si no
+     *   corresponde (otra etapa, sin agenda, Google caido): el que llama sigue
+     *   con el retomar de siempre. `reintentar` si la IA no pudo escribir.
+     */
+    async retomarOferta(leadId) {
+      const lead = repo.leadPorId(leadId);
+      if (!lead || lead.fsm_state !== S.HORARIOS_OFRECIDOS) return null;
+      if (!agenda?.activo || !redactor?.activo) return null;
+
+      let sufijo = '';
+      let estado = null;
+
+      // Paso 2: elegia hora de un dia. Si ese dia sigue teniendo lugar, se le
+      // vuelve a mostrar; si paso o se lleno, vuelve al paso de los dias.
+      if (lead.dia_en_foco) {
+        const horas = await agenda.slotsDelDia(instanteLocal(lead.dia_en_foco, 12, 0, cfg.TZ), ahora());
+        if (horas.length) {
+          estado = { horarios_ofrecidos: JSON.stringify(horas.map((d) => d.toISOString())) };
+          sufijo = `Horarios del ${nombreDia(horas[0])}:\n${listaDeHoras(horas)}`;
+        }
+      }
+
+      if (!sufijo) {
+        const { dias, conSemanaQueViene } = await diasParaOfrecer();
+        // Google no contesta o no queda nada: no se inventa una lista.
+        if (!dias.length) return null;
+        const inicios = dias.map((d) => d.inicio);
+        estado = {
+          horarios_ofrecidos: JSON.stringify([
+            ...inicios.map((d) => d.toISOString()),
+            ...(conSemanaQueViene ? [SEMANA_QUE_VIENE] : []),
+          ]),
+          dia_en_foco: null,
+        };
+        sufijo = listaDeDias(inicios, conSemanaQueViene);
+      }
+
+      const ultimo = repo.ultimosMensajes(lead.id, 6, lead.conversacion_desde)
+        .filter((m) => m.direction === 'out' && m.body).at(-1);
+      const extra = ultimo
+        ? `Lo último que le escribiste fue: «${String(ultimo.body).slice(0, 600)}»`
+        : '';
+      const escrito = await redactor.escribir(lead, 'retomar_oferta', extra);
+      if (!escrito) return { reintentar: true };
+
+      // Recien con el texto en la mano se guarda la lista nueva: si la IA
+      // falla, el lead sigue con la que ya tenia y el reintento la recalcula.
+      repo.actualizarFunnel(lead.id, estado);
+      return { texto: pegarLista(escrito, sufijo) };
     },
 
     /**
