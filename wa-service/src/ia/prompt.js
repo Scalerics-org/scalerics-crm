@@ -303,6 +303,10 @@ Cerrá dejándole el link por si le sirve agendar: ${calendly}`,
 Abajo tenés lo último que le escribiste. No lo repitas textual: retomalo en una o dos líneas, como quien sigue una conversación que quedó por la mitad.
 Sin reproches ni "no me contestaste": de noche la gente se duerme. Si le habías ofrecido horarios, preguntale si alguno le sirve.`,
 
+    retomar_oferta: `Venían eligiendo día para la videollamada, el lead se durmió y ahora es la mañana siguiente. Retomá donde quedaron.
+UNA línea corta que diga que retomás donde quedaron. NO repitas el pitch ni lo que ya le explicaste: eso ya lo leyó. Sin reproches ni recordarle que no contestó.
+NO nombres días ni horarios y no escribas ninguna lista: el sistema pone la lista numerada abajo de tu mensaje, recalculada. Abajo tenés lo último que le escribiste, solo para que sepas dónde quedó.`,
+
     recordatorio_dia_antes: `Se viene la videollamada. Recordáselo con el día y la hora, corto y cordial.
 Usá la fecha exacta que te paso abajo. NO asumas que es mañana ni inventes cuánto falta: si el mensaje sale con un día equivocado, la persona se presenta cuando no es.
 Si no puede, que avise — mejor reprogramar que faltar.`,
@@ -434,7 +438,7 @@ Pedile que te cuente por escrito de qué se trata.`,
  * ya pasó. El 2-9 la oferta salió con "Hola Juan," arriba de siete mensajes.
  */
 const ROMPEN_EL_SILENCIO = new Set([
-  'followup', 'retomar', 'nurture_vuelta', 'recordatorio_dia_antes', 'recordatorio_30min',
+  'followup', 'retomar', 'retomar_oferta', 'nurture_vuelta', 'recordatorio_dia_antes', 'recordatorio_30min',
 ]);
 
 const EN_MEDIO = `# Dónde cae este mensaje

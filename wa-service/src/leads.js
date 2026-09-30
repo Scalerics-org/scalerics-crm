@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizar } = require('./telefono');
+const { limpiarNombrePerfil } = require('./nombre');
 const { botActivo, pausarHasta, HORAS_PAUSA } = require('./funnel/pausa');
 const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
@@ -283,7 +284,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       // donde colgar el mensaje, y la foto no se ve en ningun lado.
       if (!lead) {
         lead = repo.crearLead({
-          nombre: nombreWa || '',
+          nombre: limpiarNombrePerfil(nombreWa),
           telefono,
           origen: 'wa',
           status: 'replied',
@@ -331,7 +332,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       // Sin esto, quien escribe al WhatsApp de la empresa recibe silencio.
       if (!lead) {
         lead = repo.crearLead({
-          nombre: nombreWa || '',
+          nombre: limpiarNombrePerfil(nombreWa),
           telefono,
           origen: 'wa',
           status: 'replied',
@@ -367,11 +368,22 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
           const yaTenia = lead[campo] !== null && lead[campo] !== undefined && lead[campo] !== '';
           if (datosFormulario[campo] !== undefined && !yaTenia) funnelVacio[campo] = datosFormulario[campo];
         }
-        const nombreVacio = datosFormulario.nombre && !lead.nombre;
+        /**
+         * El nombre del formulario le gana al del perfil de WhatsApp.
+         *
+         * Lead 18 (30-9): entro un formulario desde el WhatsApp de "SILVANA
+         * RENEE DA COL 😍😍😍😍" que decia "Full name: ADÁN CLAUDIO BENÍTEZ DA
+         * SILVA". El lead ya tenia el nombre del perfil, el del formulario se
+         * descartaba por "ya tenia nombre", y el bot le hablo a "Silvana". El
+         * formulario es lo que la persona declaro sobre si misma; el perfil es
+         * de quien tenga el telefono.
+         */
+        const nombreForm = limpiarNombrePerfil(datosFormulario.nombre);
+        const nombreNuevo = nombreForm && nombreForm !== lead.nombre;
 
         if (Object.keys(funnelVacio).length) repo.actualizarFunnel(lead.id, funnelVacio);
-        if (nombreVacio) repo.actualizarLead(lead.id, { nombre: datosFormulario.nombre });
-        if (Object.keys(funnelVacio).length || nombreVacio) lead = repo.leadPorId(lead.id);
+        if (nombreNuevo) repo.actualizarLead(lead.id, { nombre: nombreForm });
+        if (Object.keys(funnelVacio).length || nombreNuevo) lead = repo.leadPorId(lead.id);
       }
 
       // Apagado desde el panel, o pausado porque entraste vos al chat desde el
