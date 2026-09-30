@@ -82,6 +82,13 @@ def test_sale_del_subdominio_con_el_nombre_de_juan_y_baja(monkeypatch):
     assert m["from"] == "Juan de Scalerics <hola@novedades.scalerics.com>"
     assert "https://x/baja/t" in m["html"] and "Bar &lt;Tito&gt;" in m["html"]
     assert "workers.dev" not in m["html"]
+    assert "+598 94 053 389" in m["html"] and "+598 94 053 389" in m["text"]
+    assert "97 250 713" not in m["html"]
+
+
+def test_lo_de_la_agencia_va_como_agregado_al_final():
+    _, parrafos = cuerpo_fidelidad(1, "La Pasiva")
+    assert parrafos[-1].startswith("PD:") and "a medida" in parrafos[-1]
 
 
 def test_no_sale_del_dominio_principal(monkeypatch):

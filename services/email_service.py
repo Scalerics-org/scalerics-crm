@@ -1379,6 +1379,9 @@ def remitente_frio(variable: str) -> str | None:
 # respondiendo el mail, sin link de agenda.
 ASUNTO_FID_1 = "Un sistema de puntos como el de McDonald's para {n}"
 ASUNTO_FID_2 = "Último mail sobre los puntos para {n}"
+# El celular de Juan (30/9), no el de la agencia. En formato internacional
+# porque también les llega a restaurantes de Buenos Aires.
+_TELEFONO_FID = "+598 94 053 389"
 
 
 def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
@@ -1396,6 +1399,9 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
             f"lo veas funcionando.",
             "¿Te queda bien una videollamada de 15 minutos esta semana? Respondé "
             "este mail con el día y el horario que te queden cómodos y la coordinamos.",
+            # Juan (30/9): lo de la agencia va como agregado, no como el pitch.
+            "PD: también diseñamos soluciones a medida con tecnología, por si en algún "
+            "momento necesitás algo más para el restaurante.",
         ]
     return ASUNTO_FID_2.format(n=n), [
         "Hola, ¿cómo va?",
@@ -1430,7 +1436,7 @@ def send_fidelidad_email(to_email: str, negocio: str, unsub_url: str, numero: in
 <body style="margin:0;padding:24px;background:#f1f5f9">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
     {cuerpo_html}
-    <p style="{estilo_p};margin-top:24px">Juan<br><strong>Scalerics</strong><br>{_TELEFONO}<br>
+    <p style="{estilo_p};margin-top:24px">Juan<br><strong>Scalerics</strong><br>{_TELEFONO_FID}<br>
       <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a></p>
     <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
       Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
@@ -1438,7 +1444,7 @@ def send_fidelidad_email(to_email: str, negocio: str, unsub_url: str, numero: in
   </div>
 </body></html>"""
     texto = ("\n\n".join(parrafos)
-             + f"\n\nJuan\nScalerics · {_TELEFONO}\nhttps://scalerics.com"
+             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
     return _send_estado(
         to_email, asunto, html_mail,
