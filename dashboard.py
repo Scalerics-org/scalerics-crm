@@ -3730,7 +3730,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .pa-botones{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .pa-miniatura{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--relleno);flex:none}
 .pa-subir{display:grid;gap:8px}
-.pa-subir textarea{width:100%;box-sizing:border-box;min-height:64px}
+.pa-subir textarea{width:100%;box-sizing:border-box;min-height:64px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;resize:vertical}
+.pa-subir select,#pa-tope{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif}
 .pa-chip-amarillo{background:var(--ambar-tinte);color:var(--ambar)}
 .pa-barra{height:6px;border-radius:3px;background:var(--relleno);margin-top:6px;overflow:hidden}
 .pa-barra i{display:block;height:100%;background:var(--azul-claro)}
