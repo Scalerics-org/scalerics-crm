@@ -322,3 +322,52 @@ def test_no_se_reparte_a_ningun_rol_todavia():
     """Juan (30/9): no se lanza hasta hablarlo con el de marketing."""
     fuente = open("database.py", encoding="utf-8").read()
     assert '_grant_panel_to_existing_roles(conn, "pauta"' not in fuente.replace("# ", "")
+
+
+# ── mover plata de lo malo a lo bueno (Juan, 30/9) ──────────────────────────
+
+def _dos_campanas():
+    d = _datos(campanas_7d=[
+        _f(120, 1, campaign_id="C2", campaign_name="Público amplio"),    # cara: USD 120 por lead
+        _f(40, 5, campaign_id="C1", campaign_name="Dueños de pymes"),    # barata: USD 8 por lead
+    ])
+    d["campanas"] = [
+        {"id": "C1", "name": "Dueños de pymes", "objective": "OUTCOME_LEADS",
+         "effective_status": "ACTIVE", "daily_budget": "1500"},
+        {"id": "C2", "name": "Público amplio", "objective": "OUTCOME_LEADS",
+         "effective_status": "ACTIVE", "daily_budget": "2000"},
+    ]
+    return d
+
+
+def test_pasa_plata_de_la_mala_a_la_buena_sin_subir_el_total(db, monkeypatch):
+    _escribe(monkeypatch)
+    meta = Meta()
+    pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    [a] = pa.listar(db)
+    assert a["tipo"] == "mover" and a["estado"] == "aplicada"      # sin pedir OK
+    assert meta.escrito == [("C2", {"daily_budget": "1600"}), ("C1", {"daily_budget": "1900"})]
+    antes = sum(int(c["antes"]) for c in a["cambios"])
+    despues = sum(int(c["despues"]) for c in a["cambios"])
+    assert despues == antes
+    assert "USD 4,00" in a["descripcion"]
+
+
+def test_deshacer_el_pase_vuelve_las_dos_campanas(db, monkeypatch):
+    _escribe(monkeypatch)
+    meta = Meta()
+    pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    [a] = pa.listar(db)
+    pa.deshacer(db, a["id"], "Andrés", es_admin=False, post=meta.post)
+    assert meta.escrito[-2:] == [("C2", {"daily_budget": "2000"}), ("C1", {"daily_budget": "1500"})]
+    otro_dia = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
+    pa.operador(db, otro_dia, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    assert len(pa.listar(db)) == 1          # respeta lo que deshizo, en las dos campañas
+
+
+def test_a_la_buena_no_le_suma_mas_de_la_mitad(db):
+    d = _dos_campanas()
+    d["campanas"][1]["daily_budget"] = "10000"      # la mala libera USD 20; la buena tiene 15
+    [m] = [a for a in pa.planificar(d, 25.0, MIE_11.date()) if a["tipo"] == "mover"]
+    suma = [c for c in m["cambios"] if c["id"] == "C1"][0]
+    assert suma["despues"] == "2250"

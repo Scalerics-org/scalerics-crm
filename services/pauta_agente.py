@@ -50,6 +50,7 @@ BAJA = 0.8
 SUBA = 1.2
 PRESUPUESTO_MINIMO_CENTAVOS = 500      # USD 5 por dia: por debajo, mejor pausar
 AVISO_TOPE = 0.8
+MOVER_MAXIMO = 1.5                     # a la buena se le suma como mucho un 50% de lo que tenia
 
 MAX_IMAGEN = 30 * 1024 * 1024
 MAX_VIDEO = 100 * 1024 * 1024
@@ -60,6 +61,7 @@ TIPOS = {
     "pausar": "Pausar anuncio",
     "bajar": "Bajar presupuesto",
     "escalar": "Subir presupuesto",
+    "mover": "Pasar plata a lo que anda bien",
     "pedir_pieza": "Hace falta una pieza nueva",
     "subir_pieza": "Subir pieza nueva",
     "tope": "Tope del mes alcanzado",
@@ -216,9 +218,30 @@ def _gasto_proyectado(gasto_mes: float, hoy: date, extra_diario: float) -> float
     return ritmo * dias_mes + extra_diario * (dias_mes - hoy.day)
 
 
+def _sumar(datos: dict, campana_id: str, centavos: int) -> list[dict]:
+    """Reparte `centavos` diarios de mas entre los presupuestos de la campana, en proporcion."""
+    base = _cambios_presupuesto(datos, campana_id, 2.0)     # solo para saber los objetos y el antes
+    total = sum(int(c["antes"]) for c in base)
+    if not total:
+        return []
+    cambios, resto = [], centavos
+    for i, c in enumerate(base):
+        extra = resto if i == len(base) - 1 else int(round(centavos * int(c["antes"]) / total))
+        resto -= extra
+        cambios.append({**c, "despues": str(int(c["antes"]) + extra)})
+    return cambios
+
+
+def _total(cambios: list[dict], cual: str) -> int:
+    return sum(int(c[cual]) for c in cambios)
+
+
 def planificar(datos: dict, cpl_tope: float | None, hoy: date,
                tope: float | None = None, gasto_mes: float = 0.0) -> list[dict]:
-    salida = []
+    """Lo que haria el agente. Si una campana anda mal y otra anda bien, la plata que
+    se le saca a la mala se le pone a la buena (pedido de Juan, 30/9): el total por dia
+    no sube, asi que lo hace solo. Subir el total, en cambio, espera el OK de Juan."""
+    salida, bajar, escalar = [], [], []
     for r in sm.recomendar(datos, cpl_tope):
         base = {"clave": r["clave"], "objeto_id": r["objeto_id"], "objeto_nombre": r["objeto_nombre"],
                 "campana_nombre": r.get("campana_nombre"), "motivo": r["evidencia"]}
@@ -227,23 +250,55 @@ def planificar(datos: dict, cpl_tope: float | None, hoy: date,
                            "descripcion": f"Pausar «{r['objeto_nombre']}»",
                            "cambios": [{"id": r["objeto_id"], "campo": "status",
                                         "antes": "ACTIVE", "despues": "PAUSED"}]})
-        elif r["tipo"] in ("bajar", "escalar"):
-            sube = r["tipo"] == "escalar"
-            cambios = _cambios_presupuesto(datos, r["objeto_id"], SUBA if sube else BAJA)
-            if not cambios:
-                continue
-            antes = sum(int(c["antes"]) for c in cambios)
-            despues = sum(int(c["despues"]) for c in cambios)
-            if sube and tope and _gasto_proyectado(gasto_mes, hoy, (despues - antes) / 100) > tope:
-                continue        # subir haria pasar el tope del mes: ni se propone
-            verbo = "Subir" if sube else "Bajar"
-            salida.append({**base, "tipo": r["tipo"], "necesita_ok": sube, "cambios": cambios,
-                           "descripcion": f"{verbo} el presupuesto de «{r['objeto_nombre']}» de "
-                                          f"{_usd(antes)} a {_usd(despues)} por día"})
+        elif r["tipo"] == "bajar":
+            cambios = _cambios_presupuesto(datos, r["objeto_id"], BAJA)
+            if cambios:
+                bajar.append((r, base, cambios))
+        elif r["tipo"] == "escalar":
+            cambios = _cambios_presupuesto(datos, r["objeto_id"], SUBA)
+            if cambios:
+                escalar.append((r, base, cambios))
         elif r["tipo"] == "renovar":
             salida.append({**base, "tipo": "pedir_pieza", "necesita_ok": False, "cambios": [],
                            "descripcion": f"«{r['objeto_nombre']}» está gastado: conviene subir "
                                           "una pieza nueva para esa campaña"})
+
+    # Mover: la que mas plata libera va a la mas barata. Una accion con los dos lados,
+    # asi deshacer vuelve las dos campanas a como estaban y el total nunca sube.
+    bajar.sort(key=lambda x: _total(x[2], "antes") - _total(x[2], "despues"), reverse=True)
+    escalar.sort(key=lambda x: x[0]["antes"].get("cpl") or 1e9)
+    while bajar and escalar:
+        rb, bb, cb = bajar.pop(0)
+        re_, be, _ = escalar.pop(0)
+        libera = _total(cb, "antes") - _total(cb, "despues")
+        actual = _total(_cambios_presupuesto(datos, re_["objeto_id"], 2.0), "antes")
+        mueve = min(libera, int(actual * (MOVER_MAXIMO - 1)))
+        suma = _sumar(datos, re_["objeto_id"], mueve)
+        if not suma:
+            bajar.insert(0, (rb, bb, cb))
+            continue
+        salida.append({
+            **be, "tipo": "mover", "necesita_ok": False, "cambios": cb + suma,
+            "clave": f"mover:{rb['objeto_id']}:{re_['objeto_id']}",
+            "descripcion": f"Pasar {_usd(mueve)} por día de «{rb['objeto_nombre']}» a "
+                           f"«{re_['objeto_nombre']}»",
+            "motivo": f"«{rb['objeto_nombre']}» anda mal: {rb['evidencia'].split('. Bajar')[0]}. "
+                      f"«{re_['objeto_nombre']}» anda bien: {re_['evidencia'].split('. Subir')[0]}. "
+                      "El gasto total por día no sube."})
+
+    for r, base, cambios in bajar:
+        salida.append({**base, "tipo": "bajar", "necesita_ok": False, "cambios": cambios,
+                       "descripcion": f"Bajar el presupuesto de «{r['objeto_nombre']}» de "
+                                      f"{_usd(_total(cambios, 'antes'))} a "
+                                      f"{_usd(_total(cambios, 'despues'))} por día"})
+    for r, base, cambios in escalar:
+        extra = (_total(cambios, "despues") - _total(cambios, "antes")) / 100
+        if tope and _gasto_proyectado(gasto_mes, hoy, extra) > tope:
+            continue        # subir haria pasar el tope del mes: ni se propone
+        salida.append({**base, "tipo": "escalar", "necesita_ok": True, "cambios": cambios,
+                       "descripcion": f"Subir el presupuesto de «{r['objeto_nombre']}» de "
+                                      f"{_usd(_total(cambios, 'antes'))} a "
+                                      f"{_usd(_total(cambios, 'despues'))} por día"})
     return salida
 
 
@@ -260,16 +315,17 @@ def _tocado_hace_poco(conn, objeto_id: str, ahora: datetime) -> bool:
     desde = _txt(ahora - timedelta(days=NO_REPETIR_DIAS))
     desde_deshecho = _txt(ahora - timedelta(days=RESPETAR_DESHECHO_DIAS))
     return conn.execute(
-        "SELECT 1 FROM pauta_acciones WHERE objeto_id = ? AND "
+        "SELECT 1 FROM pauta_acciones WHERE (objeto_id = ? OR cambios_json LIKE ?) AND "
         "((estado = 'deshecha' AND creada_en >= ?) OR (estado != 'deshecha' AND creada_en >= ?)) "
-        "LIMIT 1", (objeto_id, desde_deshecho, desde)).fetchone() is not None
+        "LIMIT 1", (objeto_id, f'%"id": "{objeto_id}"%', desde_deshecho, desde)).fetchone() is not None
 
 
 def registrar(db_path: str, a: dict, ahora: datetime, post=None) -> dict | None:
     """Guarda la accion y, si corresponde, la aplica. None si se salteo."""
     conn = _connect(db_path)
     try:
-        if a["tipo"] != "tope" and _tocado_hace_poco(conn, a["objeto_id"], ahora):
+        ids = {a["objeto_id"], *(c["id"] for c in a["cambios"])}
+        if a["tipo"] != "tope" and any(_tocado_hace_poco(conn, i, ahora) for i in ids):
             return None
         if a["tipo"] == "pedir_pieza" or not a["cambios"]:
             est = "aviso"
