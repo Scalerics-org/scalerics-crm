@@ -1378,7 +1378,10 @@ def remitente_frio(variable: str) -> str | None:
 # llamada— y ofreciendo armarles un prototipo. La llamada se coordina
 # respondiendo el mail, sin link de agenda.
 ASUNTO_FID_1 = "Un sistema de puntos como el de McDonald's para {n}"
-ASUNTO_FID_2 = "Último mail sobre los puntos para {n}"
+ASUNTO_FID_2 = "Sobre los puntos para {n}"
+# Juan (30/9): a quien no contesta se le vuelve a escribir cada mes. Por eso el
+# segundo ya no dice "último mail".
+ASUNTO_FID_MES = "¿Te armamos el prototipo para {n}?"
 # El celular de Juan (30/9), no el de la agencia. En formato internacional
 # porque también les llega a restaurantes de Buenos Aires.
 _TELEFONO_FID = "+598 94 053 389"
@@ -1403,13 +1406,25 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
             "PD: también diseñamos soluciones a medida con tecnología, por si en algún "
             "momento necesitás algo más para el restaurante.",
         ]
-    return ASUNTO_FID_2.format(n=n), [
+    if numero == 2:
+        return ASUNTO_FID_2.format(n=n), [
+            "Hola, ¿cómo va?",
+            f"Te escribí hace unos días por el sistema de puntos para {n}, para que "
+            f"tus clientes vuelvan más seguido.",
+            "Si te interesa, te armamos un prototipo con tu marca y lo vemos en una "
+            "videollamada de 15 minutos: respondé este mail y coordinamos.",
+            "Gracias por el tiempo.",
+        ]
+    # Del tercero en adelante, uno por mes.
+    return ASUNTO_FID_MES.format(n=n), [
         "Hola, ¿cómo va?",
-        f"Te escribí hace unos días por el sistema de puntos para {n}. No quiero "
-        f"insistir de más, así que este es el último mail.",
-        "Si te interesa, te armamos un prototipo con tu marca y lo vemos en una "
-        "videollamada de 15 minutos: respondé este mail y coordinamos.",
-        "Gracias por el tiempo.",
+        f"Te vuelvo a escribir por el sistema de puntos para {n}: cada cliente suma "
+        f"puntos desde el celular cuando viene, sin descargar nada, y los canjea por "
+        f"premios que elegís vos.",
+        "Te armamos un prototipo con tu marca, sin compromiso, y te lo mostramos en "
+        "una videollamada de 15 minutos. Si te interesa, respondé este mail con el "
+        "día y el horario que te queden cómodos.",
+        "Si preferís que no te escriba más, abajo está el link para darte de baja.",
     ]
 
 
@@ -1462,6 +1477,14 @@ def armar_fidelidad_email(negocio: str, unsub_url: str, numero: int = 1) -> tupl
              + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
     return asunto, html_mail, texto
+
+
+@_tipo_envio("alerta")
+def send_fidelidad_alerta(to_email: str, asunto: str, texto: str) -> bool:
+    """Aviso a los admins sobre los mails automáticos a restaurantes."""
+    html_mail = _layout(badge="Scalerics Fidelidad", title=html.escape(asunto),
+                        body=_muted(html.escape(texto)))
+    return _send(to_email, asunto, html_mail)
 
 
 # ── LinkedIn ────────────────────────────────────────────────────────────────────
