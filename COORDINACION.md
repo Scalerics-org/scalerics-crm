@@ -551,12 +551,22 @@ leads de Meta se renombró a **D** para deshacer el empate.
     deshizo. Piezas: copia el formato (formulario, botón, página) del mejor
     anuncio activo de la campaña y cambia imagen y texto; video y carrusel,
     a mano por ahora.
-  - **Dos llaves apagadas por defecto:** `PAUTA_AGENTE=on` prende el hilo;
-    `PAUTA_ESCRITURA=on` deja escribir en Meta (sin ella todo es "ensayo" y
-    `_post` se niega). Además el panel **no se reparte a ningún rol** (solo
-    admins lo ven). Al lanzar: grant a `marketing`, cargar el permiso
-    `ads_management` en el token, y prender las llaves en ese orden
-    (primero ensayo unos días, después escritura).
+  - **Nace apagado y se prende desde el panel, sin deploy** (`pauta_nivel`:
+    apagado / ensayo / encendido; solo admin). `PAUTA_AGENTE=off` en el
+    entorno es el corte de emergencia. "Correr ahora" funciona apagado y deja
+    todo en ensayo: sirve para mostrarlo con datos reales sin tocar Meta.
+  - **Modo "aprobar" por defecto (Juan, 30/9):** todo lo que propone queda
+    pendiente; lo aprueba Juan o marketing y aprobar ya lo aplica en Meta.
+    Subir el gasto total, solo admin. Lo no aprobado vence a las 48 h; lo
+    rechazado se respeta 14 días. Un mail por día con las propuestas a
+    contacto@ y a los de `ALERTAS_META_RESUMEN` (Andrés). El modo
+    "automático" (hace solo lo que no sube el gasto) lo elige un admin.
+  - **Pase de plata:** si una campaña anda mal y otra bien, un solo cambio
+    saca de la mala y suma a la buena (hasta +50%); el total no sube.
+  - El panel **no se reparte a ningún rol** en código: Juan se lo tilda al rol
+    de Andrés desde Usuarios cuando lance. Para escribir en Meta falta que
+    `crm-insights` tenga "Administrar campañas" en la cuenta publicitaria y
+    un token nuevo con `ads_management` además de los permisos de hoy.
   - Tablas nuevas `pauta_acciones`, `pauta_piezas`; ajustes en `sombra_ajustes`
     con prefijo `pauta_`. Aviso por mail `send_pauta_aviso` a contacto@.
   - Solo admin: tope del mes, aprobar/rechazar subas, deshacer la pausa por

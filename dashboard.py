@@ -3731,7 +3731,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .pa-miniatura{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--relleno);flex:none}
 .pa-subir{display:grid;gap:8px}
 .pa-subir textarea{width:100%;box-sizing:border-box;min-height:64px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;resize:vertical}
-.pa-subir select,#pa-tope{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif}
+.pa-subir select,.pa-sel,#pa-tope{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif}
 .pa-chip-amarillo{background:var(--ambar-tinte);color:var(--ambar)}
 .pa-barra{height:6px;border-radius:3px;background:var(--relleno);margin-top:6px;overflow:hidden}
 .pa-barra i{display:block;height:100%;background:var(--azul-claro)}
@@ -5301,11 +5301,28 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="so-nota so-oculto" id="pa-ensayo"></div>
     <div class="so-marcador" id="pa-numeros"></div>
     <div class="so-nota so-oculto" id="pa-tope-caja">
+      <div style="margin-bottom:8px">
+        <label for="pa-nivel"><b>Estado del agente.</b></label>
+        <select id="pa-nivel" class="pa-sel" onchange="paGuardarNivel()" style="margin:0 8px">
+          <option value="apagado">Apagado</option>
+          <option value="ensayo">Modo prueba: corre solo pero no toca Meta</option>
+          <option value="encendido">Encendido: hace en Meta lo aprobado</option>
+        </select>
+        <span class="so-msg" id="pa-nivel-msg" role="status"></span>
+      </div>
       <label for="pa-tope"><b>Tope de gasto del mes (USD).</b></label>
       <input type="number" id="pa-tope" min="10" max="20000" step="10" placeholder="Sin tope" style="width:160px;max-width:100%;margin:0 8px">
       <button type="button" class="export-btn" onclick="paGuardarTope()">Guardar</button>
       <span class="so-msg" id="pa-tope-msg" role="status"></span>
       <div>Al llegar al tope el agente pausa las campañas y te avisa. Solo un administrador lo cambia.</div>
+      <div style="margin-top:8px">
+        <label for="pa-modo"><b>Cómo trabaja el agente.</b></label>
+        <select id="pa-modo" class="pa-sel" onchange="paGuardarModo()" style="margin:0 8px">
+          <option value="aprobar">Propone y alguien aprueba</option>
+          <option value="automatico">Hace solo lo que no sube el gasto</option>
+        </select>
+        <span class="so-msg" id="pa-modo-msg" role="status"></span>
+      </div>
     </div>
     <h2 class="pa-titulo">Qué hizo el agente</h2>
     <div id="pa-acciones" class="so-lista"></div>
@@ -16207,7 +16224,8 @@ let paDatos = null;
 const PA_ESTADOS = {
   aplicada: ['Hecho', 'so-chip-verde'],
   ensayo: ['Ensayo: no se tocó Meta', 'so-chip-azul'],
-  pendiente_ok: ['Espera el OK de Juan', 'pa-chip-amarillo'],
+  pendiente_ok: ['Para aprobar', 'pa-chip-amarillo'],
+  vencida: ['Venció sin aprobar', ''],
   deshecha: ['Deshecho', ''],
   rechazada: ['Rechazado', ''],
   error: ['No se pudo', 'so-chip-rojo'],
@@ -16254,9 +16272,15 @@ function paPintar() {
   const ensayo = document.getElementById('pa-ensayo');
   let aviso = '';
   if (frenado) aviso = 'Frenado por ' + (d.agente.por || 'alguien') + ' el ' + (d.agente.en || '') + '. No toca nada en Meta hasta que lo reactiven.';
-  else if (!d.encendido) aviso = 'Todavía no está lanzado: el agente no corre solo. Lo que ves acá es de prueba.';
+  else if (!d.encendido) aviso = 'Apagado: el agente no corre solo. Lo que ves acá es de prueba y no tocó Meta.';
   else if (!d.escritura) aviso = 'Modo ensayo: el agente anota lo que haría, pero no toca nada en Meta.';
+  if (!frenado && d.modo === 'aprobar') aviso = (aviso ? aviso + ' ' : '') +
+    'El agente propone y no hace nada hasta que Juan o marketing lo aprueben. Aprobar ya lo aplica en Meta.';
   ensayo.textContent = aviso;
+  const nivelSel = document.getElementById('pa-nivel');
+  if (nivelSel && document.activeElement !== nivelSel) nivelSel.value = d.nivel;
+  const modoSel = document.getElementById('pa-modo');
+  if (modoSel && document.activeElement !== modoSel) modoSel.value = d.modo;
   liClase('pa-ensayo', !aviso, 'so-oculto');
 
   const s = d.resumen || {};
@@ -16291,12 +16315,15 @@ function paPintar() {
 function paAccion(a) {
   const e = PA_ESTADOS[a.estado] || [a.estado, ''];
   let etiqueta = e[0];
+  const subeGasto = a.tipo === 'escalar';
+  if (a.estado === 'pendiente_ok' && subeGasto) etiqueta = 'Sube el gasto: espera el OK de Juan';
+  if ((a.estado === 'aplicada' || a.estado === 'ensayo') && a.resuelta_por) etiqueta += ' · aprobó ' + a.resuelta_por;
   if ((a.estado === 'deshecha' || a.estado === 'rechazada') && a.resuelta_por) etiqueta += ' por ' + a.resuelta_por;
   let botones = '';
   const puedeDeshacer = (a.estado === 'aplicada' || a.estado === 'ensayo') && a.cambios.length &&
     (a.tipo !== 'tope' || paDatos.es_admin);
   if (puedeDeshacer) botones += '<button type="button" class="export-btn" onclick="paDeshacer(' + a.id + ')">Deshacer</button>';
-  if (a.estado === 'pendiente_ok' && paDatos.es_admin) {
+  if (a.estado === 'pendiente_ok' && (paDatos.es_admin || !subeGasto)) {
     botones += '<button type="button" class="export-btn" onclick="paDecidir(' + a.id + ', true)">Aprobar</button>' +
       '<button type="button" class="export-btn" onclick="paDecidir(' + a.id + ', false)">Rechazar</button>';
   }
@@ -16365,6 +16392,31 @@ async function paGuardarTope() {
   try {
     const d = await paPost('/api/pauta/tope', {valor: document.getElementById('pa-tope').value});
     msg.textContent = d.tope_mes == null ? 'Sin tope.' : 'Guardado.';
+    paCargar();
+  } catch (e) { msg.textContent = e.message; }
+}
+
+async function paGuardarNivel() {
+  const msg = document.getElementById('pa-nivel-msg');
+  const valor = document.getElementById('pa-nivel').value;
+  if (valor === 'encendido' && !confirm('¿Encender el agente? Lo que se apruebe en este panel se va a hacer de verdad en Meta.')) {
+    paCargar();
+    return;
+  }
+  msg.textContent = 'Guardando…';
+  try {
+    await paPost('/api/pauta/nivel', {valor: valor});
+    msg.textContent = 'Guardado.';
+    paCargar();
+  } catch (e) { msg.textContent = e.message; }
+}
+
+async function paGuardarModo() {
+  const msg = document.getElementById('pa-modo-msg');
+  msg.textContent = 'Guardando…';
+  try {
+    await paPost('/api/pauta/modo', {valor: document.getElementById('pa-modo').value});
+    msg.textContent = 'Guardado.';
     paCargar();
   } catch (e) { msg.textContent = e.message; }
 }

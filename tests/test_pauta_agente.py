@@ -13,6 +13,7 @@ from services import pauta_agente as pa
 from services import sombra_meta as sm
 
 MIE_11 = datetime(2026, 10, 14, 14, 0, tzinfo=timezone.utc)     # 11:00 en Montevideo
+MAILS = []
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 100
 
 
@@ -71,29 +72,41 @@ class Meta:
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
-    monkeypatch.delenv("PAUTA_ESCRITURA", raising=False)
+    monkeypatch.delenv("PAUTA_AGENTE", raising=False)
     monkeypatch.setattr(pa, "_avisar", lambda *a: None)
+    monkeypatch.setattr(pa, "_avisar_propuestas", lambda props: MAILS.append(props))
+    MAILS.clear()
     ruta = str(tmp_path / "leads.db")
     init_db(ruta)
     sm.fijar_tope_cpl(ruta, 25.0, "test")
+    pa.fijar_modo(ruta, "automatico", "test")     # el modo "aprobar" tiene sus propias pruebas
     return ruta
 
 
-def _escribe(monkeypatch):
-    monkeypatch.setenv("PAUTA_ESCRITURA", "on")
+def _escribe(db):
+    pa.fijar_nivel(db, "encendido", "test")
 
 
 # ── llaves ───────────────────────────────────────────────────────────────────
 
-def test_arranca_apagado_y_en_ensayo(monkeypatch):
+def test_arranca_apagado(tmp_path, monkeypatch):
     monkeypatch.delenv("PAUTA_AGENTE", raising=False)
-    monkeypatch.delenv("PAUTA_ESCRITURA", raising=False)
-    assert not pa.activo() and not pa.escritura()
+    ruta = str(tmp_path / "x.db")
+    init_db(ruta)
+    assert pa.nivel(ruta) == "apagado" and not pa.activo(ruta) and not pa.escritura(ruta)
 
 
-def test_sin_la_llave_no_hay_escritura_posible(db):
-    with pytest.raises(RuntimeError, match="PAUTA_ESCRITURA"):
+def test_niveles(db, monkeypatch):
+    pa.fijar_nivel(db, "ensayo", "Juan")
+    assert pa.activo(db) and not pa.escritura(db)
+    pa.fijar_nivel(db, "encendido", "Juan")
+    assert pa.activo(db) and pa.escritura(db)
+    monkeypatch.setenv("PAUTA_AGENTE", "off")          # corte de emergencia
+    assert not pa.activo(db) and not pa.escritura(db)
+    with pytest.raises(RuntimeError, match="PAUTA_AGENTE=off"):
         pa._post("123", status="PAUSED")
+    with pytest.raises(pa.NoSePuede):
+        pa.fijar_nivel(db, "a fondo", "Juan")
 
 
 def test_en_ensayo_registra_pero_no_toca_meta(db):
@@ -108,7 +121,7 @@ def test_en_ensayo_registra_pero_no_toca_meta(db):
 # ── operador ─────────────────────────────────────────────────────────────────
 
 def test_pausa_el_anuncio_que_gasta_sin_leads(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _datos([_ad("A1", 60, 0)]), post=meta.post)
     [a] = pa.listar(db)
@@ -117,7 +130,7 @@ def test_pausa_el_anuncio_que_gasta_sin_leads(db, monkeypatch):
 
 
 def test_bajar_presupuesto_es_automatico_y_subir_espera_ok(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _datos(campanas_7d=[_camp(200, 2)]), post=meta.post)
     [a] = pa.listar(db)
@@ -126,7 +139,7 @@ def test_bajar_presupuesto_es_automatico_y_subir_espera_ok(db, monkeypatch):
 
 
 def test_subir_presupuesto_queda_pendiente_de_juan(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _datos(campanas_7d=[_camp(40, 5)]), post=meta.post)
     [a] = pa.listar(db)
@@ -145,7 +158,7 @@ def test_no_propone_subir_si_pasaria_el_tope(db):
 
 
 def test_frenado_no_hace_nada(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     pa.frenar(db, "Andrés")
     meta = Meta()
     r = pa.operador(db, MIE_11, traer=lambda hoy: _datos([_ad("A1", 60, 0)]), post=meta.post)
@@ -155,7 +168,7 @@ def test_frenado_no_hace_nada(db, monkeypatch):
 
 
 def test_no_repite_ni_pisa_lo_que_se_deshizo(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _datos([_ad("A1", 60, 0)]), post=meta.post)
     [a] = pa.listar(db)
@@ -164,7 +177,7 @@ def test_no_repite_ni_pisa_lo_que_se_deshizo(db, monkeypatch):
     assert pa.obtener(db, a["id"])["estado"] == "deshecha"
     assert pa.obtener(db, a["id"])["resuelta_por"] == "Andrés"
     otro_dia = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
-    pa.operador(db, otro_dia, traer=lambda hoy: _datos([_ad("A1", 60, 0)]), post=meta.post)
+    pa.operador(db, otro_dia, traer=lambda hoy: _datos([_ad("A1", 60, 0)]), post=meta.post, forzar=True)
     assert len(pa.listar(db)) == 1
 
 
@@ -176,7 +189,7 @@ def test_anuncio_gastado_pide_pieza_sin_tocar_nada(db):
 
 
 def test_si_meta_rechaza_queda_el_error(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
 
     def falla(ruta, **p):
         raise RuntimeError("code=100 sin permiso")
@@ -200,7 +213,7 @@ def test_guarda_el_gasto_del_mes_para_el_panel(db):
 
 
 def test_al_llegar_al_tope_pausa_todo_una_vez(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     pa.fijar_tope_mes(db, 500, "Juan")
     meta = Meta()
     pa.supervisor(db, MIE_11, traer=_resumen(505), forzar=True, post=meta.post)
@@ -232,7 +245,7 @@ def test_en_ensayo_la_pieza_no_se_sube(db):
 
 
 def test_sube_la_pieza_copiando_el_formato_del_mejor_anuncio(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     monkeypatch.setenv("META_AD_ACCOUNT_ID", "act_1")
     pa.guardar_pieza(db, "caso.png", PNG, "Texto nuevo", "", "Andrés")
     meta = Meta()
@@ -251,7 +264,7 @@ def test_sube_la_pieza_copiando_el_formato_del_mejor_anuncio(db, monkeypatch):
 
 
 def test_el_video_queda_para_subir_a_mano(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     pa.guardar_pieza(db, "caso.mp4", b"video", "Texto", "", "Andrés")
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _datos([_ad("A1", 30, 3)]), post=meta.post, get=meta.get)
@@ -265,8 +278,9 @@ def test_el_video_queda_para_subir_a_mano(db, monkeypatch):
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test")
     monkeypatch.setenv("ADMIN_EMAIL", "jefe@scalerics.com")
-    monkeypatch.delenv("PAUTA_ESCRITURA", raising=False)
+    monkeypatch.delenv("PAUTA_AGENTE", raising=False)
     monkeypatch.setattr(pa, "_avisar", lambda *a: None)
+    monkeypatch.setattr(pa, "_avisar_propuestas", lambda props: None)
     ruta = str(tmp_path / "app.db")
     init_db(ruta)
     a = dashboard.create_app(ruta)
@@ -341,7 +355,7 @@ def _dos_campanas():
 
 
 def test_pasa_plata_de_la_mala_a_la_buena_sin_subir_el_total(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
     [a] = pa.listar(db)
@@ -354,14 +368,14 @@ def test_pasa_plata_de_la_mala_a_la_buena_sin_subir_el_total(db, monkeypatch):
 
 
 def test_deshacer_el_pase_vuelve_las_dos_campanas(db, monkeypatch):
-    _escribe(monkeypatch)
+    _escribe(db)
     meta = Meta()
     pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
     [a] = pa.listar(db)
     pa.deshacer(db, a["id"], "Andrés", es_admin=False, post=meta.post)
     assert meta.escrito[-2:] == [("C2", {"daily_budget": "2000"}), ("C1", {"daily_budget": "1500"})]
     otro_dia = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
-    pa.operador(db, otro_dia, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    pa.operador(db, otro_dia, traer=lambda hoy: _dos_campanas(), post=meta.post, forzar=True)
     assert len(pa.listar(db)) == 1          # respeta lo que deshizo, en las dos campañas
 
 
@@ -371,3 +385,98 @@ def test_a_la_buena_no_le_suma_mas_de_la_mitad(db):
     [m] = [a for a in pa.planificar(d, 25.0, MIE_11.date()) if a["tipo"] == "mover"]
     suma = [c for c in m["cambios"] if c["id"] == "C1"][0]
     assert suma["despues"] == "2250"
+
+
+# ── modo "aprobar": propone y Juan o marketing aprueban (Juan, 30/9) ────────
+
+def test_por_defecto_propone_y_no_hace_nada(tmp_path):
+    ruta = str(tmp_path / "x.db")
+    init_db(ruta)
+    assert pa.modo(ruta) == "aprobar"
+
+
+def test_en_modo_aprobar_todo_espera_y_manda_un_mail(db, monkeypatch):
+    _escribe(db)
+    pa.fijar_modo(db, "aprobar", "Juan")
+    meta = Meta()
+    datos = _dos_campanas()
+    datos["anuncios_7d"] = [_ad("A1", 60, 0)]
+    datos["anuncios"] = [{"id": "A1", "effective_status": "ACTIVE", "campaign_id": "C1"}]
+    pa.operador(db, MIE_11, traer=lambda hoy: datos, post=meta.post)
+    acciones = pa.listar(db)
+    assert {a["tipo"] for a in acciones} == {"pausar", "mover"}
+    assert all(a["estado"] == "pendiente_ok" for a in acciones)
+    assert meta.escrito == []
+    [mail] = MAILS
+    assert len(mail) == 2
+
+
+def test_marketing_aprueba_y_se_aplica_en_meta(db, monkeypatch):
+    _escribe(db)
+    pa.fijar_modo(db, "aprobar", "Juan")
+    meta = Meta()
+    pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    [a] = pa.listar(db)
+    hecho = pa.aprobar(db, a["id"], "Andrés", es_admin=False, post=meta.post, ahora=MIE_11)
+    assert hecho["estado"] == "aplicada" and hecho["resuelta_por"] == "Andrés"
+    assert meta.escrito == [("C2", {"daily_budget": "1600"}), ("C1", {"daily_budget": "1900"})]
+
+
+def test_subir_el_gasto_solo_lo_decide_juan(db, monkeypatch):
+    _escribe(db)
+    pa.fijar_modo(db, "aprobar", "Juan")
+    meta = Meta()
+    pa.operador(db, MIE_11, traer=lambda hoy: _datos(campanas_7d=[_camp(40, 5)]), post=meta.post)
+    [a] = pa.listar(db)
+    assert a["tipo"] == "escalar"
+    with pytest.raises(pa.NoSePuede, match="Juan"):
+        pa.aprobar(db, a["id"], "Andrés", es_admin=False, post=meta.post, ahora=MIE_11)
+    with pytest.raises(pa.NoSePuede, match="Juan"):
+        pa.rechazar(db, a["id"], "Andrés", es_admin=False)
+    pa.aprobar(db, a["id"], "Juan", es_admin=True, post=meta.post, ahora=MIE_11)
+    assert meta.escrito == [("C1", {"daily_budget": "2400"})]
+
+
+def test_rechazar_se_respeta_dos_semanas(db, monkeypatch):
+    pa.fijar_modo(db, "aprobar", "Juan")
+    pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas())
+    [a] = pa.listar(db)
+    pa.rechazar(db, a["id"], "Andrés", es_admin=False)
+    otro_dia = datetime(2026, 10, 22, 14, 0, tzinfo=timezone.utc)
+    pa.operador(db, otro_dia, traer=lambda hoy: _dos_campanas(), forzar=True)
+    assert len(pa.listar(db)) == 1
+
+
+def test_lo_que_nadie_aprueba_vence_y_se_vuelve_a_proponer(db, monkeypatch):
+    _escribe(db)
+    pa.fijar_modo(db, "aprobar", "Juan")
+    meta = Meta()
+    pa.operador(db, MIE_11, traer=lambda hoy: _dos_campanas(), post=meta.post)
+    [a] = pa.listar(db)
+    tres_dias = datetime(2026, 10, 17, 14, 0, tzinfo=timezone.utc)
+    with pytest.raises(pa.NoSePuede, match="Venció"):
+        pa.aprobar(db, a["id"], "Juan", post=meta.post, ahora=tres_dias)
+    assert meta.escrito == []
+    pa.operador(db, tres_dias, traer=lambda hoy: _dos_campanas(), post=meta.post, forzar=True)
+    estados = sorted(x["estado"] for x in pa.listar(db))
+    assert estados == ["pendiente_ok", "vencida"]
+
+
+def test_marketing_aprueba_desde_el_panel_pero_no_cambia_el_modo(app):
+    mkt = _cli(app, "mkt@scalerics.com", ["pauta"])
+    jefe = _cli(app, "jefe@scalerics.com")
+    assert mkt.get("/api/pauta/estado").get_json()["modo"] == "aprobar"
+    assert mkt.post("/api/pauta/modo", json={"valor": "automatico"}).status_code == 403
+    assert jefe.post("/api/pauta/modo", json={"valor": "automatico"}).get_json()["modo"] == "automatico"
+    assert jefe.post("/api/pauta/modo", json={"valor": "cualquiera"}).status_code == 400
+
+
+def test_solo_juan_prende_el_agente(app):
+    mkt = _cli(app, "mkt@scalerics.com", ["pauta"])
+    jefe = _cli(app, "jefe@scalerics.com")
+    assert mkt.get("/api/pauta/estado").get_json()["nivel"] == "apagado"
+    assert mkt.post("/api/pauta/nivel", json={"valor": "encendido"}).status_code == 403
+    d = jefe.post("/api/pauta/nivel", json={"valor": "encendido"}).get_json()
+    assert d["nivel"] == "encendido"
+    e = mkt.get("/api/pauta/estado").get_json()
+    assert e["encendido"] and e["escritura"]

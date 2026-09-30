@@ -1,8 +1,9 @@
 """Panel Agente de pauta: lo que hace el agente en Meta y el control del de marketing.
 
-Pide el panel `pauta`. Quien lo ve puede frenar y reactivar al agente, deshacer
-un cambio y subir piezas. Solo un administrador fija el tope del mes, aprueba
-subas de presupuesto y deshace la pausa por tope (las tres suben el gasto).
+Pide el panel `pauta`. Quien lo ve puede frenar y reactivar al agente, aprobar,
+rechazar y deshacer cambios y subir piezas. Solo un administrador fija el tope
+del mes, cambia el modo, decide las subas del gasto total y deshace la pausa
+por tope (todas suben el gasto o le sacan el freno).
 """
 
 from flask import Blueprint, Response, current_app, jsonify, request, session
@@ -43,9 +44,11 @@ def api_estado():
     return jsonify({
         "ok": True,
         "agente": pa.estado(_db()),
-        "encendido": pa.activo(),
-        "escritura": pa.escritura(),
+        "nivel": pa.nivel(_db()),
+        "encendido": pa.activo(_db()),
+        "escritura": pa.escritura(_db()),
         "tope_mes": pa.tope_mes(_db()),
+        "modo": pa.modo(_db()),
         "tope_cpl": sm.tope_cpl(_db()),
         "resumen": pa.resumen(_db()),
         "acciones": pa.listar(_db()),
@@ -76,20 +79,16 @@ def api_deshacer(acc_id):
 
 @pauta_bp.route("/api/pauta/acciones/<int:acc_id>/aprobar", methods=["POST"])
 def api_aprobar(acc_id):
-    if not _admin():
-        return _no(Exception("Solo un administrador aprueba subas de gasto"), 403)
     try:
-        return jsonify({"ok": True, "accion": pa.aprobar(_db(), acc_id, _usuario())})
+        return jsonify({"ok": True, "accion": pa.aprobar(_db(), acc_id, _usuario(), _admin())})
     except pa.NoSePuede as e:
         return _no(e)
 
 
 @pauta_bp.route("/api/pauta/acciones/<int:acc_id>/rechazar", methods=["POST"])
 def api_rechazar(acc_id):
-    if not _admin():
-        return _no(Exception("Solo un administrador decide las subas de gasto"), 403)
     try:
-        return jsonify({"ok": True, "accion": pa.rechazar(_db(), acc_id, _usuario())})
+        return jsonify({"ok": True, "accion": pa.rechazar(_db(), acc_id, _usuario(), _admin())})
     except pa.NoSePuede as e:
         return _no(e)
 
@@ -112,9 +111,32 @@ def api_tope():
     return jsonify({"ok": True, "tope_mes": valor})
 
 
+@pauta_bp.route("/api/pauta/nivel", methods=["POST"])
+def api_nivel():
+    """Apagado / ensayo / encendido. Lo cambia un administrador, sin deploy."""
+    if not _admin():
+        return _no(Exception("Solo un administrador prende o apaga el agente"), 403)
+    try:
+        pa.fijar_nivel(_db(), (request.get_json(silent=True) or {}).get("valor", ""), _usuario())
+    except pa.NoSePuede as e:
+        return _no(e)
+    return jsonify({"ok": True, "nivel": pa.nivel(_db())})
+
+
+@pauta_bp.route("/api/pauta/modo", methods=["POST"])
+def api_modo():
+    if not _admin():
+        return _no(Exception("El modo lo cambia un administrador"), 403)
+    try:
+        pa.fijar_modo(_db(), (request.get_json(silent=True) or {}).get("valor", ""), _usuario())
+    except pa.NoSePuede as e:
+        return _no(e)
+    return jsonify({"ok": True, "modo": pa.modo(_db())})
+
+
 @pauta_bp.route("/api/pauta/correr", methods=["POST"])
 def api_correr():
-    """Lee Meta y corre el agente ya (en ensayo si PAUTA_ESCRITURA no esta en on)."""
+    """Lee Meta y corre el agente ya (en ensayo salvo que este encendido)."""
     if not _admin():
         return _no(Exception("Solo un administrador lo corre a mano"), 403)
     r = pa.correr_ahora(_db())

@@ -6,14 +6,24 @@ Andres controla desde el panel `pauta`: ve cada cambio con el motivo, lo puede
 deshacer, puede frenar al agente y le sube contenido. **Nadie salvo un
 administrador sube el gasto**: subir presupuesto queda pendiente del OK de Juan.
 
-**Dos llaves, las dos apagadas por defecto** (Juan: "no lo largues hasta que yo
-te de el okey, lo tengo que hablar con el de marketing"):
+**Nace apagado** (Juan: "no lo largues hasta que yo te de el okey, lo tengo que
+hablar con el de marketing"). Un administrador lo prende desde el panel, sin
+deploy, con tres niveles (`pauta_nivel`):
 
-- `PAUTA_AGENTE=on` prende el hilo (supervisor cada hora, operador una vez por dia).
-- `PAUTA_ESCRITURA=on` deja que escriba en Meta. Sin ella todo queda en
-  **ensayo**: se registra lo que haria y en Meta no se toca nada.
+- `apagado` (por defecto): no corre solo. "Correr ahora" igual funciona, en ensayo.
+- `ensayo`: corre solo, registra lo que haria y en Meta no se toca nada.
+- `encendido`: corre solo y escribe en Meta (en modo "aprobar", solo lo aprobado).
+
+`PAUTA_AGENTE=off` en el entorno es el corte de emergencia: ni hilo ni escritura.
 
 Ademas el panel no se reparte a ningun rol hasta el lanzamiento (ver database.py).
+
+**Modo "aprobar" (por defecto, Juan 30/9):** el agente no hace nada solo; todo
+lo que propone queda pendiente y lo aprueba Juan o el de marketing desde el
+panel. Aprobar ya es hacerlo en Meta. Subir el gasto total lo aprueba solo un
+administrador. Una propuesta que nadie aprobo en 48 horas vence (los numeros
+cambiaron). Un mail por dia avisa las propuestas nuevas. El modo "automatico"
+(hace solo lo que no sube el gasto) lo prende un administrador cuando confie.
 
 Cada cambio guarda el antes y el despues de cada campo que toca
 (`cambios_json`), asi deshacer es volver a escribir el "antes".
@@ -50,6 +60,10 @@ BAJA = 0.8
 SUBA = 1.2
 PRESUPUESTO_MINIMO_CENTAVOS = 500      # USD 5 por dia: por debajo, mejor pausar
 AVISO_TOPE = 0.8
+VENCE_HORAS = 48
+MODOS = ("aprobar", "automatico")
+# Aprobar esto sube el gasto total: solo un administrador.
+SUBE_GASTO = ("escalar",)
 MOVER_MAXIMO = 1.5                     # a la buena se le suma como mucho un 50% de lo que tenia
 
 MAX_IMAGEN = 30 * 1024 * 1024
@@ -74,12 +88,32 @@ class NoSePuede(ValueError):
     pass
 
 
-def activo() -> bool:
-    return os.environ.get("PAUTA_AGENTE", "").strip().lower() == "on"
+NIVELES = ("apagado", "ensayo", "encendido")
 
 
-def escritura() -> bool:
-    return os.environ.get("PAUTA_ESCRITURA", "").strip().lower() == "on"
+def _cortado() -> bool:
+    return os.environ.get("PAUTA_AGENTE", "").strip().lower() == "off"
+
+
+def nivel(db_path: str) -> str:
+    f = _leer(db_path, "pauta_nivel")
+    return f["valor"] if f and f["valor"] in NIVELES else "apagado"
+
+
+def fijar_nivel(db_path: str, valor: str, usuario: str) -> None:
+    if valor not in NIVELES:
+        raise NoSePuede("Estado desconocido")
+    _fijar(db_path, "pauta_nivel", valor, usuario)
+
+
+def activo(db_path: str) -> bool:
+    """Corre solo (ensayo o encendido)."""
+    return not _cortado() and nivel(db_path) != "apagado"
+
+
+def escritura(db_path: str) -> bool:
+    """Escribe en Meta. Sin esto todo queda en ensayo."""
+    return not _cortado() and nivel(db_path) == "encendido"
 
 
 def _txt(dt: datetime) -> str:
@@ -128,6 +162,17 @@ def fijar_tope_mes(db_path: str, valor: float | None, usuario: str) -> None:
     _fijar(db_path, "pauta_tope_mes", None if valor is None else str(valor), usuario)
 
 
+def modo(db_path: str) -> str:
+    f = _leer(db_path, "pauta_modo")
+    return f["valor"] if f and f["valor"] in MODOS else "aprobar"
+
+
+def fijar_modo(db_path: str, valor: str, usuario: str) -> None:
+    if valor not in MODOS:
+        raise NoSePuede("Modo desconocido")
+    _fijar(db_path, "pauta_modo", valor, usuario)
+
+
 def estado(db_path: str) -> dict:
     f = _leer(db_path, "pauta_estado")
     if not f or f["valor"] != "frenado":
@@ -158,9 +203,10 @@ def resumen(db_path: str) -> dict:
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 def _post(ruta: str, archivos: dict | None = None, **params) -> dict:
-    """Unica puerta de escritura a Meta. Se niega si PAUTA_ESCRITURA no esta en on."""
-    if not escritura():
-        raise RuntimeError("PAUTA_ESCRITURA apagada: el agente no escribe en Meta")
+    """Unica puerta de escritura a Meta. Quien la llama ya miro `escritura(db)`; esto
+    es el corte de emergencia por si algo se escapa."""
+    if _cortado():
+        raise RuntimeError("PAUTA_AGENTE=off: el agente no escribe en Meta")
     import requests
 
     from meta_config import GRAPH
@@ -324,7 +370,8 @@ def _tocado_hace_poco(conn, objeto_id: str, ahora: datetime) -> bool:
     desde_deshecho = _txt(ahora - timedelta(days=RESPETAR_DESHECHO_DIAS))
     return conn.execute(
         "SELECT 1 FROM pauta_acciones WHERE (objeto_id = ? OR cambios_json LIKE ?) AND "
-        "((estado = 'deshecha' AND creada_en >= ?) OR (estado != 'deshecha' AND creada_en >= ?)) "
+        "((estado IN ('deshecha', 'rechazada') AND creada_en >= ?) OR "
+        "(estado NOT IN ('deshecha', 'rechazada', 'vencida') AND creada_en >= ?)) "
         "LIMIT 1", (objeto_id, f'%"id": "{objeto_id}"%', desde_deshecho, desde)).fetchone() is not None
 
 
@@ -337,9 +384,9 @@ def registrar(db_path: str, a: dict, ahora: datetime, post=None) -> dict | None:
             return None
         if a["tipo"] == "pedir_pieza" or not a["cambios"]:
             est = "aviso"
-        elif a.get("necesita_ok"):
+        elif a.get("necesita_ok") or modo(db_path) == "aprobar":
             est = "pendiente_ok"
-        elif not escritura():
+        elif not escritura(db_path):
             est = "ensayo"
         else:
             est = "aplicando"
@@ -357,10 +404,6 @@ def registrar(db_path: str, a: dict, ahora: datetime, post=None) -> dict | None:
             _aplicar(db_path, acc_id, "despues", "aplicada", post=post)
         except NoSePuede:
             pass        # queda en estado "error" con el detalle, a la vista en el panel
-    elif est == "pendiente_ok":
-        _avisar("El agente de pauta pide tu OK",
-                f"{a['descripcion']}. Motivo: {a['motivo']} Entrá al panel Agente de pauta "
-                "para aprobarlo o rechazarlo.")
     return obtener(db_path, acc_id)
 
 
@@ -434,11 +477,35 @@ def deshacer(db_path: str, acc_id: int, usuario: str, es_admin: bool, post=None)
     return _aplicar(db_path, acc_id, "antes", "deshecha", usuario, post)
 
 
-def aprobar(db_path: str, acc_id: int, usuario: str, post=None) -> dict:
-    acc = obtener(db_path, acc_id)
+def _puede_decidir(acc: dict | None, es_admin: bool, ahora: datetime) -> None:
     if not acc or acc["estado"] != "pendiente_ok":
         raise NoSePuede("Ese cambio no está esperando aprobación")
-    if not escritura():
+    if acc["tipo"] in SUBE_GASTO and not es_admin:
+        raise NoSePuede("Esto sube el gasto total: lo decide Juan")
+
+
+def vencer(db_path: str, ahora: datetime | None = None) -> int:
+    """Las propuestas que nadie aprobo en 48 horas vencen: los numeros ya cambiaron."""
+    limite = _txt(_ahora(ahora) - timedelta(hours=VENCE_HORAS))
+    conn = _connect(db_path)
+    try:
+        n = conn.execute("UPDATE pauta_acciones SET estado = 'vencida' WHERE estado = "
+                         "'pendiente_ok' AND creada_en < ?", (limite,)).rowcount
+        conn.commit()
+        return n
+    finally:
+        conn.close()
+
+
+def aprobar(db_path: str, acc_id: int, usuario: str, es_admin: bool = True, post=None,
+            ahora: datetime | None = None) -> dict:
+    vencer(db_path, ahora)
+    acc = obtener(db_path, acc_id)
+    if acc and acc["estado"] == "vencida":
+        raise NoSePuede("Venció: pasaron más de 48 horas y los números cambiaron. "
+                        "El agente la vuelve a proponer si sigue haciendo falta.")
+    _puede_decidir(acc, es_admin, _ahora(ahora))
+    if not escritura(db_path):
         conn = _connect(db_path)
         try:
             conn.execute("UPDATE pauta_acciones SET estado = 'ensayo', resuelta_por = ?, "
@@ -450,7 +517,8 @@ def aprobar(db_path: str, acc_id: int, usuario: str, post=None) -> dict:
     return _aplicar(db_path, acc_id, "despues", "aplicada", usuario, post)
 
 
-def rechazar(db_path: str, acc_id: int, usuario: str) -> dict:
+def rechazar(db_path: str, acc_id: int, usuario: str, es_admin: bool = True) -> dict:
+    _puede_decidir(obtener(db_path, acc_id), es_admin, _ahora())
     conn = _connect(db_path)
     try:
         n = conn.execute("UPDATE pauta_acciones SET estado = 'rechazada', resuelta_por = ?, "
@@ -614,7 +682,7 @@ def procesar_piezas(db_path: str, datos: dict, ahora: datetime, get=None, post=N
                                  f"{pieza['subida_por'] or 'marketing'} a «{nombre_camp}»",
                   "motivo": "Pieza nueva que mandó el de marketing; queda en prueba y se pausa "
                             "sola si en 7 días gasta sin traer leads."}
-        if not escritura():
+        if not escritura(db_path):
             accion["cambios"] = [{"id": "(anuncio nuevo)", "campo": "status",
                                   "antes": "PAUSED", "despues": "ACTIVE"}]
             registrar(db_path, accion, ahora)
@@ -669,6 +737,15 @@ def _avisar(titulo: str, texto: str) -> None:
         send_pauta_aviso(titulo, texto)
     except Exception as e:
         logger.warning(f"Agente de pauta: no se pudo avisar por mail ({e})")
+
+
+def _avisar_propuestas(propuestas: list[dict]) -> None:
+    """Un mail por dia con lo que el agente propone, a Juan y al de marketing."""
+    try:
+        from services.email_service import send_pauta_propuestas
+        send_pauta_propuestas(propuestas, [am.destino(), *am.destinos_resumen()])
+    except Exception as e:
+        logger.warning(f"Agente de pauta: no se pudo mandar el mail de propuestas ({e})")
 
 
 # ── corridas ─────────────────────────────────────────────────────────────────
@@ -760,13 +837,17 @@ def operador(db_path: str, ahora: datetime | None = None, traer=None, forzar: bo
     if not forzar:
         marcar_corrida(db_path, _JOB_OPERADOR)
     gasto_mes = resumen(db_path).get("gasto_mes") or 0.0
+    vencer(db_path, ahora)
     hechas = [a for a in (registrar(db_path, a, ahora, post=post)
                           for a in planificar(datos, sm.tope_cpl(db_path), hoy,
                                               tope_mes(db_path), gasto_mes)) if a]
     actualizar_resultados(db_path, datos, ahora)
     piezas = procesar_piezas(db_path, datos, ahora, get=get, post=post)
+    propuestas = [a for a in hechas if a["estado"] == "pendiente_ok"]
+    if propuestas:
+        _avisar_propuestas(propuestas)
     return {"estado": "ok", "acciones": len(hechas), "piezas": piezas,
-            "ensayo": not escritura()}
+            "ensayo": not escritura(db_path)}
 
 
 def correr_ahora(db_path: str) -> dict:
@@ -780,8 +861,8 @@ def correr_ahora(db_path: str) -> dict:
 
 
 def start_pauta_agente(app) -> None:
-    if not activo():
-        logger.info("Agente de pauta apagado (PAUTA_AGENTE no está en on)")
+    if _cortado():
+        logger.info("Agente de pauta cortado por PAUTA_AGENTE=off")
         return
 
     def _loop():
@@ -789,11 +870,12 @@ def start_pauta_agente(app) -> None:
         while True:
             db = app.config["DB_PATH"]
             try:
-                supervisor(db)
-                operador(db)
+                if activo(db):
+                    supervisor(db)
+                    operador(db)
             except Exception as e:
                 logger.warning(f"Agente de pauta: {e}")
             time.sleep(1800)
 
     threading.Thread(target=_loop, daemon=True, name="pauta-agente").start()
-    logger.info("Agente de pauta ACTIVO (%s)", "escribe en Meta" if escritura() else "ensayo")
+    logger.info("Agente de pauta: hilo listo; corre solo si un admin lo prende desde el panel")

@@ -522,6 +522,23 @@ def send_pauta_aviso(titulo: str, texto: str) -> bool:
     return _send(_destino_instagram(), f"Pauta: {titulo}", html_mail)
 
 
+@_tipo_envio("aviso_equipo")
+def send_pauta_propuestas(propuestas: list, destinos: list) -> bool:
+    """El resumen diario de lo que propone el agente de pauta, para aprobar en el panel."""
+    filas = [(html.escape(p.get("tipo_texto") or p["tipo"]),
+              f"<b>{html.escape(p['descripcion'])}</b><br>{html.escape(p['motivo'])}") for p in propuestas]
+    body = (_muted(f"El agente de pauta propone <b>{len(propuestas)} cambios</b>. No se hace nada hasta "
+                   "que alguien lo apruebe en el panel; aprobar ya lo aplica en Meta.")
+            + _info_card(filas)
+            + _muted("Lo que nadie apruebe en 48 horas vence solo."))
+    html_mail = _layout(badge="Agente de pauta", title="Propuestas para aprobar", body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Aprobar en el CRM →")
+    ok = True
+    for to in dict.fromkeys(d for d in destinos if d):
+        ok = _send(to, f"Pauta: {len(propuestas)} cambios para aprobar", html_mail) and ok
+    return ok
+
+
 @_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
