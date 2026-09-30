@@ -2536,6 +2536,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
+#nav-fid_mails .nav-icon{stroke:#a5b4fc}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
 #nav-sombra .nav-icon{stroke:#a8a29e}
@@ -2567,6 +2568,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
+#nav-fid_mails.active .nav-icon{stroke:#c7d2fe}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
 #nav-sombra.active .nav-icon{stroke:#e2e8f0}
@@ -2596,6 +2598,7 @@ body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
+body.light #nav-fid_mails .nav-icon{stroke:#4338ca}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
 body.light #nav-sombra .nav-icon{stroke:#57534e}
@@ -3658,6 +3661,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .em-chip-fuerte{background:var(--verde-tinte);color:var(--verde-texto);box-shadow:inset 0 0 0 1px var(--verde-texto)}
 .em-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .em-chip-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.fm-contadores{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:768px){.fm-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fm-fila{cursor:pointer}
+.fm-ficha{background:none;border:none;color:var(--azul-claro);cursor:pointer;padding:0;font:inherit;text-align:left}
+.fm-ficha:hover{text-decoration:underline}
 .em-chip-gris{background:var(--relleno);color:var(--texto-debil)}
 .em-nota{display:block;font-size:.66rem;color:var(--texto-debil);margin-top:3px}
 .em-link{background:none;border:none;padding:0;color:var(--azul-claro);font:inherit;cursor:pointer;text-align:left;text-decoration:underline;overflow-wrap:anywhere}
@@ -4114,6 +4122,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
+  <!-- Solo los mails automaticos a restaurantes (Juan, 30/9). Lo ve quien ve Outbound. -->
+  <div class="nav-item" id="nav-fid_mails" onclick="showPanel('fid_mails')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   <div class="nav-section-label">SEGURIDAD</div>
   <div class="nav-item" id="nav-credenciales" onclick="showPanel('credenciales')" style="display:none"><i data-lucide="key-round" class="nav-icon"></i> Contraseñas</div>
   </div>
@@ -5118,6 +5128,50 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
   <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
+  <!-- ======= EMAIL MARKETING DE CAPTACION (Fidelidad) ======= -->
+  <!-- Juan, 30/9: los mails automaticos a restaurantes, y nada mas. Reusa los
+       estilos em-* del Email marketing general. -->
+  <div id="fid_mails-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Email marketing</h1>
+        <div class="page-date">Mails automáticos a restaurantes · Scalerics Fidelidad</div>
+      </div>
+      <div class="em-acciones">
+        <span class="em-chip" id="fm-activo"></span>
+        <button type="button" class="export-btn" onclick="fmCargar()">↻ Recargar</button>
+      </div>
+    </div>
+    <div class="em-barra">
+      <div class="em-nav-mes">
+        <button type="button" class="cal-nav-btn" onclick="fmMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+        <span id="fm-mes-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" onclick="fmMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="fmMesHoy()">Este mes</button>
+      </div>
+      <select class="filter-select em-tipo" id="fm-ciudad" onchange="fmCargar()" aria-label="Ciudad">
+        <option value="">Montevideo y Buenos Aires</option><option>Montevideo</option><option>Buenos Aires</option>
+      </select>
+    </div>
+    <div id="fm-contadores" class="em-contadores fm-contadores"></div>
+    <div class="em-card">
+      <div class="em-card-titulo">Mails enviados</div>
+      <div id="fm-tabla" class="em-tabla-wrap"><div class="em-vacio">Cargando…</div></div>
+    </div>
+    <div class="modal-overlay" id="fm-mail-modal" onclick="if(event.target===this)fmCerrarMail()">
+      <div class="modal em-mail-modal" role="dialog" aria-modal="true" aria-labelledby="fm-mail-asunto">
+        <div class="em-mail-cab">
+          <h3 id="fm-mail-asunto">Mail</h3>
+          <button type="button" class="em-mail-cerrar" onclick="fmCerrarMail()" aria-label="Cerrar">×</button>
+        </div>
+        <dl class="em-mail-datos" id="fm-mail-datos"></dl>
+        <div class="em-mail-cuerpo">
+          <iframe id="fm-mail-iframe" class="em-mail-iframe" sandbox="" referrerpolicy="no-referrer" title="Vista del mail"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ======= FIN EMAIL MARKETING DE CAPTACION ======= -->
   <!-- ======= LINKEDIN PANEL ======= -->
   <!-- Los borradores para la pagina de Scalerics en LinkedIn, semana por
        semana. El texto se copia tal cual y se pega en LinkedIn a mano. -->
@@ -6376,6 +6430,7 @@ function showPanel(name) {
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
   if (name === 'email_mkt') loadEmailMkt();
+  if (name === 'fid_mails') fmCargar();
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
   if (name === 'sombra') soCargar();
@@ -11166,27 +11221,28 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
 };
 let _mobileNavOverflow = [];
 
 function _buildMobileNav(allowedPanels) {
   const nav = document.getElementById('mobile-bottom-nav');
   if (!nav) return;
-  const ordered = NAV_PRIORITY.filter(p => allowedPanels.includes(p));
+  // El Email marketing de Captacion va con Outbound: no es un permiso aparte.
+  const ordered = NAV_PRIORITY.filter(p => allowedPanels.includes(p) || (p === 'fid_mails' && allowedPanels.includes('cola')));
   const visible = ordered.slice(0, 5);
   _mobileNavOverflow = ordered.slice(5);
   nav.innerHTML = visible.map(p => `
@@ -11295,8 +11351,10 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
       // El vendedor de Fidelidad es de afuera: fuera de sus dos pantallas no ve
       // ningun item, tampoco los que no estan en ALL_PANELS (Demos, Marketing).
       if (m.solo_fidelidad) document.querySelectorAll('.nav-item[id^="nav-"]').forEach(nav => {
-        if (!access.includes(nav.id.slice(4))) nav.style.display = 'none';
+        if (!access.includes(nav.id.slice(4)) && !(nav.id === 'nav-fid_mails' && access.includes('cola'))) nav.style.display = 'none';
       });
+      // El Email marketing de Captacion va atado a Outbound, no es un permiso aparte.
+      if (!access.includes('cola')) { const nfm = document.getElementById('nav-fid_mails'); if (nfm) nfm.style.display = 'none'; }
       if (!access.includes(activePanel)) {
         // El primero en el orden del menu que el rol tenga Y que exista. Los
         // permisos guardados pueden traer paneles que ya no estan en la
@@ -16140,6 +16198,102 @@ async function soGuardarTope() {
 }
 // ========== FIN Modo sombra ==========
 
+// ========== Email marketing de Captacion (Fidelidad) ==========
+// Juan, 30/9: los mails automaticos a restaurantes y nada mas. Los datos salen
+// de /api/fidelidad/mails-auto/panel (services/fid_mails_auto.panel).
+let fmMesActual = null;
+let fmDatos = null;
+const FM_CHIP = {respondio:'em-chip-fuerte', abierto:'em-chip-azul', entregado:'em-chip-verde',
+                 enviado:'', rebote:'em-chip-rojo', spam:'em-chip-rojo', baja:'em-chip-ambar'};
+const FM_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+function _fmMesHoy() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function fmMesHoy() { fmMesActual = _fmMesHoy(); fmCargar(); }
+function fmMes(delta) {
+  const [a, m] = (fmMesActual || _fmMesHoy()).split('-').map(Number);
+  const d = new Date(a, m - 1 + delta, 1);
+  fmMesActual = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  fmCargar();
+}
+
+async function fmCargar() {
+  if (!fmMesActual) fmMesActual = _fmMesHoy();
+  const [a, m] = fmMesActual.split('-').map(Number);
+  document.getElementById('fm-mes-label').textContent = FM_MESES[m - 1] + ' ' + a;
+  const ciudad = document.getElementById('fm-ciudad').value;
+  let d;
+  try {
+    const r = await fetch('/api/fidelidad/mails-auto/panel?mes=' + fmMesActual + (ciudad ? '&ciudad=' + encodeURIComponent(ciudad) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) {
+    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">No se pudieron cargar los mails. Probá de nuevo en un rato.</div>';
+    return;
+  }
+  fmDatos = d;
+  const chip = document.getElementById('fm-activo');
+  chip.className = 'em-chip ' + (d.activo ? 'em-chip-verde' : 'em-chip-ambar');
+  chip.textContent = d.activo ? 'Prendido · ' + d.tope_diario + ' por día' : 'Apagado';
+  const cont = [['Enviados', d.enviados], ['Abiertos', d.abiertos], ['Respondieron', d.respondieron],
+                ['Bajas y rebotes', d.bajas_rebotes], ['Quedan en cola', d.en_cola]];
+  document.getElementById('fm-contadores').innerHTML = cont.map(c =>
+    '<div class="em-contador"><div class="em-contador-num">' + Number(c[1] || 0).toLocaleString('es-UY') +
+    '</div><div class="em-contador-rotulo">' + c[0] + '</div></div>').join('');
+  if (!d.envios.length) {
+    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">' +
+      (d.activo ? 'Todavía no salieron mails este mes.' : 'Los mails automáticos están apagados. Cuando se prendan, acá vas a ver cada mail que sale.') + '</div>';
+    return;
+  }
+  document.getElementById('fm-tabla').innerHTML = '<table class="em-tabla"><thead><tr>' +
+    '<th>Fecha</th><th>Restaurante</th><th>Ciudad</th><th>Mail</th><th>Estado</th></tr></thead><tbody>' +
+    d.envios.map(e => '<tr class="fm-fila" onclick="fmVerMail(' + Number(e.id) + ')">' +
+      '<td class="em-fecha">' + esc(e.fecha) + '</td>' +
+      '<td><button type="button" class="fm-ficha" onclick="event.stopPropagation();fmFicha(' + Number(e.prospecto_id) + ')">' + esc(e.restaurante) + '</button>' +
+      '<span class="em-extracto">' + esc(e.email) + '</span></td>' +
+      '<td>' + esc(e.ciudad) + '</td>' +
+      '<td>' + (e.numero > 1 ? '2º' : '1º') + '</td>' +
+      '<td><span class="em-chip ' + (FM_CHIP[e.estado] || '') + '">' + esc(e.estado_texto) + '</span></td></tr>').join('') +
+    '</tbody></table>';
+}
+
+function fmFicha(pid) { showPanel('cola'); fidAbrir(pid); }
+
+async function fmVerMail(id) {
+  const modal = document.getElementById('fm-mail-modal');
+  const iframe = document.getElementById('fm-mail-iframe');
+  document.getElementById('fm-mail-asunto').textContent = 'Cargando el mail…';
+  document.getElementById('fm-mail-datos').innerHTML = '';
+  iframe.srcdoc = '';
+  modal.classList.add('open');
+  let d;
+  try {
+    const r = await fetch('/api/fidelidad/mails-auto/' + Number(id) + '/mail');
+    d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) {
+    document.getElementById('fm-mail-asunto').textContent = 'No se pudo cargar este mail';
+    return;
+  }
+  const envio = (fmDatos && fmDatos.envios.find(x => x.id === id)) || {};
+  document.getElementById('fm-mail-asunto').textContent = d.asunto;
+  document.getElementById('fm-mail-datos').innerHTML = [
+    ['Para', esc(d.destinatario)], ['Fecha', esc(d.fecha) + ' (Montevideo)'],
+    ['Contacto', d.numero > 1 ? 'Segundo y último' : 'Primero'],
+    ['Estado', envio.estado ? '<span class="em-chip ' + (FM_CHIP[envio.estado] || '') + '">' + esc(envio.estado_texto) + '</span>' : '—'],
+    ['Restaurante', '<button type="button" class="fm-ficha" onclick="fmCerrarMail();fmFicha(' + Number(d.prospecto_id) + ')">' + esc(d.restaurante) + ' · ver ficha</button>']
+  ].map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('');
+  iframe.setAttribute('sandbox', '');
+  iframe.srcdoc = d.html || '';
+}
+
+function fmCerrarMail() {
+  document.getElementById('fm-mail-modal').classList.remove('open');
+  document.getElementById('fm-mail-iframe').srcdoc = '';
+}
+
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
 // fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
@@ -20823,13 +20977,14 @@ def create_app(db_path: str) -> Flask:
     def baja_recordatorios(token):
         from services.discovery_emails import dar_de_baja as baja_discovery
         from services.meta_reminders import dar_de_baja as baja_meta
+        from services.fid_mails_auto import dar_de_baja as baja_fidelidad
         # Los tokens son UUID, o sea unicos entre las dos tablas: llamar a las
         # dos campanas con el mismo token es seguro, y evita publicar una URL
         # nueva por campana.
         # Cada una en su propio try: si una campana falla, la otra tiene que
         # poder dar de baja igual. Si no, un problema en Meta deja sin salida a
         # quien recibio el mail en frio.
-        for baja in (baja_meta, baja_discovery):
+        for baja in (baja_meta, baja_discovery, baja_fidelidad):
             try:
                 baja(app.config["DB_PATH"], token)
             except Exception as e:
@@ -21928,6 +22083,10 @@ loadBackups();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Mails en frío a los restaurantes de Fidelidad. FID_MAILS_AUTO=on los prende.
+        from services.fid_mails_auto import start_fid_mails_auto
+        start_fid_mails_auto(app)
 
         # Mail diario de la pauta a contacto@. ALERTAS_META=off lo apaga.
         from services.alertas_meta import start_alertas_meta

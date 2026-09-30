@@ -146,7 +146,9 @@ def test_marketing_tiene_sus_paneles_en_orden_y_captacion_ya_no_tiene_email():
     assert dict((p, icono) for p, icono, _ in items)["linkedin"] == "linkedin"
     captacion = _menu()[_menu().index('nav-section-label">CAPTACIÓN'):]
     # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only; SDR salio el 23/9.
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "credenciales"]
+    # Captación tiene su propio Email marketing desde el 30/9 (fid_mails, solo
+    # los mails a restaurantes); el general (email_mkt) sigue solo en Marketing.
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "fid_mails", "credenciales"]
     assert _menu().count('id="nav-email_mkt"') == 1
 
 

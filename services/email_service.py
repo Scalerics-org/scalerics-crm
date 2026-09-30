@@ -1356,6 +1356,114 @@ def send_discovery_email(to_email: str, negocio: str, rubro: str,
     )
 
 
+# ─── Fidelidad: correo en frio a restaurantes (30/9) ─────────────────────────
+
+def remitente_frio(variable: str) -> str | None:
+    """La direccion de `variable`, o None si falta o apunta al dominio principal.
+
+    Es la misma guarda que discovery: el correo en frio no puede salir de
+    scalerics.com, que es el dominio de los clientes.
+    """
+    remitente = os.environ.get(variable, "").strip()
+    if not remitente:
+        return None
+    dominio = remitente.rsplit("@", 1)[-1].strip(" <>").lower()
+    if not dominio or "." not in dominio or dominio == _DOMINIO_PRINCIPAL:
+        logger.error(f"{variable} no sirve para correo en frio ({remitente!r}): no se manda nada")
+        return None
+    return remitente
+
+
+# Juan (30/9): firma él, sin link a la demo —la demo se la hacemos en la
+# llamada— y ofreciendo armarles un prototipo. La llamada se coordina
+# respondiendo el mail, sin link de agenda.
+ASUNTO_FID_1 = "Un sistema de puntos como el de McDonald's para {n}"
+ASUNTO_FID_2 = "Último mail sobre los puntos para {n}"
+# El celular de Juan (30/9), no el de la agencia. En formato internacional
+# porque también les llega a restaurantes de Buenos Aires.
+_TELEFONO_FID = "+598 94 053 389"
+
+
+def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
+    """(asunto, [parrafos]) del contacto `numero`, en texto plano."""
+    n = negocio or "tu restaurante"
+    if numero <= 1:
+        return ASUNTO_FID_1.format(n=n), [
+            "Hola, ¿cómo va?",
+            "Soy Juan, de Scalerics. Armamos sistemas de puntos para restaurantes, "
+            "como el de la app de McDonald's: cada vez que un cliente viene suma "
+            "puntos desde el celular, sin descargar nada, y los canjea por premios "
+            "que elegís vos. Así el que vino una vez vuelve, y sabés quiénes son "
+            "tus clientes fieles.",
+            f"Si te interesa, te armamos un prototipo con la marca de {n} para que "
+            f"lo veas funcionando.",
+            "¿Te queda bien una videollamada de 15 minutos esta semana? Respondé "
+            "este mail con el día y el horario que te queden cómodos y la coordinamos.",
+            # Juan (30/9): lo de la agencia va como agregado, no como el pitch.
+            "PD: también diseñamos soluciones a medida con tecnología, por si en algún "
+            "momento necesitás algo más para el restaurante.",
+        ]
+    return ASUNTO_FID_2.format(n=n), [
+        "Hola, ¿cómo va?",
+        f"Te escribí hace unos días por el sistema de puntos para {n}. No quiero "
+        f"insistir de más, así que este es el último mail.",
+        "Si te interesa, te armamos un prototipo con tu marca y lo vemos en una "
+        "videollamada de 15 minutos: respondé este mail y coordinamos.",
+        "Gracias por el tiempo.",
+    ]
+
+
+@_tipo_envio("fidelidad")
+def send_fidelidad_email(to_email: str, negocio: str, unsub_url: str, numero: int = 1) -> str:
+    """Mail en frio a un restaurante de la lista de Fidelidad.
+
+    Sale de `FID_FROM_EMAIL` o, si no esta, de la misma casilla del subdominio
+    de discovery, con el nombre de Juan. Las respuestas van a contacto@.
+    """
+    remitente = remitente_frio("FID_FROM_EMAIL") or remitente_frio("DISCOVERY_FROM_EMAIL")
+    if not remitente:
+        logger.warning("Fidelidad: sin FID_FROM_EMAIL ni DISCOVERY_FROM_EMAIL validos, no se manda")
+        return "fallo"
+    direccion = remitente.split("<")[-1].strip(" >")
+    asunto, html_mail, texto = armar_fidelidad_email(negocio, unsub_url, numero)
+    return _send_estado(
+        to_email, asunto, html_mail,
+        from_email=f"Juan de Scalerics <{direccion}>",
+        headers={
+            "Reply-To": "contacto@scalerics.com",
+            "List-Unsubscribe": f"<{unsub_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+        text=texto,
+    )
+
+
+def armar_fidelidad_email(negocio: str, unsub_url: str, numero: int = 1) -> tuple[str, str, str]:
+    """(asunto, html, texto) del mail. Aparte del envío para que la sección de
+    Captación muestre el mail tal como salió, sin depender del remitente."""
+    negocio_txt = " ".join((negocio or "").split())
+    asunto, parrafos = cuerpo_fidelidad(int(numero or 1), negocio_txt)
+    estilo_p = "margin:0 0 14px;font-size:15px;line-height:1.6;color:#1c2b40"
+    cuerpo_html = "".join(f'<p style="{estilo_p}">{html.escape(p)}</p>' for p in parrafos)
+    html_mail = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#f1f5f9">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
+    {cuerpo_html}
+    <p style="{estilo_p};margin-top:24px">Juan<br><strong>Scalerics</strong><br>{_TELEFONO_FID}<br>
+      <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a></p>
+    <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
+      Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
+    </p>
+  </div>
+</body></html>"""
+    texto = ("\n\n".join(parrafos)
+             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
+             + f"\n\nSi no querés recibir más: {unsub_url}")
+    return asunto, html_mail, texto
+
+
 # ── LinkedIn ────────────────────────────────────────────────────────────────────
 
 _DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]

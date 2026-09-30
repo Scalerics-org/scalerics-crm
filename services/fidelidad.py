@@ -402,6 +402,21 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_visitas_p ON fid_visitas(prospecto_id)")
+    # Los mails automáticos en frío (30/9), uno por contacto. El token es el de
+    # la baja; ver services/fid_mails_auto.py.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_mails_auto (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospecto_id    INTEGER NOT NULL REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            numero          INTEGER NOT NULL,
+            email           TEXT NOT NULL,
+            token           TEXT NOT NULL UNIQUE,
+            sent_at         TEXT NOT NULL,
+            unsubscribed_at TEXT,
+            respondio_at    TEXT,
+            UNIQUE (prospecto_id, numero)
+        )
+    """)
     init_plantillas_mail(conn)
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),

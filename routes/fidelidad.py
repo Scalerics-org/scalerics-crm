@@ -48,6 +48,31 @@ def _candado():
     return require_panel(_db(), panel)
 
 
+@fidelidad_bp.route("/api/fidelidad/mails-auto")
+def api_mails_auto():
+    """Cómo van los mails automáticos en frío y a quién le tocan los próximos."""
+    from services import fid_mails_auto
+    return jsonify(fid_mails_auto.estado(_db()))
+
+
+@fidelidad_bp.route("/api/fidelidad/mails-auto/panel")
+def api_mails_auto_panel():
+    """La sección Email marketing de Captación: solo los mails a restaurantes."""
+    from services import fid_mails_auto
+    return jsonify(fid_mails_auto.panel(_db(), request.args.get("mes"), request.args.get("ciudad")))
+
+
+@fidelidad_bp.route("/api/fidelidad/mails-auto/<int:envio_id>/mail")
+def api_mails_auto_mail(envio_id):
+    from services import fid_mails_auto
+    datos = fid_mails_auto.mail_enviado(_db(), envio_id, os.environ.get("CRM_URL", request.host_url))
+    if datos is None:
+        return _error("no existe ese envío", 404)
+    respuesta = jsonify({"ok": True, **datos})
+    respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta
+
+
 @fidelidad_bp.route("/api/fidelidad/hoy")
 def api_hoy():
     datos = fid.armar_hoy(_db(), _ahora())
