@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.sombra import sombra_bp
+from routes.pauta import pauta_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -2539,6 +2540,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
 #nav-sombra .nav-icon{stroke:#a8a29e}
+#nav-pauta .nav-icon{stroke:#a8a29e}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -2570,6 +2572,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
 #nav-sombra.active .nav-icon{stroke:#e2e8f0}
+#nav-pauta.active .nav-icon{stroke:#e2e8f0}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -2599,6 +2602,7 @@ body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
 body.light #nav-sombra .nav-icon{stroke:#57534e}
+body.light #nav-pauta .nav-icon{stroke:#57534e}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -3719,6 +3723,17 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .so-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .so-msg{font-size:.78rem;color:var(--texto-debil)}
 .so-msg:empty{display:none}
+/* ── Agente de pauta ── */
+.pa-titulo{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);margin:22px 0 10px}
+.pa-fila{display:flex;gap:12px;align-items:flex-start}
+.pa-fila .so-evidencia{flex:1;min-width:0}
+.pa-botones{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pa-miniatura{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--relleno);flex:none}
+.pa-subir{display:grid;gap:8px}
+.pa-subir textarea{width:100%;box-sizing:border-box;min-height:64px}
+.pa-chip-amarillo{background:var(--ambar-tinte);color:var(--ambar)}
+.pa-barra{height:6px;border-radius:3px;background:var(--relleno);margin-top:6px;overflow:hidden}
+.pa-barra i{display:block;height:100%;background:var(--azul-claro)}
 /* ── Instagram ── */
 .ig-oculto{display:none!important}
 .ig-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
@@ -4087,6 +4102,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
   <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
   <div class="nav-item" id="nav-sombra" onclick="showPanel('sombra')"><i data-lucide="eye" class="nav-icon"></i> Recomendaciones de pauta</div>
+  <div class="nav-item" id="nav-pauta" onclick="showPanel('pauta')"><i data-lucide="bot" class="nav-icon"></i> Agente de pauta</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
@@ -5265,6 +5281,49 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
+  <!-- ======= AGENTE DE PAUTA PANEL ======= -->
+  <!-- El agente maneja la pauta de Meta dentro de un tope; el de marketing
+       controla (deshacer, frenar) y le sube piezas. Ver services/pauta_agente.py.
+       Hasta el lanzamiento no se reparte a ningun rol: lo ven solo admins. -->
+  <div id="pauta-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Agente de pauta</h1>
+        <div class="page-date">El agente maneja la pauta de Meta; marketing lo controla y le manda piezas</div>
+      </div>
+      <div class="pa-botones">
+        <span class="so-chip" id="pa-chip-estado" role="status"></span>
+        <button type="button" class="export-btn" id="pa-btn-frenar" onclick="paFrenar()">Frenar agente</button>
+        <button type="button" class="export-btn so-oculto" id="pa-btn-correr" onclick="paCorrer()">Correr ahora</button>
+      </div>
+    </div>
+    <div class="so-nota so-oculto" id="pa-ensayo"></div>
+    <div class="so-marcador" id="pa-numeros"></div>
+    <div class="so-nota so-oculto" id="pa-tope-caja">
+      <label for="pa-tope"><b>Tope de gasto del mes (USD).</b></label>
+      <input type="number" id="pa-tope" min="10" max="20000" step="10" placeholder="Sin tope" style="width:160px;max-width:100%;margin:0 8px">
+      <button type="button" class="export-btn" onclick="paGuardarTope()">Guardar</button>
+      <span class="so-msg" id="pa-tope-msg" role="status"></span>
+      <div>Al llegar al tope el agente pausa las campañas y te avisa. Solo un administrador lo cambia.</div>
+    </div>
+    <h2 class="pa-titulo">Qué hizo el agente</h2>
+    <div id="pa-acciones" class="so-lista"></div>
+    <h2 class="pa-titulo">Subir contenido para el agente</h2>
+    <div class="so-nota pa-subir">
+      <div>Imagen (JPG o PNG) o video (MP4). El agente la pone a correr, la prueba unos días y la pausa sola si gasta sin traer leads.</div>
+      <input type="file" id="pa-archivo" accept="image/jpeg,image/png,video/mp4,video/quicktime">
+      <textarea id="pa-texto" placeholder="Texto del anuncio: ¿Tu negocio pierde clientes por WhatsApp? Te armamos el sistema en 2 semanas."></textarea>
+      <div class="pa-botones">
+        <select id="pa-campana"><option value="">Probar en la campaña que mejor anda</option></select>
+        <button type="button" class="export-btn" onclick="paSubir()">Mandar al agente</button>
+        <span class="so-msg" id="pa-subir-msg" role="status"></span>
+      </div>
+    </div>
+    <h2 class="pa-titulo">Cómo les fue a las piezas</h2>
+    <div id="pa-piezas" class="so-lista"></div>
+  </div>
+  <!-- ======= FIN AGENTE DE PAUTA PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -6379,6 +6438,7 @@ function showPanel(name) {
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
   if (name === 'sombra') soCargar();
+  if (name === 'pauta') paCargar();
   if (name === 'credenciales') crCargar();
 }
 
@@ -11166,20 +11226,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','pauta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',pauta:'bot'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',pauta:'Agente'
 };
 let _mobileNavOverflow = [];
 
@@ -11259,7 +11319,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','pauta'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16140,6 +16200,211 @@ async function soGuardarTope() {
 }
 // ========== FIN Modo sombra ==========
 
+// ========== Agente de pauta ==========
+// Sin barras invertidas en este bloque: vive dentro de un string de Python.
+let paDatos = null;
+const PA_ESTADOS = {
+  aplicada: ['Hecho', 'so-chip-verde'],
+  ensayo: ['Ensayo: no se tocó Meta', 'so-chip-azul'],
+  pendiente_ok: ['Espera el OK de Juan', 'pa-chip-amarillo'],
+  deshecha: ['Deshecho', ''],
+  rechazada: ['Rechazado', ''],
+  error: ['No se pudo', 'so-chip-rojo'],
+  aviso: ['Aviso', 'so-chip-azul'],
+  aplicando: ['Aplicando…', '']
+};
+const PA_PIEZAS = {
+  recibida: ['Esperando al agente', ''],
+  ensayo: ['Ensayo: no se subió', 'so-chip-azul'],
+  en_prueba: ['En prueba', 'so-chip-verde'],
+  pausada: ['Pausada', ''],
+  manual: ['Hay que subirla a mano', 'pa-chip-amarillo'],
+  error: ['No se pudo subir', 'so-chip-rojo']
+};
+
+function paUsd(n) {
+  if (n === null || n === undefined) return '—';
+  return 'USD ' + Number(n).toLocaleString('es-UY', {maximumFractionDigits: 2});
+}
+
+async function paCargar() {
+  const lista = document.getElementById('pa-acciones');
+  if (!lista) return;
+  try {
+    const r = await fetch('/api/pauta/estado');
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'x');
+    paDatos = d;
+  } catch (e) {
+    lista.innerHTML = '<div class="li-vacio">No se pudo cargar el agente. Probá de nuevo en un rato.</div>';
+    return;
+  }
+  paPintar();
+}
+
+function paPintar() {
+  const d = paDatos;
+  const frenado = d.agente.estado === 'frenado';
+  const chip = document.getElementById('pa-chip-estado');
+  chip.className = 'so-chip ' + (frenado ? 'so-chip-rojo' : 'so-chip-verde');
+  chip.textContent = frenado ? 'Agente frenado' : 'Agente activo';
+  document.getElementById('pa-btn-frenar').textContent = frenado ? 'Reactivar' : 'Frenar agente';
+  liClase('pa-btn-correr', !d.es_admin, 'so-oculto');
+  const ensayo = document.getElementById('pa-ensayo');
+  let aviso = '';
+  if (frenado) aviso = 'Frenado por ' + (d.agente.por || 'alguien') + ' el ' + (d.agente.en || '') + '. No toca nada en Meta hasta que lo reactiven.';
+  else if (!d.encendido) aviso = 'Todavía no está lanzado: el agente no corre solo. Lo que ves acá es de prueba.';
+  else if (!d.escritura) aviso = 'Modo ensayo: el agente anota lo que haría, pero no toca nada en Meta.';
+  ensayo.textContent = aviso;
+  liClase('pa-ensayo', !aviso, 'so-oculto');
+
+  const s = d.resumen || {};
+  const tope = d.tope_mes;
+  const pct = tope && s.gasto_mes ? Math.min(100, Math.round(s.gasto_mes / tope * 100)) : 0;
+  const tiles = [
+    [paUsd(s.gasto_mes), 'Gasto del mes' + (tope ? ' · tope ' + paUsd(tope) : ' · sin tope'), tope ? pct : null],
+    [s.leads_mes === undefined ? '—' : String(s.leads_mes), 'Leads del mes', null],
+    [paUsd(s.cpl_mes), 'Costo por lead' + (d.tope_cpl ? ' · tope ' + paUsd(d.tope_cpl) : ''), null],
+    [String(d.piezas.filter(p => p.estado === 'en_prueba').length), 'Piezas en prueba', null]
+  ];
+  document.getElementById('pa-numeros').innerHTML = tiles.map(t =>
+    '<div class="so-tile"><b>' + liEsc(t[0]) + '</b><span>' + liEsc(t[1]) + '</span>' +
+    (t[2] === null ? '' : '<div class="pa-barra"><i style="width:' + t[2] + '%"></i></div>') + '</div>').join('') +
+    (s.actualizado ? '' : '<div class="so-msg">Todavía no se leyó el gasto de Meta.</div>');
+  liClase('pa-tope-caja', !d.es_admin, 'so-oculto');
+  const topeInput = document.getElementById('pa-tope');
+  if (topeInput && document.activeElement !== topeInput) topeInput.value = tope == null ? '' : tope;
+
+  const sel = document.getElementById('pa-campana');
+  const elegida = sel.value;
+  sel.innerHTML = '<option value="">Probar en la campaña que mejor anda</option>' +
+    (s.campanas || []).map(c => '<option value="' + liEsc(c.id) + '">' + liEsc(c.nombre) + '</option>').join('');
+  sel.value = elegida;
+
+  document.getElementById('pa-acciones').innerHTML = d.acciones.length ? d.acciones.map(paAccion).join('')
+    : '<div class="li-vacio">Todavía no hizo nada. Corre una vez por día, a partir de las 10.</div>';
+  document.getElementById('pa-piezas').innerHTML = d.piezas.length ? d.piezas.map(paPieza).join('')
+    : '<div class="li-vacio">Todavía no se subieron piezas.</div>';
+}
+
+function paAccion(a) {
+  const e = PA_ESTADOS[a.estado] || [a.estado, ''];
+  let etiqueta = e[0];
+  if ((a.estado === 'deshecha' || a.estado === 'rechazada') && a.resuelta_por) etiqueta += ' por ' + a.resuelta_por;
+  let botones = '';
+  const puedeDeshacer = (a.estado === 'aplicada' || a.estado === 'ensayo') && a.cambios.length &&
+    (a.tipo !== 'tope' || paDatos.es_admin);
+  if (puedeDeshacer) botones += '<button type="button" class="export-btn" onclick="paDeshacer(' + a.id + ')">Deshacer</button>';
+  if (a.estado === 'pendiente_ok' && paDatos.es_admin) {
+    botones += '<button type="button" class="export-btn" onclick="paDecidir(' + a.id + ', true)">Aprobar</button>' +
+      '<button type="button" class="export-btn" onclick="paDecidir(' + a.id + ', false)">Rechazar</button>';
+  }
+  const campana = a.campana_nombre && a.campana_nombre !== a.objeto_nombre
+    ? '<div class="so-campana">Campaña: ' + liEsc(a.campana_nombre) + '</div>' : '';
+  const error = a.error ? '<div class="so-resultado">' + liEsc(a.error) + '</div>' : '';
+  return '<article class="so-item"><div class="so-cab"><span class="so-chip ' + e[1] + '">' + liEsc(etiqueta) +
+    '</span><span class="so-campana">' + liEsc(a.creada_en) + '</span></div>' +
+    '<div class="pa-fila"><div class="so-evidencia"><b>' + liEsc(a.descripcion) + '</b>' + campana +
+    '<div>' + liEsc(a.motivo) + '</div></div><div class="pa-botones">' + botones + '</div></div>' + error + '</article>';
+}
+
+function paPieza(p) {
+  const e = PA_PIEZAS[p.estado] || [p.estado, ''];
+  const img = p.tipo === 'imagen'
+    ? '<img class="pa-miniatura" alt="" loading="lazy" src="/api/pauta/piezas/' + p.id + '/archivo">'
+    : '<div class="pa-miniatura" aria-hidden="true"></div>';
+  let resultado = 'Todavía sin resultados.';
+  if (p.gasto !== null && p.gasto !== undefined) {
+    resultado = 'Últimos 7 días: ' + paUsd(p.gasto) + ' · ' + (p.leads || 0) + ' leads' +
+      (p.cpl ? ' · ' + paUsd(p.cpl) + ' por lead' : '');
+  }
+  let juicio = '';
+  const tope = paDatos.tope_cpl;
+  if (p.cpl && tope) juicio = p.cpl <= tope ? ['Anda bien', 'so-chip-verde'] : ['Cara', 'pa-chip-amarillo'];
+  else if (p.gasto >= 20 && !p.leads) juicio = ['Sin leads', 'so-chip-rojo'];
+  return '<article class="so-item"><div class="pa-fila">' + img + '<div class="so-evidencia">' +
+    '<div class="so-cab"><span class="so-nombre">' + liEsc(p.nombre_archivo) + '</span><span class="so-chip ' + e[1] + '">' +
+    liEsc(e[0]) + '</span>' + (juicio ? '<span class="so-chip ' + juicio[1] + '">' + juicio[0] + '</span>' : '') + '</div>' +
+    '<div class="so-campana">Subida por ' + liEsc(p.subida_por || '') + ' el ' + liEsc(p.subida_en) + '</div>' +
+    '<div>' + liEsc(p.texto) + '</div><div class="so-campana">' + liEsc(resultado) + '</div>' +
+    (p.error ? '<div class="so-resultado">' + liEsc(p.error) + '</div>' : '') + '</div></div></article>';
+}
+
+async function paPost(url, cuerpo) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cuerpo || {})});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo.');
+  return d;
+}
+
+async function paFrenar() {
+  const frenado = paDatos && paDatos.agente.estado === 'frenado';
+  if (!frenado && !confirm('¿Frenar al agente? No va a tocar nada en Meta hasta que lo reactiven, y se le avisa a Juan.')) return;
+  try {
+    await paPost(frenado ? '/api/pauta/reactivar' : '/api/pauta/frenar');
+  } catch (e) { alert(e.message); }
+  paCargar();
+}
+
+async function paDeshacer(id) {
+  if (!confirm('¿Deshacer este cambio? El agente no vuelve a tocar eso por dos semanas.')) return;
+  try { await paPost('/api/pauta/acciones/' + id + '/deshacer'); } catch (e) { alert(e.message); }
+  paCargar();
+}
+
+async function paDecidir(id, aprobar) {
+  try { await paPost('/api/pauta/acciones/' + id + (aprobar ? '/aprobar' : '/rechazar')); } catch (e) { alert(e.message); }
+  paCargar();
+}
+
+async function paGuardarTope() {
+  const msg = document.getElementById('pa-tope-msg');
+  msg.textContent = 'Guardando…';
+  try {
+    const d = await paPost('/api/pauta/tope', {valor: document.getElementById('pa-tope').value});
+    msg.textContent = d.tope_mes == null ? 'Sin tope.' : 'Guardado.';
+    paCargar();
+  } catch (e) { msg.textContent = e.message; }
+}
+
+async function paCorrer() {
+  const btn = document.getElementById('pa-btn-correr');
+  btn.disabled = true;
+  btn.textContent = 'Leyendo Meta…';
+  try {
+    const d = await paPost('/api/pauta/correr');
+    alert(d.estado === 'frenado' ? 'El agente está frenado: solo se actualizó el gasto.'
+      : 'Listo: ' + d.acciones + ' cambios' + (d.ensayo ? ' (en ensayo, sin tocar Meta).' : '.'));
+  } catch (e) { alert(e.message); }
+  btn.disabled = false;
+  btn.textContent = 'Correr ahora';
+  paCargar();
+}
+
+async function paSubir() {
+  const msg = document.getElementById('pa-subir-msg');
+  const archivo = document.getElementById('pa-archivo').files[0];
+  const texto = document.getElementById('pa-texto').value.trim();
+  if (!archivo) { msg.textContent = 'Elegí una imagen o un video.'; return; }
+  if (!texto) { msg.textContent = 'Escribí el texto del anuncio.'; return; }
+  const f = new FormData();
+  f.append('archivo', archivo);
+  f.append('texto', texto);
+  f.append('campana_id', document.getElementById('pa-campana').value);
+  msg.textContent = 'Subiendo…';
+  try {
+    const r = await fetch('/api/pauta/piezas', {method: 'POST', body: f});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo subir.');
+    msg.textContent = 'Recibido. El agente la sube en la próxima vuelta.';
+    document.getElementById('pa-archivo').value = '';
+    document.getElementById('pa-texto').value = '';
+    paCargar();
+  } catch (e) { msg.textContent = e.message; }
+}
+// ========== FIN Agente de pauta ==========
+
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
 // fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
@@ -20667,7 +20932,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
+                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp, pauta_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp):
         app.register_blueprint(bp)
 
@@ -21696,8 +21961,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','pauta'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',pauta:'Agente de pauta'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -21940,6 +22205,12 @@ loadBackups();
         # Modo sombra: recomendaciones de pauta los lunes, sin tocar Meta.
         from services.sombra_meta import start_sombra_meta
         start_sombra_meta(app)
+
+        # Agente de pauta: apagado salvo PAUTA_AGENTE=on, y en ensayo (sin
+        # escribir en Meta) salvo PAUTA_ESCRITURA=on. Juan, 30/9: no se lanza
+        # hasta que el lo hable con el de marketing.
+        from services.pauta_agente import start_pauta_agente
+        start_pauta_agente(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.

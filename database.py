@@ -2134,6 +2134,57 @@ def init_db(db_path: str) -> None:
         conn.commit()
         _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
 
+        # ── Agente de pauta (services/pauta_agente.py, 30/9) ───────────────────
+        # Cada cambio que hace (o haria, en ensayo) el agente en Meta, con el
+        # antes y el despues de cada campo para poder deshacerlo.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pauta_acciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                creada_en       TEXT NOT NULL,
+                tipo            TEXT NOT NULL,
+                clave           TEXT NOT NULL,
+                objeto_id       TEXT NOT NULL,
+                objeto_nombre   TEXT,
+                campana_nombre  TEXT,
+                descripcion     TEXT NOT NULL,
+                motivo          TEXT NOT NULL,
+                cambios_json    TEXT NOT NULL,
+                estado          TEXT NOT NULL,
+                aplicada_en     TEXT,
+                resuelta_por    TEXT,
+                resuelta_en     TEXT,
+                error           TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pauta_acciones_objeto "
+                     "ON pauta_acciones (objeto_id, creada_en)")
+        # Piezas que sube el de marketing para que el agente las ponga a correr.
+        # El archivo vive en <carpeta de la base>/pauta/<id>/.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pauta_piezas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                subida_por      TEXT,
+                subida_en       TEXT NOT NULL,
+                nombre_archivo  TEXT NOT NULL,
+                extension       TEXT NOT NULL,
+                tipo            TEXT NOT NULL,
+                texto           TEXT NOT NULL,
+                campana_id      TEXT,
+                estado          TEXT NOT NULL,
+                ad_id           TEXT,
+                en_meta_desde   TEXT,
+                gasto           REAL,
+                leads           INTEGER,
+                resultados_en   TEXT,
+                error           TEXT
+            )
+        """)
+        conn.commit()
+        # El panel `pauta` todavia NO se reparte a ningun rol: Juan pidio (30/9)
+        # no lanzarlo hasta hablarlo con el de marketing. Hoy lo ven solo los
+        # administradores. Al lanzar: _grant_panel_to_existing_roles(conn,
+        # "pauta", si_tiene=("marketing",)).
+
         # Scalerics Fidelidad (23/9): el Outbound pasa a ser del socio que vende
         # el sistema de puntos. Sus tablas son propias (services/fidelidad.py);
         # los comercios que mostraba la cola vieja se ocultan una vez, sin borrar.

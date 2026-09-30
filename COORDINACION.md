@@ -533,6 +533,35 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **30/9 — J (agente de marketing): Agente de pauta, CONSTRUIDO Y APAGADO. NO LANZAR sin OK de Juan.**
+
+  Juan (30/9): la pauta de septiembre subió a 730; se dan vuelta los roles. El
+  agente ejecuta la pauta dentro de un tope mensual y el de marketing (Andrés)
+  controla desde un panel nuevo `pauta` ("Agente de pauta"): ve cada cambio con
+  el motivo y lo puede deshacer, puede frenar al agente y le sube piezas.
+  **Juan pidió explícitamente no lanzarlo hasta hablarlo con Andrés.** Rama
+  `feat/agente-pauta`, PR en borrador.
+
+  - `services/pauta_agente.py`: supervisor (cada hora: gasto del mes, tope,
+    aviso al 80%, al 100% pausa las campañas una vez por mes) y operador (una
+    vez por día desde las 10: reglas de `sombra_meta.recomendar`; pausar y bajar
+    presupuesto solos, **subir presupuesto espera el OK de un admin** y ni se
+    propone si la proyección pasa el tope; anuncio gastado → aviso "hace falta
+    pieza"). No repite sobre un objeto por 7 días, ni por 14 si alguien lo
+    deshizo. Piezas: copia el formato (formulario, botón, página) del mejor
+    anuncio activo de la campaña y cambia imagen y texto; video y carrusel,
+    a mano por ahora.
+  - **Dos llaves apagadas por defecto:** `PAUTA_AGENTE=on` prende el hilo;
+    `PAUTA_ESCRITURA=on` deja escribir en Meta (sin ella todo es "ensayo" y
+    `_post` se niega). Además el panel **no se reparte a ningún rol** (solo
+    admins lo ven). Al lanzar: grant a `marketing`, cargar el permiso
+    `ads_management` en el token, y prender las llaves en ese orden
+    (primero ensayo unos días, después escritura).
+  - Tablas nuevas `pauta_acciones`, `pauta_piezas`; ajustes en `sombra_ajustes`
+    con prefijo `pauta_`. Aviso por mail `send_pauta_aviso` a contacto@.
+  - Solo admin: tope del mes, aprobar/rechazar subas, deshacer la pausa por
+    tope, "Correr ahora". Marketing: frenar/reactivar, deshacer, subir piezas.
+
 - **28/9 — J (agente de marketing): LinkedIn, la foto se dibuja en el CRM al toque (pedido de Juan).**
   Rama `fix/linkedin-foto-al-toque`, sale de `main`. Juan veía borradores con
   "Falta la imagen: sale en la próxima corrida del cron". Nuevo
