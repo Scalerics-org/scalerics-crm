@@ -232,6 +232,14 @@ def _sumar(datos: dict, campana_id: str, centavos: int) -> list[dict]:
     return cambios
 
 
+def _como_le_fue(a: dict) -> str:
+    if not a.get("leads"):
+        return f"gastó {am._plata(a.get('gasto') or 0)} sin traer leads"
+    if a["leads"] == 1:
+        return f"trajo 1 lead que costó {am._plata(a['cpl'])}"
+    return f"trajo {a['leads']} leads a {am._plata(a['cpl'])} cada uno"
+
+
 def _total(cambios: list[dict], cual: str) -> int:
     return sum(int(c[cual]) for c in cambios)
 
@@ -282,8 +290,8 @@ def planificar(datos: dict, cpl_tope: float | None, hoy: date,
             "clave": f"mover:{rb['objeto_id']}:{re_['objeto_id']}",
             "descripcion": f"Pasar {_usd(mueve)} por día de «{rb['objeto_nombre']}» a "
                            f"«{re_['objeto_nombre']}»",
-            "motivo": f"«{rb['objeto_nombre']}» anda mal: {rb['evidencia'].split('. Bajar')[0]}. "
-                      f"«{re_['objeto_nombre']}» anda bien: {re_['evidencia'].split('. Subir')[0]}. "
+            "motivo": f"En 7 días, «{rb['objeto_nombre']}» {_como_le_fue(rb['antes'])} y "
+                      f"«{re_['objeto_nombre']}» {_como_le_fue(re_['antes'])}. "
                       "El gasto total por día no sube."})
 
     for r, base, cambios in bajar:
