@@ -2536,6 +2536,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
+#nav-fid_mails .nav-icon{stroke:#a5b4fc}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
 #nav-sombra .nav-icon{stroke:#a8a29e}
@@ -2567,6 +2568,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
+#nav-fid_mails.active .nav-icon{stroke:#c7d2fe}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
 #nav-sombra.active .nav-icon{stroke:#e2e8f0}
@@ -2596,6 +2598,7 @@ body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
+body.light #nav-fid_mails .nav-icon{stroke:#4338ca}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
 body.light #nav-sombra .nav-icon{stroke:#57534e}
@@ -16195,6 +16198,102 @@ async function soGuardarTope() {
 }
 // ========== FIN Modo sombra ==========
 
+// ========== Email marketing de Captacion (Fidelidad) ==========
+// Juan, 30/9: los mails automaticos a restaurantes y nada mas. Los datos salen
+// de /api/fidelidad/mails-auto/panel (services/fid_mails_auto.panel).
+let fmMesActual = null;
+let fmDatos = null;
+const FM_CHIP = {respondio:'em-chip-fuerte', abierto:'em-chip-azul', entregado:'em-chip-verde',
+                 enviado:'', rebote:'em-chip-rojo', spam:'em-chip-rojo', baja:'em-chip-ambar'};
+const FM_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+function _fmMesHoy() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function fmMesHoy() { fmMesActual = _fmMesHoy(); fmCargar(); }
+function fmMes(delta) {
+  const [a, m] = (fmMesActual || _fmMesHoy()).split('-').map(Number);
+  const d = new Date(a, m - 1 + delta, 1);
+  fmMesActual = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  fmCargar();
+}
+
+async function fmCargar() {
+  if (!fmMesActual) fmMesActual = _fmMesHoy();
+  const [a, m] = fmMesActual.split('-').map(Number);
+  document.getElementById('fm-mes-label').textContent = FM_MESES[m - 1] + ' ' + a;
+  const ciudad = document.getElementById('fm-ciudad').value;
+  let d;
+  try {
+    const r = await fetch('/api/fidelidad/mails-auto/panel?mes=' + fmMesActual + (ciudad ? '&ciudad=' + encodeURIComponent(ciudad) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) {
+    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">No se pudieron cargar los mails. Probá de nuevo en un rato.</div>';
+    return;
+  }
+  fmDatos = d;
+  const chip = document.getElementById('fm-activo');
+  chip.className = 'em-chip ' + (d.activo ? 'em-chip-verde' : 'em-chip-ambar');
+  chip.textContent = d.activo ? 'Prendido · ' + d.tope_diario + ' por día' : 'Apagado';
+  const cont = [['Enviados', d.enviados], ['Abiertos', d.abiertos], ['Respondieron', d.respondieron],
+                ['Bajas y rebotes', d.bajas_rebotes], ['Quedan en cola', d.en_cola]];
+  document.getElementById('fm-contadores').innerHTML = cont.map(c =>
+    '<div class="em-contador"><div class="em-contador-num">' + Number(c[1] || 0).toLocaleString('es-UY') +
+    '</div><div class="em-contador-rotulo">' + c[0] + '</div></div>').join('');
+  if (!d.envios.length) {
+    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">' +
+      (d.activo ? 'Todavía no salieron mails este mes.' : 'Los mails automáticos están apagados. Cuando se prendan, acá vas a ver cada mail que sale.') + '</div>';
+    return;
+  }
+  document.getElementById('fm-tabla').innerHTML = '<table class="em-tabla"><thead><tr>' +
+    '<th>Fecha</th><th>Restaurante</th><th>Ciudad</th><th>Mail</th><th>Estado</th></tr></thead><tbody>' +
+    d.envios.map(e => '<tr class="fm-fila" onclick="fmVerMail(' + Number(e.id) + ')">' +
+      '<td class="em-fecha">' + esc(e.fecha) + '</td>' +
+      '<td><button type="button" class="fm-ficha" onclick="event.stopPropagation();fmFicha(' + Number(e.prospecto_id) + ')">' + esc(e.restaurante) + '</button>' +
+      '<span class="em-extracto">' + esc(e.email) + '</span></td>' +
+      '<td>' + esc(e.ciudad) + '</td>' +
+      '<td>' + (e.numero > 1 ? '2º' : '1º') + '</td>' +
+      '<td><span class="em-chip ' + (FM_CHIP[e.estado] || '') + '">' + esc(e.estado_texto) + '</span></td></tr>').join('') +
+    '</tbody></table>';
+}
+
+function fmFicha(pid) { showPanel('cola'); fidAbrir(pid); }
+
+async function fmVerMail(id) {
+  const modal = document.getElementById('fm-mail-modal');
+  const iframe = document.getElementById('fm-mail-iframe');
+  document.getElementById('fm-mail-asunto').textContent = 'Cargando el mail…';
+  document.getElementById('fm-mail-datos').innerHTML = '';
+  iframe.srcdoc = '';
+  modal.classList.add('open');
+  let d;
+  try {
+    const r = await fetch('/api/fidelidad/mails-auto/' + Number(id) + '/mail');
+    d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) {
+    document.getElementById('fm-mail-asunto').textContent = 'No se pudo cargar este mail';
+    return;
+  }
+  const envio = (fmDatos && fmDatos.envios.find(x => x.id === id)) || {};
+  document.getElementById('fm-mail-asunto').textContent = d.asunto;
+  document.getElementById('fm-mail-datos').innerHTML = [
+    ['Para', esc(d.destinatario)], ['Fecha', esc(d.fecha) + ' (Montevideo)'],
+    ['Contacto', d.numero > 1 ? 'Segundo y último' : 'Primero'],
+    ['Estado', envio.estado ? '<span class="em-chip ' + (FM_CHIP[envio.estado] || '') + '">' + esc(envio.estado_texto) + '</span>' : '—'],
+    ['Restaurante', '<button type="button" class="fm-ficha" onclick="fmCerrarMail();fmFicha(' + Number(d.prospecto_id) + ')">' + esc(d.restaurante) + ' · ver ficha</button>']
+  ].map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('');
+  iframe.setAttribute('sandbox', '');
+  iframe.srcdoc = d.html || '';
+}
+
+function fmCerrarMail() {
+  document.getElementById('fm-mail-modal').classList.remove('open');
+  document.getElementById('fm-mail-iframe').srcdoc = '';
+}
+
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
 // fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
@@ -16578,102 +16677,6 @@ function emCerrarMail() {
   if (modal) modal.classList.remove('open');
   const iframe = document.getElementById('em-mail-iframe');
   if (iframe) iframe.srcdoc = '';
-}
-
-// ========== Email marketing de Captacion (Fidelidad) ==========
-// Juan, 30/9: los mails automaticos a restaurantes y nada mas. Los datos salen
-// de /api/fidelidad/mails-auto/panel (services/fid_mails_auto.panel).
-let fmMesActual = null;
-let fmDatos = null;
-const FM_CHIP = {respondio:'em-chip-fuerte', abierto:'em-chip-azul', entregado:'em-chip-verde',
-                 enviado:'', rebote:'em-chip-rojo', spam:'em-chip-rojo', baja:'em-chip-ambar'};
-const FM_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-
-function _fmMesHoy() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-}
-function fmMesHoy() { fmMesActual = _fmMesHoy(); fmCargar(); }
-function fmMes(delta) {
-  const [a, m] = (fmMesActual || _fmMesHoy()).split('-').map(Number);
-  const d = new Date(a, m - 1 + delta, 1);
-  fmMesActual = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-  fmCargar();
-}
-
-async function fmCargar() {
-  if (!fmMesActual) fmMesActual = _fmMesHoy();
-  const [a, m] = fmMesActual.split('-').map(Number);
-  document.getElementById('fm-mes-label').textContent = FM_MESES[m - 1] + ' ' + a;
-  const ciudad = document.getElementById('fm-ciudad').value;
-  let d;
-  try {
-    const r = await fetch('/api/fidelidad/mails-auto/panel?mes=' + fmMesActual + (ciudad ? '&ciudad=' + encodeURIComponent(ciudad) : ''));
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    d = await r.json();
-  } catch (e) {
-    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">No se pudieron cargar los mails. Probá de nuevo en un rato.</div>';
-    return;
-  }
-  fmDatos = d;
-  const chip = document.getElementById('fm-activo');
-  chip.className = 'em-chip ' + (d.activo ? 'em-chip-verde' : 'em-chip-ambar');
-  chip.textContent = d.activo ? 'Prendido · ' + d.tope_diario + ' por día' : 'Apagado';
-  const cont = [['Enviados', d.enviados], ['Abiertos', d.abiertos], ['Respondieron', d.respondieron],
-                ['Bajas y rebotes', d.bajas_rebotes], ['Quedan en cola', d.en_cola]];
-  document.getElementById('fm-contadores').innerHTML = cont.map(c =>
-    '<div class="em-contador"><div class="em-contador-num">' + Number(c[1] || 0).toLocaleString('es-UY') +
-    '</div><div class="em-contador-rotulo">' + c[0] + '</div></div>').join('');
-  if (!d.envios.length) {
-    document.getElementById('fm-tabla').innerHTML = '<div class="em-vacio">' +
-      (d.activo ? 'Todavía no salieron mails este mes.' : 'Los mails automáticos están apagados. Cuando se prendan, acá vas a ver cada mail que sale.') + '</div>';
-    return;
-  }
-  document.getElementById('fm-tabla').innerHTML = '<table class="em-tabla"><thead><tr>' +
-    '<th>Fecha</th><th>Restaurante</th><th>Ciudad</th><th>Mail</th><th>Estado</th></tr></thead><tbody>' +
-    d.envios.map(e => '<tr class="fm-fila" onclick="fmVerMail(' + Number(e.id) + ')">' +
-      '<td class="em-fecha">' + esc(e.fecha) + '</td>' +
-      '<td><button type="button" class="fm-ficha" onclick="event.stopPropagation();fmFicha(' + Number(e.prospecto_id) + ')">' + esc(e.restaurante) + '</button>' +
-      '<span class="em-extracto">' + esc(e.email) + '</span></td>' +
-      '<td>' + esc(e.ciudad) + '</td>' +
-      '<td>' + (e.numero > 1 ? '2º' : '1º') + '</td>' +
-      '<td><span class="em-chip ' + (FM_CHIP[e.estado] || '') + '">' + esc(e.estado_texto) + '</span></td></tr>').join('') +
-    '</tbody></table>';
-}
-
-function fmFicha(pid) { showPanel('cola'); fidAbrir(pid); }
-
-async function fmVerMail(id) {
-  const modal = document.getElementById('fm-mail-modal');
-  const iframe = document.getElementById('fm-mail-iframe');
-  document.getElementById('fm-mail-asunto').textContent = 'Cargando el mail…';
-  document.getElementById('fm-mail-datos').innerHTML = '';
-  iframe.srcdoc = '';
-  modal.classList.add('open');
-  let d;
-  try {
-    const r = await fetch('/api/fidelidad/mails-auto/' + Number(id) + '/mail');
-    d = await r.json();
-    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
-  } catch (e) {
-    document.getElementById('fm-mail-asunto').textContent = 'No se pudo cargar este mail';
-    return;
-  }
-  const envio = (fmDatos && fmDatos.envios.find(x => x.id === id)) || {};
-  document.getElementById('fm-mail-asunto').textContent = d.asunto;
-  document.getElementById('fm-mail-datos').innerHTML = [
-    ['Para', esc(d.destinatario)], ['Fecha', esc(d.fecha) + ' (Montevideo)'],
-    ['Contacto', d.numero > 1 ? 'Segundo y último' : 'Primero'],
-    ['Estado', envio.estado ? '<span class="em-chip ' + (FM_CHIP[envio.estado] || '') + '">' + esc(envio.estado_texto) + '</span>' : '—'],
-    ['Restaurante', '<button type="button" class="fm-ficha" onclick="fmCerrarMail();fmFicha(' + Number(d.prospecto_id) + ')">' + esc(d.restaurante) + ' · ver ficha</button>']
-  ].map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join('');
-  iframe.setAttribute('sandbox', '');
-  iframe.srcdoc = d.html || '';
-}
-
-function fmCerrarMail() {
-  document.getElementById('fm-mail-modal').classList.remove('open');
-  document.getElementById('fm-mail-iframe').srcdoc = '';
 }
 
 // ========== Daily Programador ==========

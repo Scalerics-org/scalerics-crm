@@ -616,7 +616,9 @@ def test_esta_registrado_en_todos_lados():
             '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in marketing
     captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]
     # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only; SDR salio el 23/9.
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "credenciales"]
+    # Desde el 30/9 Captación tiene su propio Email marketing (fid_mails), solo
+    # con los mails a restaurantes; este, el general, sigue solo en Marketing.
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "fid_mails", "credenciales"]
 
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
     assert prioridad.index("email_mkt") == prioridad.index("meta") + 1
