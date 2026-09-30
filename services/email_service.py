@@ -514,6 +514,15 @@ def send_instagram_banco_bajo(feed: int, historias: int) -> bool:
 
 
 @_tipo_envio("alerta")
+def send_pauta_aviso(titulo: str, texto: str) -> bool:
+    """Avisos del agente de pauta (services/pauta_agente.py) a Juan."""
+    html_mail = _layout(badge="Agente de pauta", title=html.escape(titulo),
+                        body=_muted(html.escape(texto)),
+                        cta_url=f"{_CRM_URL}", cta_label="Abrir el panel →")
+    return _send(_destino_instagram(), f"Pauta: {titulo}", html_mail)
+
+
+@_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
 

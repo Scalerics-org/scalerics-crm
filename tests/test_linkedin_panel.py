@@ -142,7 +142,8 @@ def test_marketing_tiene_sus_paneles_en_orden_y_captacion_ya_no_tiene_email():
     assert [(p, texto.strip()) for p, _, texto in items] == [
         ("meta", "Meta Ads"), ("marketing", "Inteligencia marketing"),
         ("email_mkt", "Email marketing"), ("linkedin", "LinkedIn"),
-        ("instagram", "Instagram"), ("sombra", "Recomendaciones de pauta")]
+        ("instagram", "Instagram"), ("sombra", "Recomendaciones de pauta"),
+        ("pauta", "Agente de pauta")]
     assert dict((p, icono) for p, icono, _ in items)["linkedin"] == "linkedin"
     captacion = _menu()[_menu().index('nav-section-label">CAPTACIÓN'):]
     # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only; SDR salio el 23/9.
