@@ -3439,6 +3439,9 @@ body.light .mobile-header-title{color:#0f172a}
 .fin-kpi-var{font-size:.75rem;color:var(--rotulo);margin-top:4px}
 .fin-verde{color:var(--verde)}
 .fin-rojo{color:var(--rojo)}
+.fin-amarillo{color:#facc15}
+.fin-kpi-aporte{border-color:rgba(250,204,21,.45)!important;background:rgba(250,204,21,.07)!important}
+body.light .fin-amarillo{color:#a16207}
 /* `.fin-tabla td` fija el color con especificidad (0,1,1) y le gana a `.fin-rojo`
    (0,1,0): sin estas dos reglas, un "vencido hace 3 dias" dentro de una tabla
    sale del color normal y el aviso no se ve. Los tests no lo agarran. */
@@ -6038,6 +6041,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="fin-toggle" style="margin-bottom:14px">
       <button class="pill active" id="fin-tipo-egreso" onclick="finSetTipo('egreso')">Egreso</button>
       <button class="pill" id="fin-tipo-ingreso" onclick="finSetTipo('ingreso')">Ingreso</button>
+      <button class="pill" id="fin-tipo-aporte" onclick="finSetTipo('aporte')" title="Plata que ponen los socios: entra como ingreso y se ve aparte">Aporte</button>
     </div>
 
     <label class="modal-label">Fecha</label>
@@ -12589,6 +12593,12 @@ function _finKpis(k) {
       ${conIva(k.egresos_usd, k.egresos_con_iva_usd)}
       <div class="fin-kpi-var">${_finVariacion(k.egresos_usd, k.egresos_previos_usd)}</div>
     </div>
+    <div class="fin-kpi fin-kpi-aporte">
+      <div class="fin-kpi-label">Aportes</div>
+      <div class="fin-kpi-valor fin-amarillo">${_finUsd(k.aportes_usd || 0)}</div>
+      <div class="fin-kpi-iva">ya incluidos en Ingresos</div>
+      <div class="fin-kpi-var">${_finVariacion(k.aportes_usd || 0, k.aportes_previos_usd || 0)}</div>
+    </div>
     <div class="fin-kpi">
       <div class="fin-kpi-label">Resultado</div>
       <div class="fin-kpi-valor ${neto >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(neto)}</div>
@@ -12713,13 +12723,22 @@ async function _finCargarCategorias() {
   return _finCategorias;
 }
 
+// "Aporte" (1/10) no es un tipo aparte: es un ingreso con la categoría
+// "aporte" ya elegida y sin IVA (no se factura). Así suma en Ingresos y además
+// sale en su tarjeta amarilla.
 function finSetTipo(tipo) {
-  _finTipo = tipo;
+  const aporte = tipo === 'aporte';
+  _finTipo = aporte ? 'ingreso' : tipo;
   document.getElementById('fin-tipo-egreso').classList.toggle('active', tipo === 'egreso');
   document.getElementById('fin-tipo-ingreso').classList.toggle('active', tipo === 'ingreso');
+  document.getElementById('fin-tipo-aporte').classList.toggle('active', aporte);
   const sel = document.getElementById('fin-mov-categoria');
-  sel.innerHTML = (_finCategorias[tipo] || [])
+  sel.innerHTML = (_finCategorias[_finTipo] || [])
     .map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
+  if (aporte) {
+    sel.value = 'aporte';
+    finSetModoIva('sin');
+  }
   if (document.getElementById('fin-parcial-row')) _finParcialAplica();
 }
 
@@ -13755,7 +13774,7 @@ async function abrirMovimiento(prefill) {
   document.getElementById('fin-mov-notas').value = p.notas || '';
   document.getElementById('fin-modal-error').textContent = '';
 
-  finSetTipo(p.tipo || 'egreso');
+  finSetTipo(p.categoria === 'aporte' && p.tipo === 'ingreso' ? 'aporte' : (p.tipo || 'egreso'));
   finSetModoIva(!p.facturado ? 'sin' : (p.iva_incluido ? 'incluido' : 'sobre'));
   document.getElementById('fin-mov-total').value = '';
   document.getElementById('fin-mov-vence').value = '';

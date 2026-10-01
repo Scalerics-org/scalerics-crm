@@ -271,3 +271,21 @@ def test_los_anulados_no_cuentan_en_ningun_agregado(db):
     r = resumen(db, "2026-09", "2026-09")
     assert r["kpis"]["egresos_usd"] == 0
     assert r["por_categoria"] == []
+
+
+# ── aportes (Juan, 1/10) ─────────────────────────────────────────────────────
+
+def test_los_aportes_suman_en_ingresos_y_tienen_su_propia_tarjeta(db):
+    from services.finanzas import resumen
+    mov = lambda tipo, cat, monto, periodo="2026-09": crear_movimiento(  # noqa: E731
+        db, tipo=tipo, fecha=f"{periodo}-10", periodo=periodo, concepto="x", categoria=cat,
+        monto=monto, moneda="USD", monto_usd=monto)
+    mov("ingreso", "desarrollo_web", 1000)
+    mov("ingreso", "aporte", 500)
+    mov("egreso", "infraestructura", 100)
+    mov("ingreso", "aporte", 200, periodo="2026-08")
+    k = resumen(db, "2026-09", "2026-09")["kpis"]
+    assert "aporte" in CATEGORIAS["ingreso"]
+    assert k["ingresos_usd"] == 1500                  # el aporte sigue siendo ingreso
+    assert k["aportes_usd"] == 500 and k["aportes_previos_usd"] == 200
+    assert k["neto_usd"] == 1400
