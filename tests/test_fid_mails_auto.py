@@ -535,3 +535,12 @@ def test_el_buscador_no_guarda_mails_de_plataformas(db):
     r = auto.guardar_mails_encontrados(db, [{"id": pid, "email": "press@linktr.ee", "abrio": True}])
     assert r["encontrados"] == 0 and r["sin_mail"] == 1
     assert not fid.get_prospecto(db, pid)["email"]
+
+
+def test_lleva_el_logo_y_la_web_con_www():
+    # Juan (1/10): con el logo de Scalerics y la web como www.scalerics.com.
+    from services.email_service import _LOGO_FIRMA, armar_fidelidad_email
+    _, html_mail, texto = armar_fidelidad_email("La Pasiva", "https://x/baja/t", 1)
+    assert _LOGO_FIRMA in html_mail and 'alt="Scalerics"' in html_mail
+    assert 'href="https://www.scalerics.com"' in html_mail and ">www.scalerics.com</a>" in html_mail
+    assert "www.scalerics.com" in texto and "https://scalerics.com" not in texto

@@ -1471,17 +1471,18 @@ def armar_fidelidad_email(negocio: str, unsub_url: str, numero: int = 1) -> tupl
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:24px;background:#f1f5f9">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px;font-family:Arial,Helvetica,sans-serif">
+    <img src="{_LOGO_FIRMA}" alt="Scalerics" width="140" style="height:auto;max-width:140px;margin-bottom:22px;display:block">
     {cuerpo_html}
     <p style="{estilo_p};margin-top:24px">Juan<br><strong>Scalerics</strong><br>{_TELEFONO_FID}<br>
-      <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a></p>
+      <a href="https://www.scalerics.com" style="color:#0069a3">www.scalerics.com</a></p>
     <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
       Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
     </p>
   </div>
 </body></html>"""
     texto = ("\n\n".join(parrafos)
-             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
+             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nwww.scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
     return asunto, html_mail, texto
 
