@@ -289,3 +289,73 @@ def test_los_aportes_suman_en_ingresos_y_tienen_su_propia_tarjeta(db):
     assert k["ingresos_usd"] == 1500                  # el aporte sigue siendo ingreso
     assert k["aportes_usd"] == 500 and k["aportes_previos_usd"] == 200
     assert k["neto_usd"] == 1400
+
+
+# ── gastos esenciales (Juan, 1/10) ───────────────────────────────────────────
+
+def test_gastos_esenciales_suman_lo_minimo_por_mes(db):
+    from services.finanzas import borrar_esencial, guardar_esencial, listar_esenciales
+    fly, err = guardar_esencial(db, {"nombre": "Fly.io", "motivo": "Sin esto se cae el CRM", "monto": 30}, "Juan")
+    assert err is None
+    guardar_esencial(db, {"nombre": "Dominio", "monto": 120, "frecuencia": "anual"}, "Juan")
+    guardar_esencial(db, {"nombre": "Internet", "monto": 2000, "moneda": "UYU", "tipo_cambio": 40}, "Juan")
+    d = listar_esenciales(db)
+    assert [i["nombre"] for i in d["items"]] == ["Dominio", "Internet", "Fly.io"]
+    assert {i["nombre"]: i["por_mes_usd"] for i in d["items"]} == {"Dominio": 10, "Internet": 50, "Fly.io": 30}
+    assert d["total_mensual_usd"] == 90 and d["total_anual_usd"] == 1080
+    assert guardar_esencial(db, {"nombre": "X", "monto": 5, "moneda": "UYU"}, "Juan")[1]   # pesos sin TC
+    assert guardar_esencial(db, {"nombre": "", "monto": 5}, "Juan")[1] == "falta el nombre del gasto"
+    guardar_esencial(db, {"nombre": "Fly.io", "monto": 40}, "Juan", fly)
+    assert borrar_esencial(db, fly) and not borrar_esencial(db, fly)
+    assert listar_esenciales(db)["total_mensual_usd"] == 60
+
+
+# ── resultado real y aportes en el balance (Juan, 1/10) ──────────────────────
+
+def _aportes_y_ventas(db):
+    mov = lambda tipo, cat, monto, fecha, concepto="x": crear_movimiento(  # noqa: E731
+        db, tipo=tipo, fecha=fecha, periodo=fecha[:7], concepto=concepto, categoria=cat,
+        monto=monto, moneda="USD", monto_usd=monto)
+    mov("ingreso", "desarrollo_web", 1000, "2026-09-05")
+    mov("ingreso", "aporte", 500, "2026-09-10", "Aporte Javier")
+    mov("ingreso", "aporte", 300, "2026-08-10", "Aporte padre Juan")
+    mov("ingreso", "aporte", 200, "2026-09-12", "Aporte Juan (caja chica)")
+    mov("egreso", "infraestructura", 1200, "2026-09-20")
+
+
+def test_el_resultado_real_no_cuenta_los_aportes_como_ganancia(db):
+    from services.finanzas import resumen
+    _aportes_y_ventas(db)
+    k = resumen(db, "2026-09", "2026-09")["kpis"]
+    assert k["neto_usd"] == 500                 # con aportes: 1700 - 1200
+    assert k["resultado_real_usd"] == -200      # sin aportes: 1000 - 1200
+    assert k["resultado_real_previo_usd"] == 0  # agosto: 300 de aporte, 0 de venta
+
+
+def test_en_el_balance_los_aportes_no_son_ingreso_ni_utilidad(db):
+    from database import listar_movimientos
+    from services.finanzas import calcular_balance, calcular_balance_general
+    _aportes_y_ventas(db)
+    movs = listar_movimientos(db)
+    b = calcular_balance(movs, "interno", "2026-09-01", "2026-09-30")
+    assert b["ingresos"]["total"] == 1000 and b["aportes"]["total"] == 700
+    assert b["resultado"]["total"] == -200
+    assert "aporte" not in [c["categoria"] for c in b["ingresos"]["por_categoria"]]
+    g = calcular_balance_general(movs, [], [], "interno", "2026-09-30")
+    filas = {f["clave"]: f["monto"] for f in g["patrimonio"]["filas"]}
+    assert filas["aportes"] == 1000                  # todo lo aportado hasta el corte
+    assert filas["utilidad"] == -200                 # el resultado del negocio, sin aportes
+    assert g["activo"]["filas"][0]["monto"] == 800   # la caja sí los tiene: 1000 + 1000 - 1200
+    assert g["total_pasivo_patrimonio"] == g["activo"]["total"]
+
+
+def test_lo_aportado_hasta_la_fecha_por_persona_y_por_mes(db):
+    from services.finanzas import aportado_hasta_la_fecha
+    _aportes_y_ventas(db)
+    d = aportado_hasta_la_fecha(db)
+    assert d["total_usd"] == 1000 and d["cantidad"] == 3
+    assert d["primero"] == "2026-08-10" and d["ultimo"] == "2026-09-12"
+    assert d["por_persona"] == [{"persona": "Javier", "total_usd": 500},
+                                {"persona": "Padre Juan", "total_usd": 300},
+                                {"persona": "Juan", "total_usd": 200}]
+    assert d["por_mes"] == [{"periodo": "2026-08", "total_usd": 300}, {"periodo": "2026-09", "total_usd": 700}]

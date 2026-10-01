@@ -38,6 +38,10 @@ CATEGORIAS = {
 CATEGORIA_APORTE = "aporte"
 
 
+def es_aporte(m: dict) -> bool:
+    return m.get("tipo") == "ingreso" and m.get("categoria") == CATEGORIA_APORTE
+
+
 def _aportes(movimientos: list[dict]) -> float:
     return round(sum(m["monto_usd"] for m in movimientos
                      if m["tipo"] == "ingreso" and m["categoria"] == CATEGORIA_APORTE), 2)
@@ -504,6 +508,10 @@ def resumen(db_path: str, desde: str, hasta: str) -> dict:
             # Ya están dentro de ingresos_usd: es la parte que no es venta.
             "aportes_usd": _aportes(movs),
             "aportes_previos_usd": _aportes(prev),
+            # Lo que de verdad ganó (o perdió) la empresa: un aporte de un
+            # socio no es ganancia (Juan, 1/10).
+            "resultado_real_usd": round(ingresos - egresos - _aportes(movs), 2),
+            "resultado_real_previo_usd": round(ingresos_prev - egresos_prev - _aportes(prev), 2),
         },
         "serie": serie,
         "por_categoria": por_categoria,
@@ -633,6 +641,11 @@ def calcular_balance(movimientos: list[dict], tipo: str, desde: str, hasta: str,
     sin_cotizacion = sum(1 for m in del_periodo if m.get("monto_usd") is None)
     movs = [m for m in del_periodo if m.get("monto_usd") is not None]
 
+    # Los aportes de los socios no son ingreso del negocio: van aparte y no
+    # entran en el resultado (Juan, 1/10). En el tablero de Movimientos siguen
+    # sumando en Ingresos; acá no, porque esto es el estado de resultados.
+    aportes = _r2(sum(float(m["monto_usd"]) for m in movs if es_aporte(m)))
+    movs = [m for m in movs if not es_aporte(m)]
     ingresos = _bloque_balance(movs, "ingreso")
     egresos = _bloque_balance(movs, "egreso")
 
@@ -663,6 +676,7 @@ def calcular_balance(movimientos: list[dict], tipo: str, desde: str, hasta: str,
         "sin_cotizacion": sin_cotizacion,
         "ingresos": ingresos,
         "egresos": egresos,
+        "aportes": {"total": aportes},
         "resultado": {
             "total": _r2(ingresos["total"] - egresos["total"]),
             "blanco": _r2(ingresos["blanco"] - egresos["blanco"]),
@@ -833,14 +847,18 @@ def calcular_balance_general(movimientos: list[dict], pendientes: list[dict],
     sin_cotizacion = sum(1 for m in del_corte if m.get("monto_usd") is None)
     movs = [m for m in del_corte if m.get("monto_usd") is not None]
 
-    caja_movs = saldo_iva = utilidad = acumulados = 0.0
+    caja_movs = saldo_iva = utilidad = acumulados = aportes = 0.0
     for m in movs:
         signo = 1 if m["tipo"] == "ingreso" else -1
         neto = float(m["monto_usd"])
         iva = float(m.get("iva_usd") or 0)
         caja_movs += signo * (neto + iva)
         saldo_iva += signo * iva
-        if str(m["fecha"])[:10] >= inicio_ejercicio:
+        if es_aporte(m):
+            # Entra a la caja pero no es resultado: es patrimonio que pusieron
+            # los socios (Juan, 1/10).
+            aportes += neto
+        elif str(m["fecha"])[:10] >= inicio_ejercicio:
             utilidad += signo * neto
         else:
             acumulados += signo * neto
@@ -875,6 +893,8 @@ def calcular_balance_general(movimientos: list[dict], pendientes: list[dict],
             pasivo.append(_fila(f"pasivo:{rubro}", nombre, monto, auto=False))
 
     patrimonio = [_fila("capital", "Capital", suma("capital"), auto=False)]
+    if abs(aportes) >= 0.005:
+        patrimonio.append(_fila("aportes", "Aportes de socios", aportes, auto=True))
     if abs(acumulados) >= 0.005:
         patrimonio.append(_fila("acumulados", "Resultados de ejercicios anteriores",
                                 acumulados, auto=True))
@@ -1059,3 +1079,124 @@ def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
                         sum(c["ingresos"] for c in conteo.values()))
 
     return {"desde": desde, "hasta": hasta, "meses": meses, "total": total}
+
+
+# ── Gastos esenciales (Juan, 1/10) ───────────────────────────────────────────
+# "Gastos que si no están muere Scalerics": una lista aparte de los
+# movimientos, con lo mínimo que tiene que entrar por mes. Un gasto anual se
+# reparte en 12 para el total mensual.
+
+FRECUENCIAS_ESENCIAL = {"mensual": 1, "anual": 12}
+
+
+def _conn_esenciales(db_path: str):
+    import sqlite3
+    c = sqlite3.connect(db_path, timeout=10)
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def listar_esenciales(db_path: str) -> dict:
+    c = _conn_esenciales(db_path)
+    try:
+        items = [dict(f) for f in c.execute(
+            "SELECT * FROM finanzas_esenciales WHERE borrado = 0 ORDER BY monto_usd DESC, id")]
+    finally:
+        c.close()
+    for it in items:
+        it["por_mes_usd"] = round(it["monto_usd"] / FRECUENCIAS_ESENCIAL.get(it["frecuencia"], 1), 2)
+    mensual = round(sum(it["por_mes_usd"] for it in items), 2)
+    return {"items": items, "total_mensual_usd": mensual, "total_anual_usd": round(mensual * 12, 2)}
+
+
+def validar_esencial(data: dict) -> tuple[dict | None, str | None]:
+    nombre = (data.get("nombre") or "").strip()[:120]
+    if not nombre:
+        return None, "falta el nombre del gasto"
+    frecuencia = data.get("frecuencia") or "mensual"
+    if frecuencia not in FRECUENCIAS_ESENCIAL:
+        return None, "la frecuencia tiene que ser mensual o anual"
+    moneda = data.get("moneda") or "USD"
+    try:
+        monto = float(str(data.get("monto")).replace(",", "."))
+    except (TypeError, ValueError):
+        return None, "el monto tiene que ser un número"
+    if monto < 0:
+        return None, "el monto no puede ser negativo"
+    tc = data.get("tipo_cambio")
+    try:
+        tc = float(str(tc).replace(",", ".")) if tc not in (None, "") else None
+        monto_usd = a_usd(monto, moneda, tc)
+    except ValueError as e:
+        return None, str(e)
+    return {"nombre": nombre, "motivo": (data.get("motivo") or "").strip()[:300] or None,
+            "monto": monto, "moneda": moneda, "tipo_cambio": tc if moneda != "USD" else None,
+            "monto_usd": monto_usd, "frecuencia": frecuencia,
+            "notas": (data.get("notas") or "").strip()[:1000] or None}, None
+
+
+def guardar_esencial(db_path: str, data: dict, quien: str, eid: int | None = None) -> tuple[int | None, str | None]:
+    campos, error = validar_esencial(data)
+    if error:
+        return None, error
+    c = _conn_esenciales(db_path)
+    try:
+        if eid:
+            cur = c.execute(f"UPDATE finanzas_esenciales SET {', '.join(k + ' = ?' for k in campos)} "
+                            "WHERE id = ? AND borrado = 0", list(campos.values()) + [eid])
+            if not cur.rowcount:
+                return None, "el gasto no existe"
+        else:
+            campos["created_by_name"] = quien
+            eid = c.execute(f"INSERT INTO finanzas_esenciales ({', '.join(campos)}) "
+                            f"VALUES ({', '.join('?' * len(campos))})", list(campos.values())).lastrowid
+        c.commit()
+    finally:
+        c.close()
+    return eid, None
+
+
+def borrar_esencial(db_path: str, eid: int) -> bool:
+    c = _conn_esenciales(db_path)
+    try:
+        cur = c.execute("UPDATE finanzas_esenciales SET borrado = 1 WHERE id = ? AND borrado = 0", (eid,))
+        c.commit()
+        return cur.rowcount > 0
+    finally:
+        c.close()
+
+
+
+# ── Lo aportado hasta la fecha (Juan, 1/10) ──────────────────────────────────
+# Todos los aportes, sin rango: cuánto pusieron los socios desde el principio,
+# por persona (sale del concepto: "Aporte Javier (…)" es Javier) y por mes.
+
+def _persona_del_aporte(concepto: str | None) -> str:
+    import re as _re
+    t = _re.sub(r"\(.*?\)", "", concepto or "")
+    t = _re.sub(r"^\s*aportes?\b[\s:-]*(de\s+)?", "", t, flags=_re.I).strip(" -:")
+    return (t[:1].upper() + t[1:]) if t else "Sin nombre"
+
+
+def aportado_hasta_la_fecha(db_path: str) -> dict:
+    from database import listar_movimientos
+    movs = [m for m in listar_movimientos(db_path) if es_aporte(m) and not m.get("anulado")]
+    movs.sort(key=lambda m: (m["fecha"], m["id"]), reverse=True)
+    personas: dict[str, float] = {}
+    meses: dict[str, float] = {}
+    for m in movs:
+        p = _persona_del_aporte(m.get("concepto"))
+        personas[p] = personas.get(p, 0.0) + float(m["monto_usd"])
+        meses[m["periodo"]] = meses.get(m["periodo"], 0.0) + float(m["monto_usd"])
+    return {
+        "total_usd": _r2(sum(personas.values())),
+        "cantidad": len(movs),
+        "primero": movs[-1]["fecha"] if movs else None,
+        "ultimo": movs[0]["fecha"] if movs else None,
+        "por_persona": sorted(({"persona": k, "total_usd": _r2(v)} for k, v in personas.items()),
+                              key=lambda x: -x["total_usd"]),
+        "por_mes": [{"periodo": k, "total_usd": _r2(v)} for k, v in sorted(meses.items())],
+        "movimientos": [{"id": m["id"], "fecha": m["fecha"], "concepto": m["concepto"],
+                         "persona": _persona_del_aporte(m.get("concepto")), "monto": m["monto"],
+                         "moneda": m["moneda"], "monto_usd": m["monto_usd"]} for m in movs],
+    }

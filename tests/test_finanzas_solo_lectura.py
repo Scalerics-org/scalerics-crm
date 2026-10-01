@@ -230,6 +230,10 @@ ESCRITURAS = [
     ("PUT", "/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",
      "/api/finanzas/cobros-tarjeta/1/acreditado", None),
     ("DELETE", "/api/finanzas/cobros-tarjeta/<int:cobro_id>", "/api/finanzas/cobros-tarjeta/1", None),
+    # Gastos esenciales (1/10): cargar, editar o borrar es modificar Finanzas.
+    ("POST", "/api/finanzas/esenciales", "/api/finanzas/esenciales", None),
+    ("PUT", "/api/finanzas/esenciales/<int:eid>", "/api/finanzas/esenciales/1", None),
+    ("DELETE", "/api/finanzas/esenciales/<int:eid>", "/api/finanzas/esenciales/1", None),
 ]
 
 LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/finanzas/resumen",
