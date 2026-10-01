@@ -481,6 +481,7 @@ def test_las_respuestas_se_buscan_mas_atras_que_la_espera_mas_larga():
 # ─── la reserva de las otras campañas sale de lo que mandan de verdad ────────
 
 def test_el_cupo_deja_lugar_a_lo_que_las_otras_mandan_en_un_dia(db, monkeypatch):
+    monkeypatch.setattr(auto, "CUOTA_MES", 10 ** 6)   # que mida solo el tope del día
     monkeypatch.setenv("DISCOVERY_EMAILS", "on")
     monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
     # Hace dos días: Meta mandó 15 y discovery 50. Hoy todavía nada.
@@ -493,6 +494,7 @@ def test_el_cupo_deja_lugar_a_lo_que_las_otras_mandan_en_un_dia(db, monkeypatch)
 
 
 def test_si_meta_no_manda_no_se_le_guarda_lugar(db, monkeypatch):
+    monkeypatch.setattr(auto, "CUOTA_MES", 10 ** 6)   # que mida solo el tope del día
     # El 30/9: la reserva fija de 20 para Meta dejaba el cupo en 8.
     monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
     monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
@@ -500,9 +502,36 @@ def test_si_meta_no_manda_no_se_le_guarda_lugar(db, monkeypatch):
 
 
 def test_sin_discovery_no_se_le_reserva_nada(db, monkeypatch):
+    monkeypatch.setattr(auto, "CUOTA_MES", 10 ** 6)   # que mida solo el tope del día
     monkeypatch.setattr(auto, "RAMPA_INICIAL", 100)
     _otros_envios(db, 50, tipo="discovery", hace="2 days")
     monkeypatch.delenv("DISCOVERY_EMAILS", raising=False)
     sin = auto.cupo_del_dia(db)["por_dia"]
     monkeypatch.setenv("DISCOVERY_EMAILS", "on")
     assert auto.cupo_del_dia(db)["por_dia"] == sin - 50
+
+
+
+# ─── 1/10: el buscador tomó press@linktr.ee de la «web» de un restaurante ───
+
+def test_no_se_le_escribe_a_la_casilla_de_una_plataforma(db, enviados):
+    _local(db, 1, email="press@linktr.ee")
+    _local(db, 2, email="hola@instagram.com")
+    ok = _local(db, 3)
+    assert [p["id"] for p in auto.a_contactar(db, 10)] == [ok]
+
+
+def test_al_que_ya_le_llego_no_le_sigue_la_secuencia(db, enviados):
+    pid = _local(db, 1)
+    auto.enviar(db, "https://crm")
+    _sql(db, "UPDATE fid_prospectos SET email = 'press@linktr.ee' WHERE id = ?", (pid,))
+    _sql(db, "UPDATE fid_mails_auto SET email = 'press@linktr.ee'")
+    _atrasar(db, 20)
+    assert auto.enviar(db, "https://crm")["seguimientos"] == 0
+
+
+def test_el_buscador_no_guarda_mails_de_plataformas(db):
+    pid = _local(db, 1, email="", web="https://linktr.ee/resto")
+    r = auto.guardar_mails_encontrados(db, [{"id": pid, "email": "press@linktr.ee", "abrio": True}])
+    assert r["encontrados"] == 0 and r["sin_mail"] == 1
+    assert not fid.get_prospecto(db, pid)["email"]

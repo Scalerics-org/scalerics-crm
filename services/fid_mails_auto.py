@@ -91,8 +91,12 @@ def _ahora() -> str:
 
 
 def _conn(db_path: str) -> sqlite3.Connection:
+    from services.email_finder import es_mail_basura
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    # Para filtrar en el WHERE las direcciones de plataformas (press@linktr.ee,
+    # 1/10): se mira al mandar y no solo al guardar, así cubre lo ya cargado.
+    conn.create_function("es_basura", 1, lambda m: int(es_mail_basura(m or "")), deterministic=True)
     return conn
 
 
@@ -105,7 +109,7 @@ _SIN_TOCAR = """
     AND p.estado = 'sin_contactar'
     AND p.rubro = 'restaurante'
     AND p.ciudad IN ({ciudades})
-    AND p.email LIKE '%_@_%._%' AND p.email NOT LIKE '% %'
+    AND p.email LIKE '%_@_%._%' AND p.email NOT LIKE '% %' AND NOT es_basura(p.email)
     AND NOT EXISTS (SELECT 1 FROM fid_llamadas l WHERE l.prospecto_id = p.id)
     AND NOT EXISTS (SELECT 1 FROM fid_visitas v WHERE v.prospecto_id = p.id)
     AND NOT EXISTS (SELECT 1 FROM fid_mails m WHERE m.prospecto_id = p.id
@@ -627,6 +631,7 @@ def guardar_mails_encontrados(db_path: str, resultados: list) -> dict:
     `fidelidad.buscar_mails`: un sitio que no abrió no se marca, así se
     reintenta; uno que abrió y no tenía mail se marca para no volver."""
     from services import fidelidad as fid
+    from services.email_finder import es_mail_basura
     cuenta = {"encontrados": 0, "sin_mail": 0, "no_abrio": 0, "ignorados": 0}
     conn = _conn(db_path)
     try:
@@ -637,7 +642,7 @@ def guardar_mails_encontrados(db_path: str, resultados: list) -> dict:
                 cuenta["ignorados"] += 1
                 continue
             mail = (r.get("email") or "").strip().lower()
-            if mail and not fid.es_mail(mail):
+            if mail and (not fid.es_mail(mail) or es_mail_basura(mail)):
                 mail = ""
             if mail:
                 cur = conn.execute("UPDATE fid_prospectos SET email = ?, mail_buscado_en = ? "
