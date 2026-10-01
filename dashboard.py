@@ -14242,19 +14242,28 @@ function _finFijoVigente(f, mes) {
 // Un fijo en pesos sin tipo de cambio usable llega con monto_usd null y queda
 // afuera, contado en sinCotizar, en vez de sumarse a un valor inventado.
 // Es el liquido, sin IVA: igual que el numero grande de los KPIs de Movimientos.
+// Un ingreso con tarjeta cuenta lo que queda despues de la comision y Plexo
+// (su desglose.te_queda, en USD con la misma cotizacion del fijo), no el
+// precio entero (Juan, 1/10).
 function _finTotalesFijos(fijos, mes) {
-  const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0};
+  const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0, comisiones: 0};
   (fijos || []).forEach(f => {
     if (!f.activo || !_finFijoVigente(f, mes)) return;
     if (f.tipo !== 'ingreso' && f.tipo !== 'egreso') return;
     if (f.monto_usd === null || f.monto_usd === undefined) { t.sinCotizar += 1; return; }
-    if (f.tipo === 'ingreso') t.ingresos += f.monto_usd;
-    else t.egresos += f.monto_usd;
+    if (f.tipo === 'ingreso') {
+      if (f.desglose && f.monto) {
+        const neto = f.desglose.te_queda * (f.monto_usd / f.monto);
+        t.comisiones += f.monto_usd - neto;
+        t.ingresos += neto;
+      } else t.ingresos += f.monto_usd;
+    } else t.egresos += f.monto_usd;
     t.contados += 1;
   });
   const redondear = v => Math.round(v * 100) / 100;
   t.ingresos = redondear(t.ingresos);
   t.egresos = redondear(t.egresos);
+  t.comisiones = redondear(t.comisiones);
   t.resultado = redondear(t.ingresos - t.egresos);
   return t;
 }
@@ -14270,7 +14279,7 @@ function _finKpisFijos(t) {
     <div class="fin-kpi">
       <div class="fin-kpi-label">Total ingresos fijos</div>
       <div class="fin-kpi-valor fin-verde">${_finUsd(t.ingresos)}</div>
-      ${nota}
+      ${t.comisiones ? `<div class="fin-kpi-var">por mes, en USD sin IVA, ya sin ${_finUsd(t.comisiones)} de comisiones y Plexo</div>` : nota}
     </div>
     <div class="fin-kpi">
       <div class="fin-kpi-label">Resultado de los fijos</div>

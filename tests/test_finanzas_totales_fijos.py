@@ -149,6 +149,17 @@ def test_la_cuenta_suma_por_tipo_y_deja_afuera_lo_que_no_corre(tmp_path):
 
 
 @sin_node
+def test_un_ingreso_con_tarjeta_cuenta_lo_que_queda_sin_comision_ni_plexo(tmp_path):
+    """Juan (1/10): los totales de Fijos descuentan comisiones y Plexo."""
+    con_tarjeta = {**_fijo(1, "ingreso", 50), "monto": 50, "desglose": {"te_queda": 49.12}}
+    fijos = [con_tarjeta, _fijo(2, "ingreso", 100), _fijo(3, "egreso", 30)]
+    t = _correr(tmp_path, "console.log(JSON.stringify(_finTotalesFijos(%s, '2026-09')));"
+                % json.dumps(fijos))
+    assert t["ingresos"] == 149.12
+    assert t["comisiones"] == 0.88
+    assert t["resultado"] == 119.12
+
+@sin_node
 def test_la_cuenta_sin_fijos_da_cero(tmp_path):
     t = _correr(tmp_path, "console.log(JSON.stringify([_finTotalesFijos([], '2026-09'),"
                           " _finTotalesFijos(null, '2026-09')]));")
