@@ -261,3 +261,10 @@ def test_el_modal_avisa_que_el_iva_del_fijo_aplica_hacia_adelante():
     parece no hacer nada y alguien lo vuelve a tocar buscando el error."""
     assert 'id="fin-fijo-iva-nota"' in HTML
     assert "Aplica a los meses que se generen de acá en adelante" in HTML
+
+
+def test_en_esenciales_el_boton_grande_carga_un_esencial_y_no_un_movimiento():
+    """Juan (1/10): cargaba el esencial con el botón de arriba y terminaba en
+    Movimientos. Los esenciales son solo para ver."""
+    assert 'onclick="_finBotonNuevo()"' in HTML
+    assert "if (_finVistaActual === 'esenciales') abrirEsencial();" in HTML
