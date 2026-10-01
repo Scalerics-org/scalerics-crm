@@ -437,6 +437,23 @@ def api_crear_recurrente():
     return jsonify({"ok": True, "id": rid}), 201
 
 
+# Lo que cambia el movimiento que el fijo genera cada mes.
+_CAMPOS_QUE_REHACEN = ("tipo", "concepto", "categoria", "monto", "moneda", "tipo_cambio",
+                       "dia_del_mes", "client_id", "facturado", "tarjeta")
+
+
+def _mismo(v):
+    """Para comparar lo guardado con lo que llega: None y "" son lo mismo, 1 y
+    True también, y 150 y 150.0."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (int, float)):
+        return float(v)
+    return v
+
+
 @finanzas_bp.route("/api/finanzas/recurrentes/<int:rec_id>", methods=["PUT"])
 def api_actualizar_recurrente(rec_id):
     db = _db()
@@ -447,11 +464,13 @@ def api_actualizar_recurrente(rec_id):
     if error:
         return jsonify({"ok": False, "error": error}), 400
     actualizar_recurrente(db, rec_id, **campos)
-    # Cambiar cómo paga el cliente rehace el mes en curso (pedido de Juan,
-    # 24/9: le puso tarjeta al fijo de Diego y el mes no se desglosaba). El
-    # resto de los cambios sigue la regla de siempre: de acá en adelante.
+    # Cambiar el fijo rehace el mes en curso. Primero fue solo cómo paga (24/9:
+    # Juan le puso tarjeta al fijo de Diego y el mes no se desglosaba); desde el
+    # 1/10 cualquier cambio de lo que genera el mes: Juan cambió el monto de dos
+    # fijos y Movimientos de octubre siguió con el viejo. Los meses anteriores
+    # no se tocan, y `rehacer_mes_en_curso` decide los casos que no se rehacen.
     rehecho = False
-    if "tarjeta" in campos and (viejo.get("tarjeta") or None) != campos["tarjeta"]:
+    if any(k in campos and _mismo(viejo.get(k)) != _mismo(campos[k]) for k in _CAMPOS_QUE_REHACEN):
         rehecho = rehacer_mes_en_curso(db, rec_id)
     uid, nombre = _quien()
     log_activity(db, nombre, "finanzas_fijo_editado", "finanzas", rec_id,

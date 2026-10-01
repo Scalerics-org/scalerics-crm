@@ -220,13 +220,29 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
 
 
 def rehacer_mes_en_curso(db_path: str, rec_id: int, hoy: date | None = None) -> bool:
-    """Vuelve a generar el mes en curso de un fijo al que le cambiaron cómo
-    paga el cliente. Solo el mes en curso: los anteriores están cerrados y no
-    se reescriben. Devuelve si rehízo algo."""
-    from database import borrar_generacion_de_fijo
+    """Vuelve a generar el mes en curso de un fijo que cambió. Solo el mes en
+    curso: los anteriores están cerrados y no se reescriben. Devuelve si
+    rehízo algo.
+
+    No se rehace (además de lo que ya cuida `borrar_generacion_de_fijo`: un
+    mes anulado o un depósito de tarjeta ya acreditado):
+    - si el fijo ya no corre este mes (se desactivó, o arranca o termina en
+      otro mes): darlo de baja es de acá en adelante, lo de este mes queda;
+    - si lo cobra Plexo solo: ese mes lo escribió un cobro aprobado, que es
+      plata que ya se movió."""
+    from database import borrar_generacion_de_fijo, get_recurrente
+    from services import plexo
 
     hoy = hoy or date.today()
-    if not borrar_generacion_de_fijo(db_path, rec_id, f"{hoy.year:04d}-{hoy.month:02d}"):
+    periodo = f"{hoy.year:04d}-{hoy.month:02d}"
+    fijo = get_recurrente(db_path, rec_id)
+    if not fijo or not fijo.get("activo"):
+        return False
+    if (fijo.get("desde") or "") > periodo or (fijo.get("hasta") and fijo["hasta"] < periodo):
+        return False
+    if plexo.es_automatico(db_path, rec_id):
+        return False
+    if not borrar_generacion_de_fijo(db_path, rec_id, periodo):
         return False
     materializar_recurrentes(db_path, hoy)
     return True
