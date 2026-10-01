@@ -462,12 +462,64 @@ def test_ponerle_tarjeta_a_un_fijo_rehace_el_mes_en_curso(app, cli):
     assert cli.get("/api/finanzas/cobros-tarjeta").get_json() == []
 
 
-def test_otros_cambios_del_fijo_no_rehacen_el_mes(app, cli):
+# ── desde el 1/10, cualquier cambio del fijo rehace el mes en curso ──────────
+# Juan cambió el monto del fijo de Luan y La Vaca Encantada y Movimientos de
+# octubre siguió con el viejo.
+
+def _fijo_generado(app, cli, nombre, tel, tarjeta=None):
     from services.finanzas import materializar_recurrentes
     db = app.config["_DB"]
-    cid = insert_business(db, {"name": "Otro Cliente", "phone": "+598700901"})
-    rid = cli.post("/api/finanzas/recurrentes", json=_cuerpo_fijo(cid, None)).get_json()["id"]
+    cid = insert_business(db, {"name": nombre, "phone": tel})
+    rid = cli.post("/api/finanzas/recurrentes", json=_cuerpo_fijo(cid, tarjeta)).get_json()["id"]
     materializar_recurrentes(db)
+    return db, cid, rid
+
+
+def test_cambiar_el_monto_rehace_el_mes_en_curso(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Otro Cliente", "+598700901")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "monto": 150})
+    assert r.get_json()["mes_rehecho"] is True
+    movs = listar_movimientos(db)
+    assert len(movs) == 1 and movs[0]["monto"] == 150
+
+
+def test_cambiar_el_monto_de_un_fijo_con_tarjeta_rehace_el_cobro_entero(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Con Tarjeta", "+598700905", "visa_debito")
+    ingreso_antes = [m["monto"] for m in listar_movimientos(db) if m["tipo"] == "ingreso"]
+    egresos_antes = sorted(m["monto"] for m in listar_movimientos(db) if m["tipo"] == "egreso")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, "visa_debito"), "monto": 240})
+    assert r.get_json()["mes_rehecho"] is True
+    assert len(cli.get("/api/finanzas/cobros-tarjeta").get_json()) == 1
+    movs = listar_movimientos(db)
+    assert sorted(m["tipo"] for m in movs) == ["egreso", "egreso", "ingreso"]
+    ingreso = [m["monto"] for m in movs if m["tipo"] == "ingreso"]
+    # Con el doble de precio, el ingreso y la comisión se mueven: el mes se rehízo entero.
+    assert ingreso[0] == pytest.approx(ingreso_antes[0] * 2, rel=0.01)
+    assert sorted(m["monto"] for m in movs if m["tipo"] == "egreso") != egresos_antes
+
+
+def test_guardar_sin_cambios_no_rehace(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Sin Cambios", "+598700906")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json=_cuerpo_fijo(cid, None))
+    assert r.get_json()["mes_rehecho"] is False
+
+
+def test_darlo_de_baja_no_borra_el_mes_en_curso(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "De Baja", "+598700907")
+    hoy = date.today()
+    sig = f"{hoy.year + (hoy.month == 12):04d}-{hoy.month % 12 + 1:02d}"
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "monto": 99, "desde": sig})
+    assert r.get_json()["mes_rehecho"] is False
+    assert listar_movimientos(db)[0]["monto"] == 120
+
+
+def test_si_lo_cobra_plexo_no_se_rehace(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Plexo", "+598700908")
+    c = sqlite3.connect(db)
+    c.execute("INSERT INTO plexo_suscripciones (recurrente_id, env, token, estado, creado_en, actualizado_en) "
+              "VALUES (?, 'test', 'tok', 'activa', '2026-10-01', '2026-10-01')", (rid,))
+    c.commit()
+    c.close()
     r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "monto": 150})
     assert r.get_json()["mes_rehecho"] is False
     assert listar_movimientos(db)[0]["monto"] == 120

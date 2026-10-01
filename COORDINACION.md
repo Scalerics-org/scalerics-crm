@@ -554,6 +554,18 @@ leads de Meta se renombró a **D** para deshacer el empate.
   Publicar solo en LinkedIn sigue esperando la Community Management API (LinkedIn
   no respondió al 28/9).
 
+- **1/10 — Finanzas: editar un fijo rehace el mes en curso (pedido de Juan).** Rama
+  `fix/fijo-rehace-mes`. Aviso a la sesión de Finanzas: toca `routes/finanzas.py`
+  (`api_actualizar_recurrente`, `_CAMPOS_QUE_REHACEN`) y `services/finanzas.py`
+  (`rehacer_mes_en_curso`). Antes solo cambiar la tarjeta rehacía el mes; ahora
+  cualquier cambio de monto, moneda, concepto, cliente, facturado, etc. No rehace
+  si el fijo ya no corre este mes, si lo cobra Plexo solo, si el mes está anulado
+  o si el depósito de la tarjeta ya llegó. Los meses anteriores no se tocan.
+- **30/9–1/10 — Mails automáticos a restaurantes de Fidelidad (PRs #119–#122, CRM v307).**
+  `services/fid_mails_auto.py`, sección «Email marketing» en Captación y el workflow
+  diario `fidelidad-captacion.yml` (busca mails en las webs y trae restaurantes de
+  Maps). Prendido con `FID_MAILS_AUTO=on`. Usa lo que queda libre del plan gratis de
+  Resend, mirando lo que mandan Meta y discovery (`cupo_del_dia`).
 - **28/9 — Fidelidad y bot del grupo de captación (PRs #108–#114, todo deployado: CRM v292, `scalerics-wa` v113).**
   - **Mail** desde el Gmail de cada usuario (`services/gmail_usuario.py`, token cifrado con `CREDENCIALES_KEY`) con plantillas editables (`fid_plantillas`). **No manda hasta que Juan cree el cliente OAuth web** y cargue `GMAIL_WEB_CLIENT_ID` / `GMAIL_WEB_CLIENT_SECRET` en Fly (redirect `https://scalerics-crm.fly.dev/oauth/gmail/callback`, scope `gmail.send`).
   - Agenda arranca en el mes; vuelve el Pipeline; rubro **Otros** (`rubro_de`); entra **todo Montevideo** (se sacó la restricción a CH/Carrasco; al buscar comercios nuevos, priorizar CH y Carrasco).

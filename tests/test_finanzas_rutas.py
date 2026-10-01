@@ -118,7 +118,7 @@ def test_crear_un_movimiento_en_dolares(cli):
 
     lista = cli.get("/api/finanzas/movimientos").get_json()
     assert lista[0]["monto_usd"] == 4.18
-    assert lista[0]["periodo"] == "2026-09"
+    assert lista[0]["periodo"] == _mes()   # era "2026-09" fijo: falló el 1/10
 
 
 def test_crear_en_pesos_congela_el_monto_en_dolares(cli):
