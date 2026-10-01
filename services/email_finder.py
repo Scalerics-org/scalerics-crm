@@ -37,6 +37,15 @@ _DOMINIOS_BASURA = {
     # ("sentry-next.wixpress.com") y la regla de sufijo no lo agarraba.
     "wixpress.com",
     "godaddy.com", "wordpress.com",
+    # Plataformas que el comercio usa como "web" (1/10/2026): el buscador de
+    # Fidelidad le mandó un mail a press@linktr.ee porque la web de un
+    # restaurante era su página de Linktree. Son las casillas de la empresa de
+    # la plataforma, nunca la del comercio.
+    "linktr.ee", "linktree.com", "beacons.ai", "taplink.cc", "bio.link", "carrd.co",
+    "instagram.com", "facebook.com", "meta.com", "fb.com", "whatsapp.com", "tiktok.com",
+    "google.com", "goo.gl", "canva.com", "shopify.com", "tiendanube.com", "jimdo.com",
+    "webnode.com", "weebly.com", "site123.com", "mercadopago.com", "mercadolibre.com",
+    "pedidosya.com", "rappi.com", "ubereats.com", "glovoapp.com", "fu.do", "fudo.com",
 }
 
 # Placeholders que no se pueden vetar por dominio sin llevarse direcciones

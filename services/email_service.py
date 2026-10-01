@@ -1379,9 +1379,9 @@ def remitente_frio(variable: str) -> str | None:
 # respondiendo el mail, sin link de agenda.
 ASUNTO_FID_1 = "Un sistema de puntos como el de McDonald's para {n}"
 ASUNTO_FID_2 = "Sobre los puntos para {n}"
-# Juan (30/9): a quien no contesta se le vuelve a escribir cada mes. Por eso el
-# segundo ya no dice "último mail".
+# Juan (30/9): la secuencia es hoy, a los 15 días, al mes y a los tres meses.
 ASUNTO_FID_MES = "¿Te armamos el prototipo para {n}?"
+ASUNTO_FID_ULTIMO = "Último mail sobre los puntos para {n}"
 # El celular de Juan (30/9), no el de la agencia. En formato internacional
 # porque también les llega a restaurantes de Buenos Aires.
 _TELEFONO_FID = "+598 94 053 389"
@@ -1409,13 +1409,21 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
     if numero == 2:
         return ASUNTO_FID_2.format(n=n), [
             "Hola, ¿cómo va?",
-            f"Te escribí hace unos días por el sistema de puntos para {n}, para que "
+            f"Te escribí hace un par de semanas por el sistema de puntos para {n}, para que "
             f"tus clientes vuelvan más seguido.",
             "Si te interesa, te armamos un prototipo con tu marca y lo vemos en una "
             "videollamada de 15 minutos: respondé este mail y coordinamos.",
             "Gracias por el tiempo.",
         ]
-    # Del tercero en adelante, uno por mes.
+    if numero >= 4:
+        return ASUNTO_FID_ULTIMO.format(n=n), [
+            "Hola, ¿cómo va?",
+            f"Hace un tiempo te escribí por el sistema de puntos para {n}. No quiero "
+            f"insistir de más, así que este es el último mail: no te escribo más.",
+            "Si en algún momento te interesa, respondé este mail y te armamos un "
+            "prototipo con tu marca para verlo en una videollamada de 15 minutos.",
+            "Gracias por el tiempo.",
+        ]
     return ASUNTO_FID_MES.format(n=n), [
         "Hola, ¿cómo va?",
         f"Te vuelvo a escribir por el sistema de puntos para {n}: cada cliente suma "
@@ -1424,7 +1432,6 @@ def cuerpo_fidelidad(numero: int, negocio: str) -> tuple[str, list[str]]:
         "Te armamos un prototipo con tu marca, sin compromiso, y te lo mostramos en "
         "una videollamada de 15 minutos. Si te interesa, respondé este mail con el "
         "día y el horario que te queden cómodos.",
-        "Si preferís que no te escriba más, abajo está el link para darte de baja.",
     ]
 
 
@@ -1464,17 +1471,18 @@ def armar_fidelidad_email(negocio: str, unsub_url: str, numero: int = 1) -> tupl
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:24px;background:#f1f5f9">
-  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px;font-family:Arial,Helvetica,sans-serif">
+    <img src="{_LOGO_FIRMA}" alt="Scalerics" width="140" style="height:auto;max-width:140px;margin-bottom:22px;display:block">
     {cuerpo_html}
     <p style="{estilo_p};margin-top:24px">Juan<br><strong>Scalerics</strong><br>{_TELEFONO_FID}<br>
-      <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a></p>
+      <a href="https://www.scalerics.com" style="color:#0069a3">www.scalerics.com</a></p>
     <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
       Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
     </p>
   </div>
 </body></html>"""
     texto = ("\n\n".join(parrafos)
-             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nhttps://scalerics.com"
+             + f"\n\nJuan\nScalerics · {_TELEFONO_FID}\nwww.scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
     return asunto, html_mail, texto
 
