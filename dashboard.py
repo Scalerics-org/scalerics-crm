@@ -20280,6 +20280,12 @@ function _mkPintarPiezas(d) {
     aviso = `Ojo: los datos por pieza de ${nombre} empiezan el ` +
       `${fecha(d.datos_desde)}; lo de los días anteriores no está. ` + aviso;
   }
+  const sinNumeros = activas.filter(a => a.sin_numeros_del_mes).length;
+  if (sinNumeros) {
+    aviso = `${sinNumeros === 1 ? 'Una pieza que sigue al aire todavía no tiene'
+                                : SC.fmt(sinNumeros, 'numero') + ' piezas que siguen al aire todavía no tienen'} ` +
+      `números de ${nombre}: los datos de Meta se traen una vez por día. ` + aviso;
+  }
   const g = d.gasto_pauta;
   if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
     // La causa NO es que falte sincronizar piezas —eso decía antes y explicaba
@@ -20311,7 +20317,11 @@ function _mkPintarPiezas(d) {
     const dato = (rot, val, fmt) =>
       '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
       esc(SC.fmt(val, fmt)) + '</b></div>';
-    const fechas = !a.primer_dia ? ''
+    // Prendida y al aire, pero Meta todavía no mandó ningún día de este mes
+    // (el sync es una vez por día). Se dice eso en vez de mostrar ceros.
+    const fechas = a.sin_numeros_del_mes
+      ? 'Sigue al aire. Meta todavía no mandó números de este mes'
+      : !a.primer_dia ? ''
       : a.primer_dia === a.ultimo_dia
         ? `Con actividad el ${_mkDiaMes(a.primer_dia)}`
         : `Con actividad del ${_mkDiaMes(a.primer_dia)} al ${_mkDiaMes(a.ultimo_dia)}`;

@@ -672,3 +672,47 @@ def test_sin_ninguna_pieza_conocida_las_reuniones_son_none_y_no_cero(db):
     p = _de(piezas_del_mes(db, "2026-05"), "web")
     assert p["demos"] is None
     assert p["costo_demo"] is None
+
+
+# ── El mes en curso, antes de que Meta mande sus numeros (Juan, 1/10) ──────
+
+def test_el_dia_1_aparecen_las_que_se_siguen_pautando(db):
+    """1/10 a la manana: el sync todavia no trajo ningun dia de octubre.
+
+    Juan: "estamos en octubre, acaba de caer un lead [...] aunque se sigan
+    pautando las de setiembre ya deberian figurar". Antes el panel decia que
+    en octubre no se pauto nada.
+    """
+    _anuncio(db, "sigue")
+    _dia(db, "sigue", "2026-09-30", 20.0, leads=1)
+    _anuncio(db, "pausada", estado="PAUSED")
+    _dia(db, "pausada", "2026-09-30", 20.0)
+    _anuncio(db, "dormida")                      # prendida, sin mostrarse hace rato
+    _dia(db, "dormida", "2026-09-02", 20.0)
+    _lead(db, "2026-10-01T12:00:00+0000", "sigue")
+    r = piezas_del_mes(db, "2026-10", hoy="2026-10-01")
+    assert r["estado_datos"] == "con_piezas"
+    assert _ids(r["activas"]) == ["sigue"] and r["inactivas"] == []
+    p = r["activas"][0]
+    assert p["sin_numeros_del_mes"] is True
+    assert p["gasto"] is None and p["leads"] is None, "no es cero: no llego el dato"
+    assert p["leads_crm"] == 1, "el lead de hoy cae en su pieza"
+    assert r["totales"]["leads_crm_sin_pieza"] == 0
+    assert r["totales"]["gasto"] == 0
+
+
+def test_con_numeros_del_mes_la_pieza_no_se_repite(db):
+    _anuncio(db, "sigue")
+    _dia(db, "sigue", "2026-09-30", 20.0)
+    _dia(db, "sigue", "2026-10-01", 5.0)
+    r = piezas_del_mes(db, "2026-10", hoy="2026-10-01")
+    assert _ids(r["activas"]) == ["sigue"]
+    assert r["activas"][0]["gasto"] == 5.0
+    assert r["activas"][0]["sin_numeros_del_mes"] is False
+
+
+def test_un_mes_pasado_no_suma_las_que_estan_al_aire_hoy(db):
+    _anuncio(db, "sigue")
+    _dia(db, "sigue", "2026-09-30", 20.0)
+    r = piezas_del_mes(db, "2026-08", hoy="2026-10-01")
+    assert r["activas"] == []

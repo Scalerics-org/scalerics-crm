@@ -524,6 +524,18 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
         extremos = conn.execute(
             "SELECT MIN(date) AS primero FROM meta_ad_insights "
             "WHERE spend > 0 OR impressions > 0").fetchone()
+        # Las que estaban al aire en lo ultimo que se trajo de Meta y siguen
+        # prendidas. Solo sirven para el mes en curso (ver abajo).
+        al_aire = conn.execute("""
+            SELECT a.ad_id, a.ad_name, a.object_type, a.titulo,
+                   a.imagen_archivo, a.effective_status
+              FROM meta_ads a
+             WHERE a.effective_status = ?
+               AND (SELECT MAX(i.date) FROM meta_ad_insights i
+                     WHERE i.ad_id = a.ad_id
+                       AND (i.spend > 0 OR i.impressions > 0))
+                   >= date((SELECT MAX(date) FROM meta_ad_insights), '-1 day')
+        """, (ESTADO_EN_CURSO,)).fetchall()
         # Los leads de Meta que entraron al CRM en el mes, con la pieza que
         # dijo Meta. `meta_ad_id` vacio es "no se sabe", no "ninguna".
         from database import ENVIOS_META_SQL
@@ -593,14 +605,49 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
                       if hay_pieza_en_crm else None),
             "costo_demo": (_costo(gasto, demos_por_pieza.get(f["ad_id"], 0))
                            if hay_pieza_en_crm else None),
+            "sin_numeros_del_mes": False,
         }
         (activas if corriendo else inactivas).append(pieza)
 
+    # **El mes en curso muestra lo que se sigue pautando aunque Meta todavia no
+    # haya mandado numeros del mes.** Juan, 1/10: "estamos en octubre, acaba
+    # de caer un lead [...] aunque se sigan pautando las de setiembre ya
+    # deberian figurar". El sync corre una vez por dia y trae hasta ayer o un
+    # pedazo de hoy: el dia 1, octubre no tenia ni una fila y el panel decia
+    # "no se pauto ninguna pieza" con la pauta prendida. Entran las que estan
+    # prendidas hoy y estaban al aire en el ultimo dia traido (o el anterior:
+    # un dia a medias puede venir en cero). Una prendida que hace semanas no
+    # se muestra sigue sin entrar. Los numeros de Meta van en None, no en 0:
+    # no es que no gasto, es que el dato todavia no llego.
+    if mes == hoy[:7]:
+        ya = {p["ad_id"] for p in activas}
+        for f in al_aire:
+            if f["ad_id"] in ya:
+                continue
+            activas.append({
+                "ad_id": f["ad_id"],
+                "nombre": f["ad_name"],
+                "tipo": f["object_type"],
+                "titulo": f["titulo"],
+                "tiene_imagen": bool(f["imagen_archivo"]),
+                "corriendo": True,
+                "moneda": None,
+                "gasto": None, "impresiones": None, "clics": None,
+                "leads": None, "cpl": None, "ctr": None,
+                "primer_dia": None, "ultimo_dia": None,
+                "leads_crm": (crm_por_pieza.get(f["ad_id"], 0)
+                              if hay_pieza_en_crm else None),
+                "demos": (demos_por_pieza.get(f["ad_id"], 0)
+                          if hay_pieza_en_crm else None),
+                "costo_demo": None,
+                "sin_numeros_del_mes": True,
+            })
+
     todas = activas + inactivas
-    gasto = round(sum(p["gasto"] for p in todas), 2)
-    leads = sum(p["leads"] for p in todas)
-    impresiones = sum(p["impresiones"] for p in todas)
-    clics = sum(p["clics"] for p in todas)
+    gasto = round(sum(p["gasto"] or 0 for p in todas), 2)
+    leads = sum(p["leads"] or 0 for p in todas)
+    impresiones = sum(p["impresiones"] or 0 for p in todas)
+    clics = sum(p["clics"] or 0 for p in todas)
     en_tarjetas = sum(p["leads_crm"] or 0 for p in todas)
     gasto_pauta = (round(float(cuenta["gasto"] or 0), 2)
                    if cuenta["n"] else None)
