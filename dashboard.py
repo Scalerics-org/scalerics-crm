@@ -12853,6 +12853,11 @@ async function loadFinanzas() {
     document.getElementById('fin-por-cliente').innerHTML = _finBarras(data.por_cliente, FIN_VERDE);
 
     await loadMovimientos(desde, hasta);
+    // IVA y Fijos dependen del mes que se está mirando: si la pestaña está
+    // abierta, al moverse de mes se vuelve a pedir (Juan, 1/10: el IVA seguía
+    // mostrando el mes en el que se había abierto).
+    if (_finVistaActual === 'iva') loadIva();
+    if (_finVistaActual === 'fijos') loadFijos();
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     kpisEl.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
