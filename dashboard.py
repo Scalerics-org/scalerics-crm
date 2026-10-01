@@ -38,6 +38,7 @@ from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
 from routes.fidelidad import fidelidad_bp
+from routes.buscar import buscar_bp
 from routes.plexo import PUBLICAS as PLEXO_PUBLICAS, plexo_bp
 from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
@@ -1294,6 +1295,130 @@ async function fidEventoBorrar(eid) {
 """
 
 # Cobro automático con Plexo (services/plexo.py). Crudo por las barras del JS.
+BUSCAR_JS = r"""// ========== Buscador de arriba (1/10) ==========
+// Juan: "agregá un buscador arriba para buscar en las secciones, sino es un
+// mareo". Las secciones salen del menú que ya ve cada uno (lo escondido por
+// permisos no aparece); lo de adentro (leads, comercios, fichas, tareas) lo
+// trae /api/buscar (routes/buscar.py), que respeta los mismos permisos.
+// Atajo: Ctrl+K (o Cmd+K).
+const GB_PALABRAS = {
+  cal: 'agenda reuniones turnos', meta: 'facebook instagram anuncios leads formularios campañas',
+  marketing: 'embudo dossier radiografia', email_mkt: 'mails correos campañas newsletter',
+  linkedin: 'posts publicaciones', instagram: 'posts publicaciones historias',
+  sombra: 'pauta anuncios inversion', finanzas: 'plata gastos ingresos caja cobros facturas plexo tarjeta',
+  simulador: 'proyeccion', inteligencia_fin: 'numeros resultados',
+  seg_leads: 'llamadas seguimiento leads', wa: 'whatsapp chats mensajes bot',
+  notion_clients: 'presupuesto presupuestos notion esperando confirmacion clientes', demos: 'presentaciones',
+  plantillas: 'mensajes textos', clientes: 'clientes cuentas', projects: 'proyectos desarrollo',
+  tasks: 'pendientes to do', daily: 'diario standup', activity: 'historial log',
+  equipo: 'organigrama equipo personas', ausencias: 'vacaciones licencias', flujos: 'procesos',
+  horarios: 'horas', cola: 'outbound fidelidad restaurantes peluquerias comercios llamar captacion pipeline agenda visitas',
+  metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
+  credenciales: 'contraseñas claves passwords',
+};
+const _gb = {items: [], sel: 0, t: null, pedido: 0};
+
+function _gbNormal(t) {
+  return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function _gbSecciones(q) {
+  const out = [];
+  let grupo = '';
+  document.querySelectorAll('#sidebar .nav-section-label, #sidebar .nav-item[id^="nav-"]').forEach(el => {
+    if (el.classList.contains('nav-section-label')) { grupo = el.textContent.trim(); return; }
+    if (getComputedStyle(el).display === 'none') return;
+    const panel = el.id.slice(4);
+    const nombre = el.textContent.replace(/\s+/g, ' ').trim();
+    const texto = _gbNormal(nombre + ' ' + grupo + ' ' + (GB_PALABRAS[panel] || ''));
+    if (_gbNormal(q).split(' ').every(p => texto.includes(p))) {
+      out.push({tipo: 'seccion', titulo: nombre, detalle: grupo.charAt(0) + grupo.slice(1).toLowerCase(), el: el,
+        // Primero lo que empieza así, después lo que lo nombra, al final lo que sale por palabra clave.
+        peso: _gbNormal(nombre).startsWith(_gbNormal(q)) ? 0 : _gbNormal(nombre + ' ' + grupo).includes(_gbNormal(q)) ? 1 : 2});
+    }
+  });
+  return out.sort((a, b) => a.peso - b.peso).slice(0, 6);
+}
+
+function gbBuscar(q) {
+  const res = document.getElementById('gb-res');
+  q = (q || '').trim();
+  if (!q) { res.classList.remove('open'); res.innerHTML = ''; return; }
+  const secciones = _gbSecciones(q);
+  _gbPintar([{nombre: 'Secciones', items: secciones}]);
+  clearTimeout(_gb.t);
+  if (q.length < 2) return;
+  const n = ++_gb.pedido;
+  _gb.t = setTimeout(async () => {
+    let d = null;
+    try { const r = await fetch('/api/buscar?q=' + encodeURIComponent(q)); if (r.ok) d = await r.json(); } catch(e) {}
+    if (n !== _gb.pedido) return;  // ya escribió otra cosa
+    _gbPintar([{nombre: 'Secciones', items: secciones}].concat((d && d.grupos) || []));
+  }, 200);
+}
+
+function _gbPintar(grupos) {
+  const res = document.getElementById('gb-res');
+  _gb.items = [];
+  let h = '';
+  grupos.forEach(g => {
+    if (!g.items || !g.items.length) return;
+    h += '<div class="gb-grupo">' + esc(g.nombre) + '</div>';
+    g.items.forEach(it => {
+      const i = _gb.items.push(it) - 1;
+      h += '<div class="gb-it" data-i="' + i + '" onmousedown="event.preventDefault();gbIr(' + i + ')" onmouseenter="_gbMarcar(' + i + ')">'
+        + '<span class="gb-tit">' + esc(it.titulo) + '</span>' + (it.detalle ? '<span class="gb-det">' + esc(it.detalle) + '</span>' : '') + '</div>';
+    });
+  });
+  if (!h) h = '<div class="gb-vacio">No encontré nada con eso.</div>';
+  res.innerHTML = h;
+  res.classList.add('open');
+  _gbMarcar(0);
+}
+
+function _gbMarcar(i) {
+  _gb.sel = Math.max(0, Math.min(i, _gb.items.length - 1));
+  document.querySelectorAll('#gb-res .gb-it').forEach(el => el.classList.toggle('sel', Number(el.dataset.i) === _gb.sel));
+  const el = document.querySelector('#gb-res .gb-it.sel');
+  if (el) el.scrollIntoView({block: 'nearest'});
+}
+
+function gbTecla(e) {
+  if (e.key === 'ArrowDown') { e.preventDefault(); _gbMarcar(_gb.sel + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _gbMarcar(_gb.sel - 1); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (_gb.items.length) gbIr(_gb.sel); }
+  else if (e.key === 'Escape') { gbCerrar(); e.target.blur(); }
+}
+
+function gbCerrar() {
+  const res = document.getElementById('gb-res');
+  if (res) res.classList.remove('open');
+}
+
+function gbIr(i) {
+  const it = _gb.items[i];
+  if (!it) return;
+  gbCerrar();
+  const q = document.getElementById('gb-q');
+  q.value = '';
+  q.blur();
+  if (it.tipo === 'seccion') it.el.click();
+  else if (it.tipo === 'negocio') openClientPanel(it.id);
+  else if (it.tipo === 'comercio') { showPanel('cola'); fidAbrir(it.id); }
+  else if (it.tipo === 'proceso_venta') showPanel('notion_clients');
+  else if (it.tipo === 'tarea') showPanel('tasks');
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const q = document.getElementById('gb-q');
+    if (q) { q.focus(); q.select(); }
+  }
+});
+document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('#gb')) gbCerrar(); });
+"""
+
 PLEXO_JS = r"""// ========== Plexo: cobro automático ==========
 // services/plexo.py hace todo; aca solo se pinta y se aprietan botones.
 const PLX_ESTADOS = {
@@ -2612,6 +2737,18 @@ body.light #nav-sombra .nav-icon{stroke:#57534e}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
    version oscura en los dos temas a proposito: asi la presenta la marca. */
 .frase-equipo{display:flex;align-items:center;gap:14px;background:#0F2430;border-radius:12px;padding:10px 16px;margin-bottom:20px}
+.gb{position:relative;margin-bottom:12px;z-index:900}
+.gb-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--texto-debil);pointer-events:none}
+#gb-q{width:100%;box-sizing:border-box;padding:10px 12px 10px 36px;border-radius:10px;border:1px solid var(--borde-fuerte);background:var(--superficie);color:var(--texto);font:500 .88rem 'Inter',sans-serif}
+#gb-q:focus{outline:none;border-color:var(--azul);box-shadow:0 0 0 3px var(--azul-tinte)}
+.gb-res{display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);max-height:60vh;overflow-y:auto;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:12px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+.gb-res.open{display:block}
+.gb-grupo{font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue);padding:8px 10px 4px}
+.gb-it{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 10px;border-radius:8px;cursor:pointer}
+.gb-it.sel{background:var(--azul-tinte)}
+.gb-tit{color:var(--texto-fuerte);font-size:.84rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gb-det{color:var(--texto-debil);font-size:.72rem;white-space:nowrap}
+.gb-vacio{color:var(--texto-debil);font-size:.8rem;padding:12px 10px}
 .frase-equipo-logo{height:22px;width:auto;flex-shrink:0}
 .frase-equipo-texto{margin:0;font-size:.82rem;line-height:1.45;color:#EFEFEF}
 .frase-equipo-texto strong{color:#80CD2A;font-weight:600}
@@ -4146,6 +4283,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="main">
+  <div class="gb" id="gb" role="search">
+    <i data-lucide="search" class="gb-ico"></i>
+    <input id="gb-q" type="search" placeholder="Buscar sección, cliente, lead, comercio… (Ctrl+K)" autocomplete="off" aria-label="Buscar en el CRM"
+           oninput="gbBuscar(this.value)" onfocus="gbBuscar(this.value)" onkeydown="gbTecla(event)">
+    <div class="gb-res" id="gb-res" role="listbox"></div>
+  </div>
   <div class="frase-equipo" role="note">
     <img class="frase-equipo-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
     <p class="frase-equipo-texto">La IA avanza rápido, es cierto. Pero el mercado la entiende lento. <strong>Ahí están nuestras oportunidades.</strong></p>
@@ -14536,6 +14679,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*BUSCAR_JS*/
 // ========== Seguimiento de leads ==========
 // La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
 // semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
@@ -20714,7 +20858,8 @@ async function loadActivity() {
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
-).replace("/*PLEXO_JS*/", PLEXO_JS)
+).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */")
 
 
 _calendly_sync_state = {"at": 0.0}
@@ -20827,7 +20972,7 @@ def create_app(db_path: str) -> Flask:
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
-                credenciales_bp, fidelidad_bp, plexo_bp):
+                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp):
         app.register_blueprint(bp)
 
     @app.before_request
