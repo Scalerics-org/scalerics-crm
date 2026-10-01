@@ -407,16 +407,21 @@ def _desglose_del_fijo(r: dict, ajustes: dict) -> dict:
     cada mes (`finanzas._materializar_con_tarjeta`). Juan (1/10): "cuando
     agrego un fijo que se paga con débito no se desglosa como en cobro con
     tarjeta". Si la tarjeta no tiene comisión cargada, el error dice por qué
-    ese fijo se está anotando sin desglose."""
+    ese fijo se está anotando sin desglose.
+
+    Misma cuenta que la calculadora, con la parte del fijo mensual de Plexo
+    incluida (Juan, 1/10: "no coincide lo que me da en cobro con tarjeta con
+    lo que me queda en fijos")."""
     if r.get("tipo") != "ingreso" or not r.get("tarjeta"):
         return {}
     try:
         d = desglosar("precio", r["monto"], r["tarjeta"], ajustes, moneda=r["moneda"],
-                      tipo_cambio=r.get("tipo_cambio"), incluir_fijo=False)
+                      tipo_cambio=r.get("tipo_cambio"), incluir_fijo=True)
     except ValueError as e:
         return {"desglose_error": str(e)}
-    return {"desglose": {k: d[k] for k in ("comision_pct", "comision", "comision_iva", "plexo", "plexo_iva",
-                                           "iva_venta", "total", "deposito", "te_queda", "dias_habiles")}}
+    return {"desglose": {k: d[k] for k in ("precio", "comision_pct", "comision", "comision_iva", "plexo", "plexo_iva",
+                                           "fijo", "fijo_iva", "clientes", "iva_venta", "iva_dgi", "total",
+                                           "deposito", "te_queda", "dias_habiles")}}
 
 
 @finanzas_bp.route("/api/finanzas/recurrentes", methods=["POST"])

@@ -14293,12 +14293,15 @@ function _finFijoDesglose(f) {
   const d = f.desglose;
   if (!d) return '';
   const m = v => f.moneda + ' ' + (Math.round(v * 100) / 100).toLocaleString('es-UY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  // Mismo orden y mismos números que la tabla de "Cobro con tarjeta".
   return `<div class="fin-fijo-desglose">`
-    + `<span>Cobrás ${m(d.total)}${d.iva_venta ? ' (con IVA)' : ''}</span>`
+    + `<span>Cobrás ${m(d.total)} (${m(d.precio)} + IVA)</span>`
     + `<span class="fin-rojo">− comisión ${(d.comision_pct || 0).toLocaleString('es-UY')}% ${m(d.comision + d.comision_iva)}</span>`
+    + `<span>= entra al banco ${m(d.deposito)} en ${d.dias_habiles} ${d.dias_habiles === 1 ? 'día hábil' : 'días hábiles'}</span>`
     + `<span class="fin-rojo">− Plexo ${m(d.plexo + d.plexo_iva)}</span>`
-    + `<span>Depósito ${m(d.deposito)} en ${d.dias_habiles} ${d.dias_habiles === 1 ? 'día hábil' : 'días hábiles'}</span>`
-    + `<span class="fin-verde"><b>Te queda ${m(d.te_queda)}</b></span>`
+    + (d.fijo ? `<span class="fin-rojo">− parte del fijo de Plexo ${m(d.fijo + d.fijo_iva)} (entre ${d.clientes} clientes)</span>` : '')
+    + `<span class="fin-rojo">− IVA a DGI ${m(d.iva_dgi)}</span>`
+    + `<span class="fin-verde"><b>= te queda ${m(d.te_queda)}</b></span>`
     + `</div>`;
 }
 
