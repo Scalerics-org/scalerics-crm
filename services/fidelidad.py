@@ -23,6 +23,7 @@ horarios; guardar UTC obligaba a convertir en cada consulta.
 import csv
 import io
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -33,6 +34,8 @@ from datetime import date, datetime, timedelta
 from xml.etree import ElementTree as ET
 
 from services.seg_leads import MVD, ahora_mvd
+
+logger = logging.getLogger(__name__)
 
 ROL_VENDEDOR = "Vendedor Fidelidad"
 
@@ -445,7 +448,7 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
                       ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT"),
-                      ("mail_buscado_en", "TEXT")):
+                      ("mail_buscado_en", "TEXT"), ("notion_page_id", "TEXT")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
@@ -726,6 +729,8 @@ def registrar_llamada(db: str, pid: int, rid: str, usuario: str, nota: str = "",
         c.commit()
     finally:
         c.close()
+    if nuevo == "reunion_hecha" and p["estado"] != nuevo:
+        pasar_a_proceso_de_venta(db, pid)
     return get_prospecto(db, pid), None
 
 
@@ -766,7 +771,11 @@ def mover_estado(db: str, pid: int, nuevo: str, usuario: str, fecha_reunion: str
             c.commit()
     finally:
         c.close()
-    return get_prospecto(db, pid), None
+    venta = pasar_a_proceso_de_venta(db, pid) if nuevo == "reunion_hecha" and p["estado"] != nuevo else None
+    p = get_prospecto(db, pid)
+    if venta:
+        p["proceso_venta"] = venta
+    return p, None
 
 
 # ── puntaje y cola ───────────────────────────────────────────────────────────
@@ -1724,6 +1733,59 @@ def agregar_nota(db: str, pid: int, nota: str, autor: str, cuando: datetime | No
     linea = f"{cuando.strftime('%d/%m')} {autor}: {nota}" if autor else f"{cuando.strftime('%d/%m')}: {nota}"
     editar_prospecto(db, pid, {"notas": (linea + ("\n" + previas if previas else ""))[:4000]})
     return get_prospecto(db, pid)
+
+
+# ── a Proceso de venta (1/10) ────────────────────────────────────────────────
+# Juan: "cuando en el pipeline pasa a reunión hecha, pasalo a esperando
+# confirmación en proceso de ventas automáticamente". Proceso de venta es el
+# tablero de Clientes de Notion (services/notion_service.py). El comercio
+# guarda el id de su ficha: si vuelve a pasar por Reunión hecha, se mueve la
+# misma ficha en vez de crear otra.
+
+ESTADO_PROCESO_VENTA = "Esperando Confirmación Presupuesto"
+
+
+def _descripcion_venta(p: dict) -> str:
+    partes = [f"Scalerics Fidelidad · {p.get('tipo') or RUBROS.get(p.get('rubro') or '', 'Comercio')}"]
+    lugar = ", ".join(x for x in (p.get("direccion"), p.get("barrio"), p.get("ciudad")) if x)
+    if lugar:
+        partes.append(lugar)
+    dueno = " · ".join(x for x in (p.get("contacto"), p.get("contacto_tel")) if x)
+    if dueno:
+        partes.append(f"Dueño: {dueno}")
+    if p.get("telefono"):
+        partes.append(f"Local: {p['telefono']}")
+    if p.get("email"):
+        partes.append(p["email"])
+    return " — ".join(partes)
+
+
+def pasar_a_proceso_de_venta(db: str, pid: int) -> dict:
+    """Crea (o mueve) la ficha del comercio en Proceso de venta, en "Esperando
+    Confirmación Presupuesto". Nunca levanta excepción: devuelve {ok, error}
+    para que el pipeline avise, pero el cambio de etapa ya quedó hecho."""
+    from services import notion_service as ns
+    from database import get_notion_client_by_page
+    p = get_prospecto(db, pid)
+    if not p:
+        return {"ok": False, "error": "el prospecto no existe"}
+    try:
+        fila = get_notion_client_by_page(db, p["notion_page_id"]) if p.get("notion_page_id") else None
+        if fila:
+            ok, error = ns.mover_cliente(db, fila["id"], ESTADO_PROCESO_VENTA)
+            return {"ok": ok, "error": error, "estado": ESTADO_PROCESO_VENTA}
+        page_id, error = ns.crear_cliente(db, p["nombre"], ESTADO_PROCESO_VENTA, _descripcion_venta(p))
+    except Exception as e:
+        logger.warning("fidelidad: no se pudo pasar %s a Proceso de venta", p.get("nombre"), exc_info=True)
+        return {"ok": False, "error": f"{type(e).__name__}"}
+    if page_id:
+        c = _conn(db)
+        try:
+            c.execute("UPDATE fid_prospectos SET notion_page_id = ? WHERE id = ?", (page_id, pid))
+            c.commit()
+        finally:
+            c.close()
+    return {"ok": bool(page_id), "error": error, "estado": ESTADO_PROCESO_VENTA}
 
 
 # ── agenda ───────────────────────────────────────────────────────────────────

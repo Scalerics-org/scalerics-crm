@@ -913,6 +913,64 @@ def mover_cliente(db_path: str, cliente_id: int,
     return True, None
 
 
+def crear_cliente(db_path: str, nombre: str, estado_notion: str,
+                  descripcion: str | None = None) -> tuple[str | None, str | None]:
+    """Crea una ficha en el tablero de Clientes de Notion ("Proceso de venta")
+    y la deja en el espejo `notion_clients`. Devuelve (page_id, error).
+
+    La usa Fidelidad (1/10, Juan): cuando un comercio pasa a "Reunión hecha"
+    entra al proceso de venta en "Esperando Confirmación Presupuesto".
+
+    La property de estado no tiene nombre (ver `_estado_de`), asi que antes de
+    crear se lee el esquema del data source para sacar su id. Si la database no
+    tiene "Descripcion", se crea sin ella: que falte la descripcion no puede
+    dejar al comercio afuera del proceso.
+    """
+    if estado_notion not in GRUPOS_CLIENTES:
+        return None, f"'{estado_notion}' no es un estado del tablero de Clientes"
+    cfg = _config()
+    if not cfg:
+        return None, "falta NOTION_TOKEN: el sync con Notion esta apagado"
+    token, version, _ = cfg
+    ds = os.environ.get("NOTION_CLIENTS_DATA_SOURCE_ID", "")
+    if not ds:
+        return None, "falta NOTION_CLIENTS_DATA_SOURCE_ID"
+    headers = _headers(token, version)
+    try:
+        r = requests.get(f"{API}/data_sources/{ds}", headers=headers, timeout=TIMEOUT)
+        if r.status_code >= 300:
+            logger.warning("notion: leer el esquema de Clientes fallo con %s: %s", r.status_code, r.text[:300])
+            return None, f"Notion devolvio HTTP {r.status_code} al leer el tablero"
+        esquema = (r.json() or {}).get("properties") or {}
+    except Exception as e:
+        logger.warning("notion: leer el esquema de Clientes fallo", exc_info=True)
+        return None, f"no se pudo hablar con Notion: {type(e).__name__}"
+
+    clave = _clave_de_estado(esquema)
+    titulo = next((n for n, p in esquema.items() if (p or {}).get("type") == "title"), "Name")
+    if clave is None:
+        return None, "el tablero de Clientes no tiene una property de estado"
+    props = {titulo: {"title": [{"text": {"content": nombre[:200]}}]},
+             clave: {"status": {"name": estado_notion}}}
+    if descripcion and (esquema.get("Descripcion") or {}).get("type") == "rich_text":
+        props["Descripcion"] = {"rich_text": [{"text": {"content": descripcion[:1900]}}]}
+    try:
+        r = requests.post(f"{API}/pages", headers=headers, timeout=TIMEOUT,
+                          json={"parent": {"type": "data_source_id", "data_source_id": ds}, "properties": props})
+        if r.status_code >= 300:
+            logger.warning("notion: crear la ficha de %s fallo con %s: %s", nombre, r.status_code, r.text[:300])
+            return None, f"Notion devolvio HTTP {r.status_code} al crear la ficha"
+        page_id = (r.json() or {}).get("id")
+    except Exception as e:
+        logger.warning("notion: crear la ficha de %s fallo", nombre, exc_info=True)
+        return None, f"no se pudo hablar con Notion: {type(e).__name__}"
+    if not page_id:
+        return None, "Notion no devolvio el id de la ficha"
+    upsert_notion_client(db_path, page_id, nombre, status=estado_notion, descripcion=descripcion)
+    logger.info("notion: ficha de Clientes creada para %s en %r", nombre, estado_notion)
+    return page_id, None
+
+
 def _texto_de(prop: dict) -> str | None:
     """Concatena los fragmentos de una property de tipo `rich_text`."""
     partes = (prop or {}).get("rich_text") or []
