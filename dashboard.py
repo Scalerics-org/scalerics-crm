@@ -4851,7 +4851,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
           <label class="fb-label">IVA
             <select id="ft-iva" class="filter-select" onchange="_ftModoQueda()">
               <option value="suma" selected>Le sumo el IVA</option>
-              <option value="incluido" id="ft-iva-incluido" hidden>Ya incluye el IVA</option>
+              <option value="incluido" id="ft-iva-incluido">Ya incluye el IVA</option>
               <option value="sin">Sin IVA (no le facturo)</option>
             </select>
           </label>
@@ -13241,12 +13241,9 @@ function ftPregunta(cual) {
   const cobro = cual === 'cobro';
   document.getElementById('ft-q-cobro').classList.toggle('active', cobro);
   document.getElementById('ft-q-queda').classList.toggle('active', !cobro);
-  // "Ya incluye el IVA" solo tiene sentido cuando el monto es lo que se cobra.
-  const incl = document.getElementById('ft-iva-incluido');
-  incl.hidden = cobro;
-  incl.disabled = cobro;   // Safari no esconde opciones con hidden
-  if (cobro && document.getElementById('ft-iva').value === 'incluido')
-    document.getElementById('ft-iva').value = 'suma';
+  // Las tres opciones de IVA quedan en las dos preguntas (Juan, 1/10: "le
+  // sacaste la opción de IVA incluido"). En "¿Cuánto le cobro?" "ya incluye"
+  // da lo mismo que "le sumo": el resultado es lo que se cobra, con IVA.
   document.getElementById('ft-monto-rotulo').textContent =
     cobro ? 'Lo que querés que te quede' : 'Lo que le cobrás';
   _ftModoQueda();
