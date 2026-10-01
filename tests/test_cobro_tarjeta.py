@@ -485,3 +485,15 @@ def test_un_mes_anulado_no_se_rehace(app, cli):
     assert r.get_json()["mes_rehecho"] is False
     assert listar_movimientos(db) == []
 
+
+
+def test_la_lista_de_fijos_trae_el_desglose_de_la_tarjeta(app, cli):
+    """Juan (1/10): un fijo con débito tiene que verse desglosado como en
+    "Cobro con tarjeta" (comisión, Plexo, depósito, lo que queda)."""
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Cliente Debito", "phone": "+598700999"})
+    assert _fijo_con_tarjeta(cli, cid).status_code == 201
+    fijos = {f["tarjeta"]: f for f in cli.get("/api/finanzas/recurrentes").get_json()}
+    d = fijos["visa_debito"]["desglose"]
+    assert d["comision"] > 0 and d["plexo"] > 0
+    assert d["te_queda"] < d["deposito"] <= d["total"]

@@ -383,6 +383,7 @@ def api_listar_recurrentes():
     db = _db()
     nombres: dict = {}
     salida = []
+    ajustes = unir_ajustes(get_ajuste(db, _AJUSTE_TARJETA))
     for r in listar_recurrentes(db):
         try:
             usd = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
@@ -395,8 +396,27 @@ def api_listar_recurrentes():
         # "Diego Hinze · paga con Visa débito" sin otra consulta.
         salida.append({**r, "monto_usd": usd,
                        "client_name": nombres.get(cid) if cid else None,
-                       "tarjeta_nombre": TARJETAS.get(r.get("tarjeta") or "")})
+                       "tarjeta_nombre": TARJETAS.get(r.get("tarjeta") or ""),
+                       **_desglose_del_fijo(r, ajustes)})
     return jsonify(salida)
+
+
+def _desglose_del_fijo(r: dict, ajustes: dict) -> dict:
+    """El desglose de un ingreso fijo que el cliente paga con tarjeta, igual
+    que en "Cobro con tarjeta" y con las mismas cuentas con las que se genera
+    cada mes (`finanzas._materializar_con_tarjeta`). Juan (1/10): "cuando
+    agrego un fijo que se paga con débito no se desglosa como en cobro con
+    tarjeta". Si la tarjeta no tiene comisión cargada, el error dice por qué
+    ese fijo se está anotando sin desglose."""
+    if r.get("tipo") != "ingreso" or not r.get("tarjeta"):
+        return {}
+    try:
+        d = desglosar("precio", r["monto"], r["tarjeta"], ajustes, moneda=r["moneda"],
+                      tipo_cambio=r.get("tipo_cambio"), incluir_fijo=False)
+    except ValueError as e:
+        return {"desglose_error": str(e)}
+    return {"desglose": {k: d[k] for k in ("comision_pct", "comision", "comision_iva", "plexo", "plexo_iva",
+                                           "iva_venta", "total", "deposito", "te_queda", "dias_habiles")}}
 
 
 @finanzas_bp.route("/api/finanzas/recurrentes", methods=["POST"])

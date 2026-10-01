@@ -1205,6 +1205,12 @@ def init_db(db_path: str) -> None:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Si lleva IVA (Juan, 1/10). Igual que en los movimientos: monto_usd
+        # es el neto e iva_usd el 22% aparte; iva_incluido dice si el monto
+        # que se escribió ya lo traía adentro.
+        _add_column(conn, "finanzas_esenciales", "facturado", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "finanzas_esenciales", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "finanzas_esenciales", "iva_usd", "REAL NOT NULL DEFAULT 0")
 
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles

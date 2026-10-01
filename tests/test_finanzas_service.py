@@ -310,6 +310,22 @@ def test_gastos_esenciales_suman_lo_minimo_por_mes(db):
     assert listar_esenciales(db)["total_mensual_usd"] == 60
 
 
+def test_gastos_esenciales_con_iva_y_sin_tocar_movimientos(db):
+    """Juan (1/10): "agregá si tiene IVA"; y los esenciales son solo para ver,
+    no se agregan a movimientos."""
+    from services.finanzas import guardar_esencial, listar_esenciales
+    guardar_esencial(db, {"nombre": "Contador", "monto": 100, "facturado": True}, "Juan")
+    guardar_esencial(db, {"nombre": "Oficina", "monto": 122, "facturado": True, "iva_incluido": True}, "Juan")
+    guardar_esencial(db, {"nombre": "Fly.io", "monto": 30}, "Juan")
+    d = listar_esenciales(db)
+    it = {i["nombre"]: i for i in d["items"]}
+    assert it["Contador"]["iva_usd"] == 22 and it["Contador"]["por_mes_usd"] == 122
+    assert it["Oficina"]["monto_usd"] == 100 and it["Oficina"]["iva_usd"] == 22 and it["Oficina"]["por_mes_usd"] == 122
+    assert it["Fly.io"]["iva_usd"] == 0 and it["Fly.io"]["por_mes_usd"] == 30
+    assert d["total_mensual_usd"] == 274 and d["iva_mensual_usd"] == 44
+    assert listar_movimientos(db) == []
+
+
 # ── resultado real y aportes en el balance (Juan, 1/10) ──────────────────────
 
 def _aportes_y_ventas(db):

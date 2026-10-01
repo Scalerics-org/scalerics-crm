@@ -1104,9 +1104,15 @@ def listar_esenciales(db_path: str) -> dict:
     finally:
         c.close()
     for it in items:
-        it["por_mes_usd"] = round(it["monto_usd"] / FRECUENCIAS_ESENCIAL.get(it["frecuencia"], 1), 2)
+        div = FRECUENCIAS_ESENCIAL.get(it["frecuencia"], 1)
+        it["total_usd"] = _r2(it["monto_usd"] + (it.get("iva_usd") or 0))
+        # Lo que tiene que entrar: con el IVA adentro si lo lleva.
+        it["por_mes_usd"] = round(it["total_usd"] / div, 2)
+        it["iva_por_mes_usd"] = round((it.get("iva_usd") or 0) / div, 2)
     mensual = round(sum(it["por_mes_usd"] for it in items), 2)
-    return {"items": items, "total_mensual_usd": mensual, "total_anual_usd": round(mensual * 12, 2)}
+    iva = round(sum(it["iva_por_mes_usd"] for it in items), 2)
+    return {"items": items, "total_mensual_usd": mensual, "total_anual_usd": round(mensual * 12, 2),
+            "iva_mensual_usd": iva}
 
 
 def validar_esencial(data: dict) -> tuple[dict | None, str | None]:
@@ -1129,9 +1135,19 @@ def validar_esencial(data: dict) -> tuple[dict | None, str | None]:
         monto_usd = a_usd(monto, moneda, tc)
     except ValueError as e:
         return None, str(e)
+    # IVA (Juan, 1/10): "más IVA" le suma el 22% aparte; "IVA incluido"
+    # separa el 22% de adentro del monto. El monto escrito se guarda tal cual.
+    facturado = 1 if data.get("facturado") in (True, 1, "1", "true", "on") else 0
+    iva_incluido = 1 if facturado and data.get("iva_incluido") in (True, 1, "1", "true", "on") else 0
+    iva_usd = 0.0
+    if facturado and iva_incluido:
+        monto_usd, iva_usd = desglosar_iva_incluido(monto_usd)
+    elif facturado:
+        iva_usd = _r2(iva_sobre(monto_usd))
     return {"nombre": nombre, "motivo": (data.get("motivo") or "").strip()[:300] or None,
             "monto": monto, "moneda": moneda, "tipo_cambio": tc if moneda != "USD" else None,
             "monto_usd": monto_usd, "frecuencia": frecuencia,
+            "facturado": facturado, "iva_incluido": iva_incluido, "iva_usd": iva_usd,
             "notas": (data.get("notas") or "").strip()[:1000] or None}, None
 
 
