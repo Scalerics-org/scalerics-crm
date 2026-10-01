@@ -4857,8 +4857,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
             <select id="ft-tarjeta" class="filter-select" onchange="ftCalcular()"></select>
           </label>
           <label class="fb-label">Tipo de cambio <input type="number" id="ft-tc" class="fb-campo" step="0.01" min="0" oninput="ftCalcular()"></label>
-          <label class="fbd-check"><input type="checkbox" id="ft-fijo" checked onchange="ftCalcular()"> Sumar el fijo de Plexo repartido entre</label>
-          <label class="fb-label">Clientes <input type="number" id="ft-clientes" class="fb-campo" step="1" min="1" style="width:80px" oninput="ftCalcular()"></label>
         </div>
         <div class="fin-kpis" id="ft-kpis" style="margin-top:18px"></div>
         <div id="ft-desglose"></div>
@@ -13198,8 +13196,6 @@ async function loadCobroTarjeta() {
   sel.value = previa || 'visa_credito';
   const tc = document.getElementById('ft-tc');
   if (!tc.value) tc.value = _ftAjustes.tipo_cambio;
-  const cl = document.getElementById('ft-clientes');
-  if (!cl.value) cl.value = _ftAjustes.clientes_tarjeta;
   _ftPintarAjustes();
   _ftCargarSelects();
   ftCalcular();
@@ -13262,8 +13258,9 @@ function _ftParams() {
   q.set('moneda', document.getElementById('ft-moneda').value);
   q.set('tarjeta', document.getElementById('ft-tarjeta').value);
   q.set('tipo_cambio', document.getElementById('ft-tc').value);
-  q.set('incluir_fijo', document.getElementById('ft-fijo').checked ? '1' : '0');
-  q.set('clientes', document.getElementById('ft-clientes').value);
+  // Sin el fijo mensual de Plexo (Juan, 1/10): ya es el gasto fijo
+  // "Pasarela de Pagos". Plexo acá solo cobra lo de cada cobro.
+  q.set('incluir_fijo', '0');
   q.set('fecha', document.getElementById('ft-fecha').value || _finBalHoy());
   return q;
 }
@@ -13464,7 +13461,6 @@ async function ftGuardarAjustes() {
     if (!r.ok) throw new Error(res.error || 'no se pudo guardar');
     ok.style.display = '';
     document.getElementById('ft-tc').value = '';
-    document.getElementById('ft-clientes').value = '';
     loadCobroTarjeta();
   } catch (e) {
     err.textContent = 'Error: ' + e.message;

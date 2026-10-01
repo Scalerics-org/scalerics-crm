@@ -409,14 +409,14 @@ def _desglose_del_fijo(r: dict, ajustes: dict) -> dict:
     tarjeta". Si la tarjeta no tiene comisión cargada, el error dice por qué
     ese fijo se está anotando sin desglose.
 
-    Misma cuenta que la calculadora, con la parte del fijo mensual de Plexo
-    incluida (Juan, 1/10: "no coincide lo que me da en cobro con tarjeta con
-    lo que me queda en fijos")."""
+    Misma cuenta que la calculadora (Juan, 1/10: "no coincide lo que me da
+    en cobro con tarjeta con lo que me queda en fijos"). Sin el fijo mensual
+    de Plexo: ese ya es su propio gasto fijo ("Pasarela de Pagos")."""
     if r.get("tipo") != "ingreso" or not r.get("tarjeta"):
         return {}
     try:
         d = desglosar("precio", r["monto"], r["tarjeta"], ajustes, moneda=r["moneda"],
-                      tipo_cambio=r.get("tipo_cambio"), incluir_fijo=True)
+                      tipo_cambio=r.get("tipo_cambio"), incluir_fijo=False)
     except ValueError as e:
         return {"desglose_error": str(e)}
     return {"desglose": {k: d[k] for k in ("precio", "comision_pct", "comision", "comision_iva", "plexo", "plexo_iva",
@@ -880,7 +880,7 @@ def _desglose_de(data) -> tuple[dict | None, str | None]:
             ajustes=_ajustes_tarjeta(),
             moneda=data.get("moneda") or "USD",
             tipo_cambio=data.get("tipo_cambio") or None,
-            incluir_fijo=_si(data.get("incluir_fijo", True)),
+            incluir_fijo=_si(data.get("incluir_fijo", False)),
             clientes=data.get("clientes") or None,
         ), None
     except (TypeError, ValueError) as e:

@@ -495,7 +495,7 @@ def test_la_lista_de_fijos_trae_el_desglose_de_la_tarjeta(app, cli):
     assert _fijo_con_tarjeta(cli, cid).status_code == 201
     fijos = {f["tarjeta"]: f for f in cli.get("/api/finanzas/recurrentes").get_json()}
     d = fijos["visa_debito"]["desglose"]
-    assert d["comision"] > 0 and d["plexo"] > 0 and d["fijo"] > 0
+    assert d["comision"] > 0 and d["plexo"] > 0 and d["fijo"] == 0
     # Lo mismo que da la calculadora para ese precio (Juan, 1/10).
     calc = cli.get("/api/finanzas/tarjeta/desglose?modo=precio&monto=120&tarjeta=visa_debito&moneda=USD").get_json()
     assert d["te_queda"] == calc["te_queda"] and d["iva_dgi"] == calc["iva_dgi"]
