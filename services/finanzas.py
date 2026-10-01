@@ -28,9 +28,19 @@ MONEDAS = ("USD", "UYU")
 CATEGORIAS = {
     "egreso": ["infraestructura", "herramientas", "publicidad",
                "retiros", "impuestos", "servicios", "comisiones", "otros"],
+    # "aporte" (Juan, 1/10): plata que ponen los socios. Es un ingreso y suma
+    # en Ingresos, pero tiene su propia tarjeta (amarilla) para diferenciarlo
+    # de lo que se vende.
     "ingreso": ["desarrollo_web", "software_medida", "mantenimiento",
-                "marketing", "otros"],
+                "marketing", "aporte", "otros"],
 }
+
+CATEGORIA_APORTE = "aporte"
+
+
+def _aportes(movimientos: list[dict]) -> float:
+    return round(sum(m["monto_usd"] for m in movimientos
+                     if m["tipo"] == "ingreso" and m["categoria"] == CATEGORIA_APORTE), 2)
 
 
 # Tasa basica de Uruguay. Se guarda el IVA calculado en cada movimiento en vez
@@ -491,6 +501,9 @@ def resumen(db_path: str, desde: str, hasta: str) -> dict:
             "ingresos_con_iva_usd": ingresos_con_iva,
             "egresos_con_iva_usd": egresos_con_iva,
             "neto_con_iva_usd": round(ingresos_con_iva - egresos_con_iva, 2),
+            # Ya están dentro de ingresos_usd: es la parte que no es venta.
+            "aportes_usd": _aportes(movs),
+            "aportes_previos_usd": _aportes(prev),
         },
         "serie": serie,
         "por_categoria": por_categoria,
