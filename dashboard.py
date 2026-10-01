@@ -4846,7 +4846,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="hidden" id="ft-modo" value="quiero_llevarme">
         <div class="fb-controles">
           <label class="fb-label"><span id="ft-monto-rotulo">Lo que querés que te quede</span> <input type="number" id="ft-monto" class="fb-campo" step="0.01" min="0" value="300" oninput="ftCalcular()"></label>
-          <label class="fbd-check" id="ft-con-iva-row" style="display:none"><input type="checkbox" id="ft-con-iva" onchange="_ftModoQueda()"> El monto ya incluye el IVA</label>
+          <!-- Juan (1/10): hay clientes que no quieren factura. Tres formas:
+               se le suma el IVA, ya lo incluye, o sin IVA (no se factura). -->
+          <label class="fb-label">IVA
+            <select id="ft-iva" class="filter-select" onchange="_ftModoQueda()">
+              <option value="suma" selected>Le sumo el IVA</option>
+              <option value="incluido" id="ft-iva-incluido" hidden>Ya incluye el IVA</option>
+              <option value="sin">Sin IVA (no le facturo)</option>
+            </select>
+          </label>
           <label class="fb-label">Moneda
             <select id="ft-moneda" class="filter-select" onchange="ftCalcular()">
               <option value="USD" selected>Dólares</option>
@@ -13233,7 +13241,12 @@ function ftPregunta(cual) {
   const cobro = cual === 'cobro';
   document.getElementById('ft-q-cobro').classList.toggle('active', cobro);
   document.getElementById('ft-q-queda').classList.toggle('active', !cobro);
-  document.getElementById('ft-con-iva-row').style.display = cobro ? 'none' : '';
+  // "Ya incluye el IVA" solo tiene sentido cuando el monto es lo que se cobra.
+  const incl = document.getElementById('ft-iva-incluido');
+  incl.hidden = cobro;
+  incl.disabled = cobro;   // Safari no esconde opciones con hidden
+  if (cobro && document.getElementById('ft-iva').value === 'incluido')
+    document.getElementById('ft-iva').value = 'suma';
   document.getElementById('ft-monto-rotulo').textContent =
     cobro ? 'Lo que querés que te quede' : 'Lo que le cobrás';
   _ftModoQueda();
@@ -13241,8 +13254,9 @@ function ftPregunta(cual) {
 
 function _ftModoQueda() {
   const cobro = document.getElementById('ft-q-cobro').classList.contains('active');
+  const iva = document.getElementById('ft-iva').value;
   document.getElementById('ft-modo').value = cobro ? 'quiero_llevarme'
-    : (document.getElementById('ft-con-iva').checked ? 'total' : 'precio');
+    : (iva === 'incluido' ? 'total' : 'precio');
   ftCalcular();
 }
 
@@ -13261,6 +13275,7 @@ function _ftParams() {
   // Sin el fijo mensual de Plexo (Juan, 1/10): ya es el gasto fijo
   // "Pasarela de Pagos". Plexo acá solo cobra lo de cada cobro.
   q.set('incluir_fijo', '0');
+  q.set('sin_factura', document.getElementById('ft-iva').value === 'sin' ? '1' : '0');
   q.set('fecha', document.getElementById('ft-fecha').value || _finBalHoy());
   return q;
 }
@@ -13290,7 +13305,7 @@ async function _ftCalcularYa() {
   kpis.innerHTML =
     '<div class="fin-kpi"><div class="fin-kpi-label">Le cobrás a la tarjeta</div>'
     + '<div class="fin-kpi-valor">' + f(d.total) + '</div>'
-    + '<div class="fin-kpi-var">' + f(d.precio) + ' + IVA</div></div>'
+    + '<div class="fin-kpi-var">' + (d.sin_factura ? 'sin IVA, no se factura' : f(d.precio) + ' + IVA') + '</div></div>'
     + '<div class="fin-kpi"><div class="fin-kpi-label">Entra al banco</div>'
     + '<div class="fin-kpi-valor">' + f(d.deposito) + '</div>'
     + '<div class="fin-kpi-var">el ' + _ftFecha(d.acreditacion_esperada) + ' (' + d.dias_habiles + ' días hábiles)</div></div>'
@@ -13302,19 +13317,25 @@ async function _ftCalcularYa() {
     '<tr' + (fuerte ? ' style="font-weight:700"' : '') + '><td>' + signo + ' ' + esc(nombre) + '</td>'
     + '<td style="text-align:right">' + f(monto) + '</td>'
     + '<td style="white-space:normal;color:var(--texto-debil)">' + esc(nota) + '</td></tr>';
-  let filas =
-    fila('', 'Precio (sin IVA)', d.precio, 'Lo que acordás con el cliente. Va en la factura.')
-    + fila('+', 'IVA 22%', d.iva_venta, 'IVA ventas. No es tuyo: es de DGI.')
-    + fila('=', 'Le cobrás a la tarjeta', d.total, 'Lo que ve el cliente en su resumen.', true)
-    + fila('−', 'Comisión ' + d.tarjeta_nombre + ' ' + pct + '%', d.comision, 'La tarjeta la descuenta del depósito. Es un gasto tuyo.')
-    + fila('−', 'IVA de la comisión', d.comision_iva, 'IVA compras: se resta de lo que le pagás a DGI.')
+  const sin = !!d.sin_factura;
+  let filas = sin
+    ? fila('=', 'Le cobrás a la tarjeta', d.total, 'Sin factura: no lleva IVA. Es lo que ve el cliente en su resumen.', true)
+    : fila('', 'Precio (sin IVA)', d.precio, 'Lo que acordás con el cliente. Va en la factura.')
+      + fila('+', 'IVA 22%', d.iva_venta, 'IVA ventas. No es tuyo: es de DGI.')
+      + fila('=', 'Le cobrás a la tarjeta', d.total, 'Lo que ve el cliente en su resumen.', true);
+  filas += fila('−', 'Comisión ' + d.tarjeta_nombre + ' ' + pct + '%', d.comision, 'La tarjeta la descuenta del depósito. Es un gasto tuyo.')
+    + fila('−', 'IVA de la comisión', d.comision_iva, sin
+        ? 'Te lo cobra la tarjeta igual. Sin factura no hay IVA ventas donde descontarlo: se cuenta como costo.'
+        : 'IVA compras: se resta de lo que le pagás a DGI.')
     + fila('=', 'Entra al banco', d.deposito, 'Lo que vas a ver en la cuenta, el ' + _ftFecha(d.acreditacion_esperada) + '.', true)
     + fila('−', 'Plexo por este cobro + IVA', d.plexo + d.plexo_iva, 'Te lo factura Plexo a fin de mes, junto con el fijo.');
   if (d.incluir_fijo) {
     filas += fila('−', 'Parte del fijo de Plexo + IVA', d.fijo + d.fijo_iva, 'El fijo mensual repartido entre ' + d.clientes + ' clientes. Se paga una vez por mes, no por cobro.');
   }
-  filas += fila('−', 'IVA a pagar a DGI', d.iva_dgi, 'IVA ventas menos IVA compras (' + f(d.iva_compras) + ').')
-    + fila('=', 'Te queda de verdad', d.te_queda, 'Tu plata, ya sin impuestos ni comisiones.', true);
+  if (!sin) filas += fila('−', 'IVA a pagar a DGI', d.iva_dgi, 'IVA ventas menos IVA compras (' + f(d.iva_compras) + ').');
+  filas += fila('=', 'Te queda de verdad', d.te_queda, sin
+      ? 'Tu plata, ya sin comisiones ni el IVA que te cobran la tarjeta y Plexo.'
+      : 'Tu plata, ya sin impuestos ni comisiones.', true);
   tabla.innerHTML = '<div class="fb-scroll"><table class="fin-tabla"><thead><tr><th>Concepto</th>'
     + '<th style="text-align:right">Monto</th><th>A dónde va</th></tr></thead><tbody>'
     + filas + '</tbody></table></div>';
@@ -13331,7 +13352,7 @@ async function ftRegistrar() {
   const d = _ftUltimo;
   const cuerpo = {
     modo: 'precio', monto: d.precio, moneda: d.moneda, tarjeta: d.tarjeta,
-    tipo_cambio: d.tipo_cambio,
+    tipo_cambio: d.tipo_cambio, sin_factura: !!d.sin_factura,
     fecha: document.getElementById('ft-fecha').value,
     concepto: document.getElementById('ft-concepto').value,
     categoria: document.getElementById('ft-categoria').value || 'mantenimiento',

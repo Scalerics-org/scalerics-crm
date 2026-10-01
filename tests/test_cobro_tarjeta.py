@@ -552,3 +552,43 @@ def test_la_lista_de_fijos_trae_el_desglose_de_la_tarjeta(app, cli):
     calc = cli.get("/api/finanzas/tarjeta/desglose?modo=precio&monto=120&tarjeta=visa_debito&moneda=USD").get_json()
     assert d["te_queda"] == calc["te_queda"] and d["iva_dgi"] == calc["iva_dgi"]
     assert d["te_queda"] < d["deposito"] <= d["total"]
+
+
+# ── sin factura (Juan, 1/10): sin IVA ventas; el IVA de la tarjeta y Plexo es costo ──
+
+def test_sin_factura_no_hay_iva_ventas_y_el_iva_de_los_costos_se_resta():
+    d = desglosar("precio", 100, "visa_credito", AJUSTES_POR_DEFECTO, sin_factura=True)
+    assert d["sin_factura"] is True
+    assert d["iva_venta"] == 0 and d["total"] == d["precio"] == 100 and d["iva_dgi"] == 0
+    assert d["comision"] == pytest.approx(3.30)
+    esperado = 100 - d["comision"] - d["comision_iva"] - d["plexo"] - d["plexo_iva"] - d["fijo"] - d["fijo_iva"]
+    assert d["te_queda"] == pytest.approx(esperado, abs=0.01)
+    con = desglosar("precio", 100, "visa_credito", AJUSTES_POR_DEFECTO)
+    assert d["te_queda"] < con["te_queda"]
+
+
+def test_sin_factura_precio_y_total_dan_lo_mismo():
+    a = desglosar("precio", 250, "visa_debito", AJUSTES_POR_DEFECTO, sin_factura=True)
+    b = desglosar("total", 250, "visa_debito", AJUSTES_POR_DEFECTO, sin_factura=True)
+    assert a["total"] == b["total"] == 250 and a["te_queda"] == b["te_queda"]
+
+
+@pytest.mark.parametrize("tarjeta", ["visa_credito", "master_debito"])
+def test_sin_factura_cuanto_le_cobro_deja_lo_que_queres(tarjeta):
+    d = desglosar("quiero_llevarme", 300, tarjeta, AJUSTES_POR_DEFECTO, sin_factura=True)
+    assert d["te_queda"] == pytest.approx(300, abs=0.05)
+    assert d["total"] == d["precio"]
+
+
+def test_registrar_un_cobro_sin_factura(app, cli):
+    db = app.config["_DB"]
+    r = cli.post("/api/finanzas/cobros-tarjeta", json={
+        "modo": "precio", "monto": 100, "moneda": "USD", "tarjeta": "visa_credito",
+        "fecha": _hoy(), "concepto": "Sin factura", "sin_factura": True})
+    assert r.status_code == 201
+    movs = {m["tipo"] + ":" + m["categoria"]: m for m in listar_movimientos(db)}
+    ingreso = [m for m in listar_movimientos(db) if m["tipo"] == "ingreso"][0]
+    assert ingreso["facturado"] == 0 and not ingreso["iva_usd"] and ingreso["monto"] == 100
+    # La comisión y Plexo sí vienen con factura de ellos.
+    assert all(m["facturado"] == 1 for m in listar_movimientos(db) if m["tipo"] == "egreso")
+    assert r.get_json()["desglose"]["total"] == 100
