@@ -268,3 +268,8 @@ def test_en_esenciales_el_boton_grande_carga_un_esencial_y_no_un_movimiento():
     Movimientos. Los esenciales son solo para ver."""
     assert 'onclick="_finBotonNuevo()"' in HTML
     assert "if (_finVistaActual === 'esenciales') abrirEsencial();" in HTML
+
+
+def test_cambiar_de_mes_refresca_el_iva_si_esta_abierto():
+    """Juan (1/10): al pasar de mes el IVA seguía mostrando el anterior."""
+    assert "if (_finVistaActual === 'iva') loadIva();" in HTML
