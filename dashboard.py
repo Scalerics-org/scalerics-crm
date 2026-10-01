@@ -1349,15 +1349,18 @@ async function loadEsenciales() {
     + '<div class="fin-kpi-valor fin-naranja">' + _finUsd(d.total_mensual_usd) + '</div>'
     + '<div class="fin-kpi-var">Lo que tiene que entrar para que Scalerics siga andando</div></div>'
     + '<div class="fin-kpi"><div class="fin-kpi-label">Por año</div><div class="fin-kpi-valor">' + _finUsd(d.total_anual_usd) + '</div>'
-    + '<div class="fin-kpi-var">' + d.items.length + (d.items.length === 1 ? ' gasto esencial' : ' gastos esenciales') + '</div></div>';
+    + '<div class="fin-kpi-var">' + d.items.length + (d.items.length === 1 ? ' gasto esencial' : ' gastos esenciales') + '</div></div>'
+    + (d.iva_mensual_usd ? '<div class="fin-kpi"><div class="fin-kpi-label">IVA adentro, por mes</div><div class="fin-kpi-valor">' + _finUsd(d.iva_mensual_usd) + '</div>'
+      + '<div class="fin-kpi-var">Ya sumado en lo mínimo por mes</div></div>' : '');
   if (!d.items.length) {
     cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">Todavía no hay gastos esenciales. Cargá los que, si faltan, Scalerics no puede seguir (servidores, dominios, sueldos clave…).</div>';
     return;
   }
-  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Gasto</th><th>Por qué es esencial</th><th>Monto</th><th>Frecuencia</th><th>Por mes</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
+  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Gasto</th><th>Por qué es esencial</th><th>Monto</th><th>IVA</th><th>Frecuencia</th><th>Por mes</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
     + d.items.map(it => '<tr><td><b>' + esc(it.nombre) + '</b>' + (it.notas ? '<div style="color:var(--texto-debil);font-size:.72rem">' + esc(it.notas) + '</div>' : '') + '</td>'
       + '<td>' + esc(it.motivo || '') + '</td>'
       + '<td>' + (it.moneda === 'USD' ? _finUsd(it.monto) : 'UYU ' + Math.round(it.monto).toLocaleString('es-UY')) + '</td>'
+      + '<td>' + (it.facturado ? (it.iva_incluido ? 'Incluido' : 'Más IVA') + ' <span style="color:var(--texto-debil)">(' + _finUsd(it.iva_usd) + ')</span>' : '<span style="color:var(--texto-debil)">Sin IVA</span>') + '</td>'
       + '<td>' + (it.frecuencia === 'anual' ? 'Anual' : 'Mensual') + '</td>'
       + '<td class="fin-naranja"><b>' + _finUsd(it.por_mes_usd) + '</b></td>'
       + (lectura ? '' : '<td style="white-space:nowrap"><button class="cal-today-btn" onclick="abrirEsencial(' + it.id + ')">Editar</button> <button class="cal-today-btn" onclick="borrarEsencial(' + it.id + ')">Borrar</button></td>')
@@ -1376,6 +1379,7 @@ function abrirEsencial(id) {
   document.getElementById('fin-ese-tc').value = it.tipo_cambio || '';
   document.getElementById('fin-ese-frecuencia').value = it.frecuencia || 'mensual';
   document.getElementById('fin-ese-notas').value = it.notas || '';
+  document.getElementById('fin-ese-iva').value = it.facturado ? (it.iva_incluido ? 'incluido' : 'mas') : 'no';
   document.getElementById('fin-ese-error').textContent = '';
   _finEseMoneda();
   document.getElementById('fin-ese-modal').classList.add('open');
@@ -1394,6 +1398,9 @@ async function guardarEsencial() {
   const body = {};
   ['nombre', 'motivo', 'monto', 'moneda', 'frecuencia', 'notas'].forEach(k => { body[k] = document.getElementById('fin-ese-' + k).value; });
   body.tipo_cambio = document.getElementById('fin-ese-tc').value;
+  const iva = document.getElementById('fin-ese-iva').value;
+  body.facturado = iva !== 'no';
+  body.iva_incluido = iva === 'incluido';
   const err = document.getElementById('fin-ese-error');
   if (!body.nombre.trim()) { err.textContent = 'Poné el nombre del gasto.'; return; }
   if (body.monto === '') { err.textContent = 'Poné el monto.'; return; }
@@ -3562,6 +3569,7 @@ body.light .mobile-header-title{color:#0f172a}
 .fin-rojo{color:var(--rojo)}
 .fin-amarillo{color:#facc15}
 .fin-naranja{color:#fb923c}
+.fin-fijo-desglose{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:.72rem;color:var(--texto-tenue)}
 .fin-kpi-real{border-color:rgba(16,185,129,.45)!important}
 .fin-kpi-esencial{border-color:rgba(251,146,60,.45)!important;background:rgba(251,146,60,.07)!important}
 body.light .fin-naranja{color:#c2410c}
@@ -6186,6 +6194,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="fin-ese-tc-row" style="display:none"><label class="modal-label" for="fin-ese-tc">Tipo de cambio</label>
       <input type="number" id="fin-ese-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
+    <label class="modal-label" for="fin-ese-iva">IVA</label>
+    <select id="fin-ese-iva" class="modal-input"><option value="no">Sin IVA</option><option value="mas">Más IVA (se suma el 22%)</option><option value="incluido">IVA incluido en el monto</option></select>
     <label class="modal-label" for="fin-ese-frecuencia">Se paga</label>
     <select id="fin-ese-frecuencia" class="modal-input"><option value="mensual">Por mes</option><option value="anual">Por año</option></select>
     <label class="modal-label" for="fin-ese-notas">Notas</label>
@@ -14257,6 +14267,25 @@ function _finKpisFijos(t) {
     </div>`;
 }
 
+// El desglose de un ingreso fijo con tarjeta, como en "Cobro con tarjeta"
+// (Juan, 1/10). Lo calcula /api/finanzas/recurrentes con las mismas cuentas
+// con las que se genera cada mes.
+function _finFijoDesglose(f) {
+  if (f.desglose_error) {
+    return `<div class="fin-kpi-var fin-rojo">Sin desglose: ${esc(f.desglose_error)}. Cargá la comisión en "Cobro con tarjeta"; mientras tanto se anota como un ingreso común.</div>`;
+  }
+  const d = f.desglose;
+  if (!d) return '';
+  const m = v => f.moneda + ' ' + (Math.round(v * 100) / 100).toLocaleString('es-UY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  return `<div class="fin-fijo-desglose">`
+    + `<span>Cobrás ${m(d.total)}${d.iva_venta ? ' (con IVA)' : ''}</span>`
+    + `<span class="fin-rojo">− comisión ${(d.comision_pct || 0).toLocaleString('es-UY')}% ${m(d.comision + d.comision_iva)}</span>`
+    + `<span class="fin-rojo">− Plexo ${m(d.plexo + d.plexo_iva)}</span>`
+    + `<span>Depósito ${m(d.deposito)} en ${d.dias_habiles} ${d.dias_habiles === 1 ? 'día hábil' : 'días hábiles'}</span>`
+    + `<span class="fin-verde"><b>Te queda ${m(d.te_queda)}</b></span>`
+    + `</div>`;
+}
+
 async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
   const totalesEl = document.getElementById('fin-fijos-totales');
@@ -14299,6 +14328,7 @@ async function loadFijos() {
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
         <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.client_name ? ' · ' + esc(f.client_name) : ''}${f.tarjeta_nombre ? ' · paga con ' + esc(f.tarjeta_nombre) : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
+        ${_finFijoDesglose(f)}
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
