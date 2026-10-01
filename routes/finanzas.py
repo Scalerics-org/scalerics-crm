@@ -882,6 +882,7 @@ def _desglose_de(data) -> tuple[dict | None, str | None]:
             tipo_cambio=data.get("tipo_cambio") or None,
             incluir_fijo=_si(data.get("incluir_fijo", False)),
             clientes=data.get("clientes") or None,
+            sin_factura=_si(data.get("sin_factura", False)),
         ), None
     except (TypeError, ValueError) as e:
         return None, str(e)

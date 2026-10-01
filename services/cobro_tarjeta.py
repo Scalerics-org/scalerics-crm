@@ -152,7 +152,8 @@ def sumar_dias_habiles(desde: date, dias: int) -> date:
 
 def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
               moneda: str = "USD", tipo_cambio: float | None = None,
-              incluir_fijo: bool = True, clientes: int | None = None) -> dict:
+              incluir_fijo: bool = True, clientes: int | None = None,
+              sin_factura: bool = False) -> dict:
     """El desglose completo de UN cobro con tarjeta.
 
     - `modo` "quiero_llevarme": `monto` es lo que tiene que quedarte limpio
@@ -167,6 +168,14 @@ def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
 
     Despejando: te queda = P - c·1,22·P - plexo - parte del fijo, así que
     P = (lo que querés + plexo + parte del fijo) / (1 - c·1,22).
+
+    `sin_factura` (Juan, 1/10: "puede ser que los clientes no quieran que les
+    facturemos"): no hay IVA ventas, lo que se le cobra a la tarjeta es el
+    precio. La tarjeta y Plexo igual nos cobran su IVA, y como no hay IVA
+    ventas contra el cual descontarlo en este cobro, se toma como costo: es la
+    cuenta más prudente. Si el contador lo descuenta igual contra otras
+    ventas, queda a favor. Con `sin_factura` los modos "precio" y "total" dan
+    lo mismo: no hay IVA adentro de ningún número.
 
     Levanta ValueError con un mensaje para la pantalla si falta un dato.
     """
@@ -198,15 +207,18 @@ def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
     clientes = max(int(clientes or ajustes["clientes_tarjeta"] or 1), 1)
     fijo = en_moneda(float(ajustes["plexo_fijo_uyu"])) / clientes if incluir_fijo else 0.0
 
-    if modo == "quiero_llevarme":
+    if modo == "quiero_llevarme" and sin_factura:
+        # te queda = P - c·1,22·P - 1,22·(plexo + fijo): el IVA de Plexo es costo.
+        precio = (monto + (plexo + fijo) * (1 + IVA_TASA)) / (1 - c * (1 + IVA_TASA))
+    elif modo == "quiero_llevarme":
         precio = (monto + plexo + fijo) / (1 - c * (1 + IVA_TASA))
-    elif modo == "precio":
+    elif modo == "precio" or sin_factura:
         precio = monto
     else:
         precio = monto / (1 + IVA_TASA)
     precio = _r2(precio)
 
-    iva_venta = _r2(precio * IVA_TASA)
+    iva_venta = 0.0 if sin_factura else _r2(precio * IVA_TASA)
     total = _r2(precio + iva_venta)
     comision = _r2(total * c)
     comision_iva = _r2(comision * IVA_TASA)
@@ -215,8 +227,12 @@ def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
     plexo_iva = _r2(plexo * IVA_TASA)
     fijo = _r2(fijo)
     fijo_iva = _r2(fijo * IVA_TASA)
-    iva_dgi = _r2(iva_venta - comision_iva - plexo_iva - fijo_iva)
-    te_queda = _r2(precio - comision - plexo - fijo)
+    if sin_factura:
+        iva_dgi = 0.0
+        te_queda = _r2(precio - comision - comision_iva - plexo - plexo_iva - fijo - fijo_iva)
+    else:
+        iva_dgi = _r2(iva_venta - comision_iva - plexo_iva - fijo_iva)
+        te_queda = _r2(precio - comision - plexo - fijo)
 
     dias = int(ajustes["dias_debito"] if es_debito(tarjeta) else ajustes["dias_credito"])
 
@@ -225,6 +241,7 @@ def desglosar(modo: str, monto: float, tarjeta: str, ajustes: dict,
         "tarjeta_nombre": TARJETAS[tarjeta], "comision_pct": float(pct),
         "moneda": moneda, "tipo_cambio": tc,
         "incluir_fijo": bool(incluir_fijo), "clientes": clientes,
+        "sin_factura": bool(sin_factura),
         "dias_habiles": dias,
         "precio": precio,
         "iva_venta": iva_venta,
@@ -290,6 +307,11 @@ def armar_cobro(d: dict, *, fecha: str, concepto: str, categoria: str,
     pct = f"{d['comision_pct']:g}".replace(".", ",")
     ingreso = _mov("ingreso", categoria, texto, d["precio"], moneda, tc_mov,
                    notas=f"Cobro con tarjeta: {d['tarjeta_nombre']}")
+    if d.get("sin_factura"):
+        # Sin factura no hay IVA ventas. La comisión y Plexo sí traen factura
+        # de ellos, así que siguen como siempre.
+        ingreso.update(facturado=0, iva_usd=0.0,
+                       notas=f"Cobro con tarjeta sin factura: {d['tarjeta_nombre']}")
     if recurrente_id:
         ingreso["recurrente_id"] = recurrente_id
     comision = _mov("egreso", "comisiones",
