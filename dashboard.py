@@ -1295,6 +1295,127 @@ async function fidEventoBorrar(eid) {
 """
 
 # Cobro automático con Plexo (services/plexo.py). Crudo por las barras del JS.
+ESENCIALES_JS = r"""
+// ── Aportes: lo aportado hasta la fecha (Juan, 1/10) ─────────────────────────
+async function loadAportes() {
+  const cont = document.getElementById('fin-aportes');
+  const tot = document.getElementById('fin-aportes-totales');
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/aportes');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) { cont.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>'; return; }
+  const fecha = f => f ? f.slice(8, 10) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4) : '—';
+  tot.innerHTML = '<div class="fin-kpi fin-kpi-aporte"><div class="fin-kpi-label">Aportado hasta la fecha</div>'
+    + '<div class="fin-kpi-valor fin-amarillo">' + _finUsd(d.total_usd) + '</div>'
+    + '<div class="fin-kpi-var">' + d.cantidad + (d.cantidad === 1 ? ' aporte' : ' aportes') + (d.primero ? ' desde el ' + fecha(d.primero) : '') + '</div></div>'
+    + d.por_persona.map(p => '<div class="fin-kpi"><div class="fin-kpi-label">' + esc(p.persona) + '</div>'
+      + '<div class="fin-kpi-valor fin-amarillo">' + _finUsd(p.total_usd) + '</div>'
+      + '<div class="fin-kpi-var">' + (d.total_usd ? Math.round(100 * p.total_usd / d.total_usd) : 0) + '% del total</div></div>').join('');
+  if (!d.cantidad) {
+    cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">Todavía no hay aportes. Se cargan con "+ Movimiento" → Aporte.</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="fin-split">'
+    + '<div><div class="fin-card-title">Por mes</div><table class="fin-tabla"><tbody>'
+    + d.por_mes.map(m => '<tr><td>' + _finNombreMes(m.periodo) + '</td><td class="fb-num fin-amarillo">' + _finUsd(m.total_usd) + '</td></tr>').join('')
+    + '<tr class="fb-total"><td>Total</td><td class="fb-num fin-amarillo">' + _finUsd(d.total_usd) + '</td></tr></tbody></table></div>'
+    + '<div><div class="fin-card-title">Cada aporte</div><div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Fecha</th><th>Quién</th><th>Concepto</th><th class="fb-num">USD</th></tr></thead><tbody>'
+    + d.movimientos.map(m => '<tr><td>' + fecha(m.fecha) + '</td><td>' + esc(m.persona) + '</td><td>' + esc(m.concepto)
+      + (m.moneda !== 'USD' ? ' <span style="color:var(--texto-debil)">(' + m.moneda + ' ' + Math.round(m.monto).toLocaleString('es-UY') + ')</span>' : '')
+      + '</td><td class="fb-num">' + _finUsd(m.monto_usd) + '</td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+}
+
+// ── Gastos esenciales (Juan, 1/10) ───────────────────────────────────────────
+// "Gastos que si no están muere Scalerics": lista aparte de los movimientos.
+// Arriba, lo mínimo que tiene que entrar por mes.
+let _finEsenciales = [];
+
+async function loadEsenciales() {
+  const cont = document.getElementById('fin-esenciales');
+  const tot = document.getElementById('fin-esenciales-totales');
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/esenciales');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) { cont.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>'; return; }
+  _finEsenciales = d.items;
+  const lectura = _finSoloLectura();
+  document.getElementById('fin-btn-esencial').style.display = lectura ? 'none' : '';
+  tot.innerHTML = '<div class="fin-kpi fin-kpi-esencial"><div class="fin-kpi-label">Lo mínimo por mes</div>'
+    + '<div class="fin-kpi-valor fin-naranja">' + _finUsd(d.total_mensual_usd) + '</div>'
+    + '<div class="fin-kpi-var">Lo que tiene que entrar para que Scalerics siga andando</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Por año</div><div class="fin-kpi-valor">' + _finUsd(d.total_anual_usd) + '</div>'
+    + '<div class="fin-kpi-var">' + d.items.length + (d.items.length === 1 ? ' gasto esencial' : ' gastos esenciales') + '</div></div>';
+  if (!d.items.length) {
+    cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">Todavía no hay gastos esenciales. Cargá los que, si faltan, Scalerics no puede seguir (servidores, dominios, sueldos clave…).</div>';
+    return;
+  }
+  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Gasto</th><th>Por qué es esencial</th><th>Monto</th><th>Frecuencia</th><th>Por mes</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
+    + d.items.map(it => '<tr><td><b>' + esc(it.nombre) + '</b>' + (it.notas ? '<div style="color:var(--texto-debil);font-size:.72rem">' + esc(it.notas) + '</div>' : '') + '</td>'
+      + '<td>' + esc(it.motivo || '') + '</td>'
+      + '<td>' + (it.moneda === 'USD' ? _finUsd(it.monto) : 'UYU ' + Math.round(it.monto).toLocaleString('es-UY')) + '</td>'
+      + '<td>' + (it.frecuencia === 'anual' ? 'Anual' : 'Mensual') + '</td>'
+      + '<td class="fin-naranja"><b>' + _finUsd(it.por_mes_usd) + '</b></td>'
+      + (lectura ? '' : '<td style="white-space:nowrap"><button class="cal-today-btn" onclick="abrirEsencial(' + it.id + ')">Editar</button> <button class="cal-today-btn" onclick="borrarEsencial(' + it.id + ')">Borrar</button></td>')
+      + '</tr>').join('')
+    + '</tbody></table></div>';
+}
+
+function abrirEsencial(id) {
+  const it = _finEsenciales.find(x => x.id === id) || {};
+  document.getElementById('fin-ese-titulo').textContent = it.id ? 'Editar gasto esencial' : 'Nuevo gasto esencial';
+  document.getElementById('fin-ese-id').value = it.id || '';
+  document.getElementById('fin-ese-nombre').value = it.nombre || '';
+  document.getElementById('fin-ese-motivo').value = it.motivo || '';
+  document.getElementById('fin-ese-monto').value = it.monto != null ? it.monto : '';
+  document.getElementById('fin-ese-moneda').value = it.moneda || 'USD';
+  document.getElementById('fin-ese-tc').value = it.tipo_cambio || '';
+  document.getElementById('fin-ese-frecuencia').value = it.frecuencia || 'mensual';
+  document.getElementById('fin-ese-notas').value = it.notas || '';
+  document.getElementById('fin-ese-error').textContent = '';
+  _finEseMoneda();
+  document.getElementById('fin-ese-modal').classList.add('open');
+  setTimeout(() => document.getElementById('fin-ese-nombre').focus(), 30);
+}
+
+function _finEseMoneda() {
+  document.getElementById('fin-ese-tc-row').style.display =
+    document.getElementById('fin-ese-moneda').value === 'UYU' ? '' : 'none';
+}
+
+function cerrarEsencial() { document.getElementById('fin-ese-modal').classList.remove('open'); }
+
+async function guardarEsencial() {
+  const id = document.getElementById('fin-ese-id').value;
+  const body = {};
+  ['nombre', 'motivo', 'monto', 'moneda', 'frecuencia', 'notas'].forEach(k => { body[k] = document.getElementById('fin-ese-' + k).value; });
+  body.tipo_cambio = document.getElementById('fin-ese-tc').value;
+  const err = document.getElementById('fin-ese-error');
+  if (!body.nombre.trim()) { err.textContent = 'Poné el nombre del gasto.'; return; }
+  if (body.monto === '') { err.textContent = 'Poné el monto.'; return; }
+  try {
+    const r = await fetch('/api/finanzas/esenciales' + (id ? '/' + id : ''), {
+      method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) { err.textContent = e.message; return; }
+  cerrarEsencial();
+  loadEsenciales();
+}
+
+async function borrarEsencial(id) {
+  const it = _finEsenciales.find(x => x.id === id);
+  if (!it || !confirm('¿Borrar "' + it.nombre + '" de los gastos esenciales?')) return;
+  const r = await fetch('/api/finanzas/esenciales/' + id, {method: 'DELETE'});
+  if (!r.ok) { alert('No se pudo borrar'); return; }
+  loadEsenciales();
+}
+"""
+
 BUSCAR_JS = r"""// ========== Buscador de arriba (1/10) ==========
 // Juan: "agregá un buscador arriba para buscar en las secciones, sino es un
 // mareo". Las secciones salen del menú que ya ve cada uno (lo escondido por
@@ -3440,6 +3561,10 @@ body.light .mobile-header-title{color:#0f172a}
 .fin-verde{color:var(--verde)}
 .fin-rojo{color:var(--rojo)}
 .fin-amarillo{color:#facc15}
+.fin-naranja{color:#fb923c}
+.fin-kpi-real{border-color:rgba(16,185,129,.45)!important}
+.fin-kpi-esencial{border-color:rgba(251,146,60,.45)!important;background:rgba(251,146,60,.07)!important}
+body.light .fin-naranja{color:#c2410c}
 .fin-kpi-aporte{border-color:rgba(250,204,21,.45)!important;background:rgba(250,204,21,.07)!important}
 body.light .fin-amarillo{color:#a16207}
 /* `.fin-tabla td` fija el color con especificidad (0,1,1) y le gana a `.fin-rojo`
@@ -4636,7 +4761,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-tarjeta" onclick="finVista('tarjeta')">Cobro con tarjeta</button>
-        <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
+        <button class="pill" id="fin-tab-esenciales" onclick="finVista('esenciales')">Gastos esenciales</button>
+        <button class="pill" id="fin-tab-aportes" onclick="finVista('aportes')">Aportes</button>
         <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
       <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
@@ -4671,6 +4797,22 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-kpis" id="fin-fijos-totales"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
+    </div>
+
+    <div id="fin-vista-esenciales" style="display:none">
+      <div class="fin-kpis" id="fin-esenciales-totales"></div>
+      <div class="fin-card">
+        <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
+          Gastos esenciales: si faltan, Scalerics no sigue
+          <button class="cal-today-btn" id="fin-btn-esencial" onclick="abrirEsencial()">+ Agregar</button>
+        </div>
+        <div id="fin-esenciales"></div></div>
+    </div>
+
+    <div id="fin-vista-aportes" style="display:none">
+      <div class="fin-kpis" id="fin-aportes-totales"></div>
+      <div class="fin-card"><div class="fin-card-title">Lo aportado por los socios, desde el principio</div>
+        <div id="fin-aportes"></div></div>
     </div>
 
     <div id="fin-vista-iva" style="display:none">
@@ -4746,10 +4888,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
 
-    <div id="fin-vista-pauta" style="display:none">
-      <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
-        <div id="fin-pauta"></div></div>
-    </div>
 
     <div id="fin-vista-balance" style="display:none">
       <div class="fin-card">
@@ -6028,6 +6166,34 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
         <button onclick="copyAndOpenClaude()" style="background:#4f46e5;border:none;color:#fff;font-size:.82rem;font-weight:700;padding:10px 18px;border-radius:8px;cursor:pointer">📋 Copiar prompt y abrir Claude.ai</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fin-ese-modal" onclick="if(event.target===this)cerrarEsencial()">
+  <div class="modal" style="width:440px">
+    <h3 id="fin-ese-titulo">Nuevo gasto esencial</h3>
+    <input type="hidden" id="fin-ese-id">
+    <label class="modal-label" for="fin-ese-nombre">Gasto</label>
+    <input type="text" id="fin-ese-nombre" class="modal-input" maxlength="120" placeholder="Fly.io, dominio scalerics.com, sueldo de…">
+    <label class="modal-label" for="fin-ese-motivo">Por qué es esencial</label>
+    <input type="text" id="fin-ese-motivo" class="modal-input" maxlength="300" placeholder="Sin esto se cae el CRM">
+    <div style="display:grid;grid-template-columns:1fr 110px;gap:10px">
+      <div><label class="modal-label" for="fin-ese-monto">Monto</label>
+        <input type="number" id="fin-ese-monto" class="modal-input" min="0" step="any" inputmode="decimal"></div>
+      <div><label class="modal-label" for="fin-ese-moneda">Moneda</label>
+        <select id="fin-ese-moneda" class="modal-input" onchange="_finEseMoneda()"><option>USD</option><option>UYU</option></select></div>
+    </div>
+    <div id="fin-ese-tc-row" style="display:none"><label class="modal-label" for="fin-ese-tc">Tipo de cambio</label>
+      <input type="number" id="fin-ese-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
+    <label class="modal-label" for="fin-ese-frecuencia">Se paga</label>
+    <select id="fin-ese-frecuencia" class="modal-input"><option value="mensual">Por mes</option><option value="anual">Por año</option></select>
+    <label class="modal-label" for="fin-ese-notas">Notas</label>
+    <input type="text" id="fin-ese-notas" class="modal-input" maxlength="1000" placeholder="Vence el 15, se paga con la tarjeta de…">
+    <div id="fin-ese-error" style="color:#f87171;font-size:.8rem;min-height:1em;margin-top:8px"></div>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn-ghost" onclick="cerrarEsencial()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarEsencial()">Guardar</button>
     </div>
   </div>
 </div>
@@ -12361,7 +12527,8 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'tarjeta', 'pauta', 'balance'];
+// Pauta salió de Finanzas el 1/10 (Juan); en su lugar van Gastos esenciales y Aportes.
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'esenciales', 'aportes', 'iva', 'tarjeta', 'balance'];
 
 // ── Finanzas en solo lectura (el Contador) ──
 // No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
@@ -12384,14 +12551,10 @@ function _finAplicarSoloLectura() {
 }
 
 function _finRangoCambio() {
-  // El selector de rango es compartido por las tres vistas, pero loadFinanzas
-  // solo recarga Movimientos. Sin este handler, cambiar a "Este año" con
-  // Pauta abierta deja el rótulo del selector diciendo una cosa y la tabla
-  // mostrando los doce meses de siempre, sin recarga y sin ningún aviso.
-  // Fijos no depende del rango, no necesita nada acá.
+  // Desde que Pauta salió de Finanzas (1/10) solo Movimientos depende del
+  // rango; Fijos, Gastos esenciales y Aportes no.
   _finMesOffset = 0;   // cambiar el ancho vuelve al mes en curso
   loadFinanzas();
-  if (document.getElementById('fin-vista-pauta').style.display !== 'none') loadPauta();
 }
 
 function finVista(cual) {
@@ -12401,9 +12564,10 @@ function finVista(cual) {
   document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
   document.getElementById('fin-tab-cobrar').classList.toggle('active', cual === 'cobrar');
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
+  document.getElementById('fin-tab-esenciales').classList.toggle('active', cual === 'esenciales');
+  document.getElementById('fin-tab-aportes').classList.toggle('active', cual === 'aportes');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-tarjeta').classList.toggle('active', cual === 'tarjeta');
-  document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
   document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
   // El Balance tiene su propio periodo (Este año / Desde el inicio /
   // Personalizado): el selector de rango no aplica y se esconde, como en IVA.
@@ -12414,12 +12578,13 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar' || cual === 'balance' || cual === 'tarjeta') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance' || cual === 'tarjeta' || cual === 'esenciales' || cual === 'aportes') ? 'none' : '';
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
+  if (cual === 'esenciales') loadEsenciales();
+  if (cual === 'aportes') loadAportes();
   if (cual === 'iva') loadIva();
   if (cual === 'tarjeta') loadCobroTarjeta();
-  if (cual === 'pauta') loadPauta();
   if (cual === 'balance') loadBalanceDatos();
 }
 
@@ -12521,50 +12686,6 @@ function _finNum(v, prefijo) {
                                                       maximumFractionDigits: 2});
 }
 
-async function loadPauta() {
-  const cuerpo = document.getElementById('fin-pauta');
-  const {desde, hasta} = _finRango();
-  cuerpo.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch(`/api/finanzas/pauta?desde=${desde}&hasta=${hasta}`);
-    if (!r.ok) throw new Error('no se pudo cargar el rendimiento');
-    const data = await r.json();
-
-    const fila = (m, esTotal) => `
-      <tr style="${esTotal ? 'font-weight:700;border-top:2px solid #1e293b' : ''}">
-        <td>${esTotal ? 'Total' : m.periodo}</td>
-        <td class="fin-rojo">${_finNum(m.inversion_usd, 'USD ')}</td>
-        <td>${m.leads}</td>
-        <td>${_finNum(m.cpl, 'USD ')}</td>
-        <td>${m.calificados}</td>
-        <td>${_finNum(m.costo_calificado, 'USD ')}</td>
-        <td>${m.demos}</td>
-        <td>${_finNum(m.costo_demo, 'USD ')}</td>
-        <td>${m.ventas}</td>
-        <td>${_finNum(m.costo_venta, 'USD ')}</td>
-        <td class="fin-verde">${_finNum(m.ingresos_usd, 'USD ')}</td>
-        <td>${m.roi === null ? '—' : m.roi.toFixed(2) + '×'}</td>
-      </tr>`;
-
-    if (!data.meses.length) {
-      cuerpo.innerHTML = '<div class="empty-state">No hay datos de pauta en el período</div>';
-      return;
-    }
-
-    cuerpo.innerHTML = `
-      <div style="overflow-x:auto">
-      <table class="fin-tabla">
-        <thead><tr>
-          <th>Mes</th><th>Inversión</th><th>Leads</th><th>CPL</th>
-          <th>Calificados</th><th>Costo</th><th>Demos</th><th>Costo</th>
-          <th>Ventas</th><th>Costo</th><th>Ingresos</th><th>ROI</th>
-        </tr></thead>
-        <tbody>${data.meses.map(m => fila(m, false)).join('')}${fila(data.total, true)}</tbody>
-      </table></div>`;
-  } catch (e) {
-    cuerpo.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
-  }
-}
 
 function _finVariacion(actual, previo) {
   if (!previo) return '';
@@ -12599,8 +12720,14 @@ function _finKpis(k) {
       <div class="fin-kpi-iva">ya incluidos en Ingresos</div>
       <div class="fin-kpi-var">${_finVariacion(k.aportes_usd || 0, k.aportes_previos_usd || 0)}</div>
     </div>
+    <div class="fin-kpi fin-kpi-real">
+      <div class="fin-kpi-label">Resultado real</div>
+      <div class="fin-kpi-valor ${k.resultado_real_usd >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(k.resultado_real_usd)}</div>
+      <div class="fin-kpi-iva">sin contar los aportes como ganancia</div>
+      <div class="fin-kpi-var">${_finVariacion(k.resultado_real_usd, k.resultado_real_previo_usd)}</div>
+    </div>
     <div class="fin-kpi">
-      <div class="fin-kpi-label">Resultado</div>
+      <div class="fin-kpi-label">Resultado con aportes</div>
       <div class="fin-kpi-valor ${neto >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(neto)}</div>
       ${conIva(neto, k.neto_con_iva_usd)}
       <div class="fin-kpi-var">${_finVariacion(neto, k.neto_previo_usd)}</div>
@@ -13437,8 +13564,10 @@ function _finBalPintar(d) {
     + _finBalKpi('Ingresos', d.ingresos.total, 'fin-verde', _finBalDesglose(d.ingresos, interno))
     + _finBalKpi('Egresos', d.egresos.total, 'fin-rojo', _finBalDesglose(d.egresos, interno))
     + _finBalKpi('Resultado', d.resultado.total, _finBalColor(d.resultado.total),
-                 '<div class="fin-kpi-var">ingresos menos egresos</div>'
+                 '<div class="fin-kpi-var">ingresos menos egresos, sin los aportes</div>'
                  + _finBalDesglose(d.resultado, interno))
+    + (d.aportes && d.aportes.total ? _finBalKpi('Aportes de socios', d.aportes.total, 'fin-amarillo',
+                 '<div class="fin-kpi-var">entraron a caja, pero no son ingreso del negocio</div>') : '')
     + '</div>';
 
   html += '<div class="fb-seccion"><div class="fin-card-title">Ingresos por categoría</div>'
@@ -14699,6 +14828,7 @@ async function plBorrar(id) {
 /*FID_JS*/
 /*PLEXO_JS*/
 /*BUSCAR_JS*/
+/*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
 // La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
 // semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
@@ -20878,7 +21008,8 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
-).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */")
+).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
+).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
 
 _calendly_sync_state = {"at": 0.0}

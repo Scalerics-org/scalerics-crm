@@ -973,3 +973,41 @@ def api_borrar_cobro_tarjeta(cobro_id):
     log_activity(db, nombre, "finanzas_cobro_tarjeta_borrado", "finanzas", cobro_id,
                  cobro["concepto"], "", user_id=uid)
     return jsonify({"ok": True})
+
+
+
+# ── Gastos esenciales (Juan, 1/10) ───────────────────────────────────────────
+# El candado del blueprint ya cubre todo: ver pide Finanzas y escribir pide
+# que el rol no la tenga en solo lectura.
+
+@finanzas_bp.route("/api/finanzas/esenciales")
+def api_esenciales():
+    from services.finanzas import listar_esenciales
+    return jsonify(listar_esenciales(_db()))
+
+
+@finanzas_bp.route("/api/finanzas/esenciales", methods=["POST"])
+@finanzas_bp.route("/api/finanzas/esenciales/<int:eid>", methods=["PUT"])
+def api_esencial_guardar(eid=None):
+    from services.finanzas import guardar_esencial
+    _, quien = _quien()
+    nuevo, error = guardar_esencial(_db(), request.get_json(silent=True) or {}, quien, eid)
+    if error:
+        return jsonify({"ok": False, "error": error}), 404 if error == "el gasto no existe" else 400
+    return jsonify({"ok": True, "id": nuevo}), 200 if eid else 201
+
+
+@finanzas_bp.route("/api/finanzas/esenciales/<int:eid>", methods=["DELETE"])
+def api_esencial_borrar(eid):
+    from services.finanzas import borrar_esencial
+    if not borrar_esencial(_db(), eid):
+        return jsonify({"ok": False, "error": "el gasto no existe"}), 404
+    return jsonify({"ok": True})
+
+
+
+@finanzas_bp.route("/api/finanzas/aportes")
+def api_aportes():
+    """Lo aportado por los socios hasta la fecha (Juan, 1/10)."""
+    from services.finanzas import aportado_hasta_la_fecha
+    return jsonify(aportado_hasta_la_fecha(_db()))

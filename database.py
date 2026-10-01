@@ -1186,6 +1186,26 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # Gastos esenciales (Juan, 1/10): "gastos que si no están muere
+        # Scalerics". Lista aparte, no son movimientos: es lo mínimo que tiene
+        # que entrar por mes. services/finanzas.py los suma.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_esenciales (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                motivo          TEXT,
+                monto           REAL NOT NULL CHECK (monto >= 0),
+                moneda          TEXT NOT NULL DEFAULT 'USD',
+                tipo_cambio     REAL,
+                monto_usd       REAL NOT NULL,
+                frecuencia      TEXT NOT NULL DEFAULT 'mensual',
+                notas           TEXT,
+                borrado         INTEGER NOT NULL DEFAULT 0,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles
         # nuevos se la aplican porque esconder un ítem del menú no es un
