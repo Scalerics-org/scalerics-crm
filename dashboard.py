@@ -640,8 +640,13 @@ async function fidMover(id, estado) {
     if (f) body.fecha_reunion = f;
   }
   if (estado === 'descartado') body.motivo = 'No le interesa';
-  try { await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); }
-  catch(e) { fidAviso(esc(e.message), 'error'); }
+  try {
+    const d = await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    // Reunión hecha crea la ficha en Proceso de venta (1/10).
+    const v = d.prospecto && d.prospecto.proceso_venta;
+    if (v) fidAviso(v.ok ? '<b>'+esc(d.prospecto.nombre)+'</b> pasó a Proceso de venta · '+esc(v.estado)+'.'
+      : 'Quedó en Reunión hecha, pero no se pudo pasar a Proceso de venta: '+esc(v.error || 'error'), v.ok ? '' : 'error');
+  } catch(e) { fidAviso(esc(e.message), 'error'); }
   fidCargarPipe();
 }
 
