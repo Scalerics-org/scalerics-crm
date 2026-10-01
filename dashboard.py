@@ -4773,8 +4773,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-aportes" onclick="finVista('aportes')">Aportes</button>
         <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
-      <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
-        <i data-lucide="plus" class="nav-icon"></i> Movimiento
+      <button class="btn-primary" id="fin-btn-movimiento" onclick="_finBotonNuevo()">
+        <i data-lucide="plus" class="nav-icon"></i> <span id="fin-btn-movimiento-txt">Movimiento</span>
       </button>
     </div>
 
@@ -12567,7 +12567,18 @@ function _finRangoCambio() {
   loadFinanzas();
 }
 
+// En Gastos esenciales el botón grande carga un gasto esencial, no un
+// movimiento (Juan, 1/10: lo cargaba ahí arriba y terminaba en Movimientos).
+// Los esenciales son solo para ver: nunca generan movimientos.
+let _finVistaActual = 'movimientos';
+function _finBotonNuevo() {
+  if (_finVistaActual === 'esenciales') abrirEsencial();
+  else abrirMovimiento();
+}
+
 function finVista(cual) {
+  _finVistaActual = cual;
+  document.getElementById('fin-btn-movimiento-txt').textContent = cual === 'esenciales' ? 'Gasto esencial' : 'Movimiento';
   FIN_VISTAS.forEach(v => {
     document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
   });
