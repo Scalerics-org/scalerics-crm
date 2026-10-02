@@ -1042,6 +1042,10 @@ def init_db(db_path: str) -> None:
         # para que editar el movimiento no vuelva a sumar el IVA encima de un
         # monto que ya lo tenía adentro.
         _add_column(conn, "finanzas_movimientos", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
+        # "Ya se cobró / ya se pagó" (Juan, 2/10): una marca a mano, solo de
+        # referencia. Juan carga todo como pronóstico y no sigue las fechas;
+        # la marca pinta la fila de verde y no cambia ninguna cuenta.
+        _add_column(conn, "finanzas_movimientos", "hecho", "INTEGER NOT NULL DEFAULT 0")
 
         # Lo que falta cobrar. El caso real es el 50% final de un desarrollo:
         # se cobra la mitad al empezar y el resto queda pendiente con una fecha
@@ -4427,7 +4431,7 @@ _MOVIMIENTO_COLUMNS = {
     "tipo", "fecha", "periodo", "concepto", "categoria", "monto", "moneda",
     "tipo_cambio", "monto_usd", "client_id", "budget_id", "recurrente_id",
     "anulado", "notas", "created_by_id", "created_by_name",
-    "facturado", "iva_usd", "iva_incluido",
+    "facturado", "iva_usd", "iva_incluido", "hecho",
 }
 
 _RECURRENTE_COLUMNS = {

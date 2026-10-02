@@ -378,3 +378,23 @@ def test_un_fijo_en_pesos_con_tipo_de_cambio_trae_el_monto_usd_correcto(cli, app
                       tipo_cambio=40, dia_del_mes=1, desde="2026-09")
     fijo = cli.get("/api/finanzas/recurrentes").get_json()[0]
     assert fijo["monto_usd"] == 1000.0
+
+
+def test_marcar_un_movimiento_como_ya_cobrado_no_cambia_los_numeros(cli):
+    """Juan (2/10): un botón que pinta de verde lo que ya se cobró o pagó."""
+    cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": f"{_mes()}-05", "concepto": "Mantenimiento",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD"})
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["hecho"] == 0
+    assert cli.post(f"/api/finanzas/movimientos/{mov['id']}/hecho", json={"hecho": True}).get_json()["hecho"] == 1
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["hecho"] == 1 and mov["monto_usd"] == 100
+    # Editarlo no le saca la marca.
+    cli.put(f"/api/finanzas/movimientos/{mov['id']}", json={
+        "tipo": "ingreso", "fecha": f"{_mes()}-05", "concepto": "Mantenimiento web",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD"})
+    assert cli.get("/api/finanzas/movimientos").get_json()[0]["hecho"] == 1
+    cli.post(f"/api/finanzas/movimientos/{mov['id']}/hecho", json={"hecho": False})
+    assert cli.get("/api/finanzas/movimientos").get_json()[0]["hecho"] == 0
+    assert cli.post("/api/finanzas/movimientos/9999/hecho", json={"hecho": True}).status_code == 404

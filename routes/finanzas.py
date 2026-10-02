@@ -272,6 +272,20 @@ def api_actualizar_movimiento(mov_id):
     return jsonify({"ok": True})
 
 
+@finanzas_bp.route("/api/finanzas/movimientos/<int:mov_id>/hecho", methods=["POST"])
+def api_marcar_movimiento_hecho(mov_id):
+    """Marca o desmarca "ya se cobró / ya se pagó" (Juan, 2/10). Es solo una
+    referencia visual: no toca montos ni totales, así que vale también en un
+    mes cerrado."""
+    db = _db()
+    mov = get_movimiento(db, mov_id)
+    if not mov:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    hecho = 1 if (request.get_json(silent=True) or {}).get("hecho") else 0
+    actualizar_movimiento(db, mov_id, hecho=hecho)
+    return jsonify({"ok": True, "hecho": hecho})
+
+
 @finanzas_bp.route("/api/finanzas/movimientos/<int:mov_id>", methods=["DELETE"])
 def api_borrar_movimiento(mov_id):
     db = _db()
