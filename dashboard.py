@@ -3569,6 +3569,8 @@ body.light .mobile-header-title{color:#0f172a}
 .fin-rojo{color:var(--rojo)}
 .fin-amarillo{color:#facc15}
 .fin-naranja{color:#fb923c}
+.table-row.fin-mov-hecho{background:rgba(16,185,129,.16)!important;box-shadow:inset 3px 0 0 #10B981}
+.fin-btn-hecho.activo .nav-icon{stroke:#10B981}
 .fin-fijo-desglose{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:.72rem;color:var(--texto-tenue)}
 .fin-kpi-real{border-color:rgba(16,185,129,.45)!important}
 .fin-kpi-esencial{border-color:rgba(251,146,60,.45)!important;background:rgba(251,146,60,.07)!important}
@@ -14048,18 +14050,21 @@ async function loadMovimientos(desde, hasta) {
     const original = m.moneda === 'UYU'
       ? `<div class="fin-kpi-var">$ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio}</div>`
       : '';
+    const hechoTxt = esIngreso ? 'Ya se cobró' : 'Ya se pagó';
     return `
-    <div class="table-row no-cb">
+    <div class="table-row no-cb${m.hecho ? ' fin-mov-hecho' : ''}">
       <div style="flex:0 0 92px" class="fin-kpi-var">${m.fecha}</div>
       <div style="flex:1">
         <div class="biz-name">${esc(m.concepto)}</div>
-        <div class="fin-kpi-var">${esc(m.categoria.replace(/_/g, ' '))}${m.recurrente_id ? ' · fijo' : ''}</div>
+        <div class="fin-kpi-var">${esc(m.categoria.replace(/_/g, ' '))}${m.recurrente_id ? ' · fijo' : ''}${m.hecho ? ' · ' + hechoTxt.toLowerCase() : ''}</div>
       </div>
       <div style="flex:0 0 170px;text-align:right">
         <div class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}</div>
         ${original}
       </div>
-      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
+      <div style="flex:0 0 112px;text-align:right">${soloLectura ? '' : `
+        <button class="btn-ghost btn-icono fin-btn-hecho${m.hecho ? ' activo' : ''}" onclick="finMarcarHecho(${m.id}, ${m.hecho ? 0 : 1})"
+                title="${m.hecho ? 'Desmarcar: ' + hechoTxt.toLowerCase() : 'Marcar: ' + hechoTxt.toLowerCase()}"><i data-lucide="check" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
@@ -14068,6 +14073,16 @@ async function loadMovimientos(desde, hasta) {
     </div>`;
   }).join('');
   if (window.lucide) lucide.createIcons();
+}
+
+// "Ya se cobró / ya se pagó" (Juan, 2/10): pinta la fila de verde. Solo de
+// referencia, no cambia ninguna cuenta.
+async function finMarcarHecho(id, hecho) {
+  const r = await fetch(`/api/finanzas/movimientos/${id}/hecho`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({hecho: !!hecho})});
+  if (!r.ok) { alert('No se pudo marcar el movimiento'); return; }
+  const {desde, hasta} = _finRango();
+  loadMovimientos(desde, hasta);
 }
 
 async function borrarMovimientoUI(id, esDeUnFijo) {
