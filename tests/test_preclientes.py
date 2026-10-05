@@ -353,15 +353,15 @@ def test_el_monto_se_lee_como_se_escribe_en_uruguay():
 
 
 def test_la_tabla_de_clientes_tiene_la_columna_del_monto():
-    """Siete columnas: la grilla y el encabezado tienen que coincidir."""
+    """Ocho columnas: la grilla y el encabezado tienen que coincidir."""
     html = dashboard.DASHBOARD_HTML
     i = html.index('<div class="table-header tbl-cli">')
     encabezado = html[i:html.index("</div>", i)]
-    assert encabezado.count("<span>") == 7
-    assert "Pagó" in encabezado
+    assert encabezado.count("<span>") == 8
+    assert "Pagó" in encabezado and "Mantenimiento" in encabezado
     import re
     grilla = re.search(r"\.table-header\.tbl-cli,\.table-row\.tbl-cli\{grid-template-columns:([^}]*)\}", html)
-    assert len(grilla.group(1).split()) == 7
+    assert len(grilla.group(1).split()) == 8
     assert "cliMontoEditar(" in html and "cliNuevoAbrir(" in html
 
 
@@ -528,3 +528,43 @@ def test_las_etapas_nuevas_son_estados_validos(app, cli):
         r = cli.post(f"/api/leads/{lid}/crm-status", json={"crm_status": etapa})
         assert r.status_code == 200, f"{etapa}: {r.get_json()}"
         assert get_business(db, lid)["crm_status"] == etapa
+
+
+# ── Cuota de mantenimiento ───────────────────────────────────────────────────
+
+def test_un_cliente_sin_mantenimiento_viene_en_null(app, cli):
+    _lead(app.config["_DB"], "Cliente", "cerrado")
+    c = cli.get("/api/clientes-activos").get_json()["clientes"][0]
+    assert c["mantenimiento_monto"] is None
+    assert c["mantenimiento_moneda"] is None
+
+
+def test_cargar_y_borrar_el_mantenimiento(app, cli):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "finalizado")
+    cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 900, "moneda": "USD"})
+
+    r = cli.put(f"/api/clientes-activos/{lid}/mantenimiento", json={"monto": 50, "moneda": "USD"})
+    assert r.get_json() == {"ok": True, "mantenimiento_monto": 50, "mantenimiento_moneda": "USD"}
+    c = cli.get("/api/clientes-activos").get_json()["clientes"][0]
+    assert (c["mantenimiento_monto"], c["mantenimiento_moneda"]) == (50, "USD")
+    assert c["monto_pagado"] == 900, "la cuota no pisa lo pagado por el desarrollo"
+
+    r = cli.put(f"/api/clientes-activos/{lid}/mantenimiento", json={"monto": None})
+    assert r.status_code == 200
+    b = get_business(db, lid)
+    assert b["mantenimiento_monto"] is None and b["mantenimiento_moneda"] is None
+
+
+@pytest.mark.parametrize("cuerpo", [{"monto": -1, "moneda": "USD"}, {"monto": 10, "moneda": "EUR"},
+                                    {"monto": "abc", "moneda": "USD"}, {}])
+def test_mantenimiento_invalido_no_guarda(app, cli, cuerpo):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "cerrado")
+    assert cli.put(f"/api/clientes-activos/{lid}/mantenimiento", json=cuerpo).status_code == 400
+    assert get_business(db, lid)["mantenimiento_monto"] is None
+
+
+def test_mantenimiento_de_un_cliente_que_no_existe(cli):
+    r = cli.put("/api/clientes-activos/99999/mantenimiento", json={"monto": 1, "moneda": "USD"})
+    assert r.status_code == 404

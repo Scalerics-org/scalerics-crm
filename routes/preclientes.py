@@ -111,6 +111,16 @@ def _monto_pagado_valido(data: dict):
     return {"monto_pagado": round(monto, 2), "moneda_pagado": moneda}, None
 
 
+def _mantenimiento_valido(data: dict):
+    """Igual que `_monto_pagado_valido`, pero para la cuota mensual de
+    mantenimiento. Vacio o null es "no tiene mantenimiento"."""
+    campos, error = _monto_pagado_valido(data)
+    if error:
+        return None, error
+    return {"mantenimiento_monto": campos["monto_pagado"],
+            "mantenimiento_moneda": campos["moneda_pagado"]}, None
+
+
 # ── Pre-clientes ─────────────────────────────────────────────────────────────
 
 @preclientes_bp.route("/api/preclientes/etapas")
@@ -177,6 +187,7 @@ def api_clientes_activos():
             SELECT b.id, b.name, b.crm_status, b.phone, b.email, b.city,
                    b.encargado_id, b.mantenimiento_id, b.cobros_id,
                    b.monto_pagado, b.moneda_pagado,
+                   b.mantenimiento_monto, b.mantenimiento_moneda,
                    ue.name AS encargado_nombre,
                    um.name AS mantenimiento_nombre,
                    uc.name AS cobros_nombre
@@ -228,6 +239,26 @@ def api_monto_pagado(client_id):
         return jsonify({"ok": False, "error": "Nada para actualizar"}), 400
 
     campos, error = _monto_pagado_valido(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    update_business(_db(), client_id, **campos)
+    return jsonify({"ok": True, **campos})
+
+
+@preclientes_bp.route("/api/clientes-activos/<int:client_id>/mantenimiento", methods=["PUT"])
+def api_mantenimiento(client_id):
+    """Carga, corrige o borra la cuota mensual de mantenimiento. Body: {monto, moneda}.
+
+    `monto` null o vacio deja los dos campos en NULL ("no tiene")."""
+    if not get_business(_db(), client_id):
+        return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or "monto" not in data:
+        return jsonify({"ok": False, "error": "Nada para actualizar"}), 400
+
+    campos, error = _mantenimiento_valido(data)
     if error:
         return jsonify({"ok": False, "error": error}), 400
 

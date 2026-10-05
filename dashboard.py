@@ -2186,7 +2186,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
-.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:1.8fr 1fr 1.25fr 1.1fr 1.1fr 1.1fr .9fr}
+.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:1.6fr .95fr 1.15fr 1.15fr 1fr 1fr 1fr .85fr}
 /* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
 .cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
 .cli-monto:hover{border-color:var(--borde-fuerte)}
@@ -4566,7 +4566,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div class="table-wrap">
       <div class="table-header tbl-cli">
-        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
+        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Mantenimiento</span><span>Día a día</span><span>Encargado mant.</span><span>Cobros</span><span>Acciones</span>
       </div>
       <div id="clientes-body"></div>
     </div>
@@ -7855,44 +7855,63 @@ function _cliMontoParse(txt) {
   return isFinite(n) ? n : NaN;
 }
 
-function _cliMontoCelda(id) {
-  const m = _cliMontos[id] || {};
+// Dos montos editables por cliente con la misma celda: lo que pago por el
+// desarrollo y la cuota mensual de mantenimiento.
+const _CLI_MONTO_TIPOS = {
+  pagado: {celda: 'cli-monto-', url: 'monto-pagado', campos: ['monto_pagado', 'moneda_pagado'],
+           que: 'cuánto pagó', sufijo: ''},
+  mant:   {celda: 'cli-mant-', url: 'mantenimiento', campos: ['mantenimiento_monto', 'mantenimiento_moneda'],
+           que: 'la cuota de mantenimiento', sufijo: '/mes'},
+};
+let _cliMants = {};
+
+function _cliMontoDatos(tipo) { return tipo === 'mant' ? _cliMants : _cliMontos; }
+
+function _cliMontoCelda(id, tipo) {
+  tipo = tipo || 'pagado';
+  const t = _CLI_MONTO_TIPOS[tipo];
+  const m = _cliMontoDatos(tipo)[id] || {};
   const cargado = m.monto !== null && m.monto !== undefined;
   if (!cargado) {
-    return `<button type="button" class="cli-monto vacio" title="Cargar cuánto pagó" onclick="cliMontoEditar(${id})">+ cargar</button>`;
+    return `<button type="button" class="cli-monto vacio" title="Cargar ${t.que}" onclick="cliMontoEditar(${id}, '${tipo}')">+ cargar</button>`;
   }
   const n = Number(m.monto).toLocaleString('es-UY', {maximumFractionDigits: 2});
-  return `<button type="button" class="cli-monto" title="Editar cuánto pagó" onclick="cliMontoEditar(${id})"><span class="cli-monto-mon">${esc(m.moneda || '')}</span>${n}</button>`;
+  const suf = t.sufijo ? `<span class="cli-monto-mon" style="margin:0 0 0 3px">${t.sufijo}</span>` : '';
+  return `<button type="button" class="cli-monto" title="Editar ${t.que}" onclick="cliMontoEditar(${id}, '${tipo}')"><span class="cli-monto-mon">${esc(m.moneda || '')}</span>${n}${suf}</button>`;
 }
 
-function cliMontoEditar(id) {
-  const cel = document.getElementById('cli-monto-' + id);
+function cliMontoEditar(id, tipo) {
+  tipo = tipo || 'pagado';
+  const cel = document.getElementById(_CLI_MONTO_TIPOS[tipo].celda + id);
   if (!cel) return;
-  const m = _cliMontos[id] || {};
+  const m = _cliMontoDatos(tipo)[id] || {};
   const moneda = m.moneda || 'USD';
   const valor = (m.monto === null || m.monto === undefined) ? '' : String(m.monto).replace('.', ',');
   cel.innerHTML = `<div class="cli-monto-edit">
-    <input type="text" inputmode="decimal" class="cli-monto-input" value="${esc(valor)}" placeholder="Ej: 1.500" aria-label="Monto pagado"
-      onkeydown="if(event.key==='Enter')cliMontoGuardar(${id});if(event.key==='Escape')cliMontoCancelar(${id})">
+    <input type="text" inputmode="decimal" class="cli-monto-input" value="${esc(valor)}" placeholder="${tipo === 'mant' ? 'Ej: 50' : 'Ej: 1.500'}" aria-label="${tipo === 'mant' ? 'Cuota mensual de mantenimiento' : 'Monto pagado'}"
+      onkeydown="if(event.key==='Enter')cliMontoGuardar(${id}, '${tipo}');if(event.key==='Escape')cliMontoCancelar(${id}, '${tipo}')">
     <select class="cli-monto-sel" aria-label="Moneda">
       <option value="USD"${moneda === 'USD' ? ' selected' : ''}>USD</option>
       <option value="UYU"${moneda === 'UYU' ? ' selected' : ''}>UYU</option>
     </select>
-    <button type="button" class="cli-monto-ok" onclick="cliMontoGuardar(${id})">Guardar</button>
-    <button type="button" class="cli-monto-x" onclick="cliMontoCancelar(${id})" aria-label="Cancelar" title="Cancelar">&times;</button>
+    <button type="button" class="cli-monto-ok" onclick="cliMontoGuardar(${id}, '${tipo}')">Guardar</button>
+    <button type="button" class="cli-monto-x" onclick="cliMontoCancelar(${id}, '${tipo}')" aria-label="Cancelar" title="Cancelar">&times;</button>
   </div>`;
   const inp = cel.querySelector('.cli-monto-input');
   inp.focus();
   inp.select();
 }
 
-function cliMontoCancelar(id) {
-  const cel = document.getElementById('cli-monto-' + id);
-  if (cel) cel.innerHTML = _cliMontoCelda(id);
+function cliMontoCancelar(id, tipo) {
+  tipo = tipo || 'pagado';
+  const cel = document.getElementById(_CLI_MONTO_TIPOS[tipo].celda + id);
+  if (cel) cel.innerHTML = _cliMontoCelda(id, tipo);
 }
 
-async function cliMontoGuardar(id) {
-  const cel = document.getElementById('cli-monto-' + id);
+async function cliMontoGuardar(id, tipo) {
+  tipo = tipo || 'pagado';
+  const t = _CLI_MONTO_TIPOS[tipo];
+  const cel = document.getElementById(t.celda + id);
   if (!cel) return;
   const inp = cel.querySelector('.cli-monto-input');
   const sel = cel.querySelector('.cli-monto-sel');
@@ -7905,7 +7924,7 @@ async function cliMontoGuardar(id) {
   const controles = cel.querySelectorAll('input,select,button');
   controles.forEach(el => { el.disabled = true; });
   try {
-    const r = await fetch('/api/clientes-activos/' + id + '/monto-pagado', {
+    const r = await fetch('/api/clientes-activos/' + id + '/' + t.url, {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({monto: monto, moneda: sel.value}),
     });
@@ -7918,8 +7937,8 @@ async function cliMontoGuardar(id) {
       inp.focus();
       return;
     }
-    _cliMontos[id] = {monto: d.monto_pagado, moneda: d.moneda_pagado};
-    cel.innerHTML = _cliMontoCelda(id);
+    _cliMontoDatos(tipo)[id] = {monto: d[t.campos[0]], moneda: d[t.campos[1]]};
+    cel.innerHTML = _cliMontoCelda(id, tipo);
   } catch (e) {
     alert('No se pudo guardar el monto: ' + e.message);
     controles.forEach(el => { el.disabled = false; });
@@ -8015,7 +8034,11 @@ async function loadClientesPanel() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const clientes = (await r.json()).clientes || [];
     _cliMontos = {};
-    clientes.forEach(b => { _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado}; });
+    _cliMants = {};
+    clientes.forEach(b => {
+      _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado};
+      _cliMants[b.id] = {monto: b.mantenimiento_monto, moneda: b.mantenimiento_moneda};
+    });
     if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
     const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
     const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
@@ -8044,8 +8067,9 @@ async function loadClientesPanel() {
         </div>
         <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
         <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
+        <div data-rol="Mantenimiento por mes" id="cli-mant-${b.id}">${_cliMontoCelda(b.id, 'mant')}</div>
         <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
-        <div data-rol="Mantenimiento">${selector(b, 'mantenimiento_id')}</div>
+        <div data-rol="Encargado de mantenimiento">${selector(b, 'mantenimiento_id')}</div>
         <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>
         <div class="actions">
           <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>

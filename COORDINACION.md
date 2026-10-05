@@ -533,6 +533,15 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **5/10 — Clientes: columna "Mantenimiento" (cuota mensual), pedido de Juan.** Worktree
+  `../crm-mantenimiento`, rama `feat/clientes-mantenimiento`, sale de `main`.
+  **Zona compartida: toqué `database.py`** (columnas `businesses.mantenimiento_monto` y
+  `mantenimiento_moneda`, en `ALLOWED_COLUMNS`). Ruta nueva
+  `PUT /api/clientes-activos/<id>/mantenimiento` (mismo validador que lo pagado). En el panel,
+  la celda editable de "Pagó" ahora sirve para los dos montos (`tipo` 'pagado' | 'mant'); la
+  columna del responsable pasa a llamarse "Encargado mant.". El simulador todavía NO lee la
+  cuota (sigue con el default). Sin merge ni deploy.
+
 - **30/9 — L (bot de WhatsApp, caso lead 18): worktree `../scalerics-crm-wa-a-main`, rama
   `fix/wa-fuga-prompt-y-nombre` (sale de `main`), solo `wa-service/`. Pedido de K. Tres arreglos:
   el preámbulo meta del modelo ("Entendido. El mensaje que le mandás a X es:") se saca en código

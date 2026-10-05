@@ -1602,6 +1602,11 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "monto_pagado", "REAL")
         _add_column(conn, "businesses", "moneda_pagado", "TEXT")
 
+        # Cuota mensual de mantenimiento, con el mismo criterio que lo pagado:
+        # a mano, en la moneda acordada, NULL es "no tiene / no se cargo".
+        _add_column(conn, "businesses", "mantenimiento_monto", "REAL")
+        _add_column(conn, "businesses", "mantenimiento_moneda", "TEXT")
+
         # Semaforo marcado a mano desde Meta Ads (ver
         # services/planilla_semaforo.marcar_color). El color en si NO se guarda
         # aca: sale de `crm_status`, igual que cuando lo trae la planilla.
@@ -2309,6 +2314,8 @@ ALLOWED_COLUMNS = {
     "encargado_id", "mantenimiento_id", "cobros_id",
     # Cuanto pago por su desarrollo, cargado a mano desde Clientes.
     "monto_pagado", "moneda_pagado",
+    # Cuota mensual de mantenimiento, cargada a mano desde Clientes.
+    "mantenimiento_monto", "mantenimiento_moneda",
 }
 
 
