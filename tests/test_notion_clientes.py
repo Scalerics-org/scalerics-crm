@@ -203,14 +203,78 @@ def test_la_ruta_devuelve_los_clientes_con_el_nombre_de_su_proyecto(app):
     assert por_nombre["Garrido"]["status"] == "Perdido"
 
 
-def test_no_hay_ruta_para_crear_ni_editar_un_cliente_de_notion(app):
-    """El espejo es de solo lectura: si alguna vez aparece un POST o un PUT
-    aca, el CRM puede escribirle a una database que el equipo maneja a mano."""
+def test_no_hay_ruta_para_editar_un_cliente_de_notion(app):
+    """Crear una ficha se puede desde el CRM, pero editar una que ya existe no:
+    nombre, descripcion y fechas se siguen manejando en Notion."""
     cliente = app.test_client()
-    assert cliente.post("/api/notion-clients", json={"name": "X"},
-                        headers=_AUTH).status_code == 405
     assert cliente.put("/api/notion-clients/1", json={"name": "X"},
                        headers=_AUTH).status_code in (404, 405)
+    assert cliente.patch("/api/notion-clients/1", json={"name": "X"},
+                         headers=_AUTH).status_code in (404, 405)
+
+
+def _crear_mock(app, page_id="pagina-nueva"):
+    """Un `crear_cliente` que deja la ficha en el espejo, como el real."""
+    ruta = app.config["DB_PATH"]
+
+    def falso(db, nombre, estado, descripcion=None):
+        upsert_notion_client(db, page_id, nombre, status=estado, descripcion=descripcion)
+        return page_id, None
+    return patch("routes.notion_clients.crear_cliente", side_effect=falso)
+
+
+def test_crear_una_ficha_desde_el_crm_la_deja_en_el_espejo(app):
+    with _crear_mock(app) as crear:
+        r = app.test_client().post(
+            "/api/notion-clients",
+            json={"name": " Ferretería Zetta ", "estado": "Demo Agendada",
+                  "descripcion": "viene por Instagram"},
+            headers=_AUTH)
+
+    assert r.status_code == 201
+    assert r.get_json()["ok"] is True
+    crear.assert_called_once_with(app.config["DB_PATH"], "Ferretería Zetta",
+                                  "Demo Agendada", "viene por Instagram")
+    fichas = get_notion_clients(app.config["DB_PATH"])
+    assert [(c["name"], c["status"]) for c in fichas] == [("Ferretería Zetta", "Demo Agendada")]
+
+
+def test_crear_sin_estado_entra_en_la_primera_columna(app):
+    with _crear_mock(app) as crear:
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"},
+                                   headers=_AUTH)
+
+    assert r.status_code == 201
+    assert crear.call_args.args[2] == "Demo Agendada"
+
+
+def test_crear_sin_nombre_o_con_estado_raro_se_rechaza_sin_tocar_notion(app):
+    with patch("routes.notion_clients.crear_cliente") as crear:
+        c = app.test_client()
+        assert c.post("/api/notion-clients", json={"name": "  "}, headers=_AUTH).status_code == 400
+        assert c.post("/api/notion-clients", json={"name": "X", "estado": "Inventado"},
+                      headers=_AUTH).status_code == 400
+        assert c.post("/api/notion-clients", json={"name": "X", "business_id": 99999},
+                      headers=_AUTH).status_code == 404
+    crear.assert_not_called()
+
+
+def test_si_notion_rechaza_la_ficha_la_ruta_avisa_y_no_queda_nada(app):
+    with patch("routes.notion_clients.crear_cliente",
+               return_value=(None, "Notion devolvio HTTP 400 al crear la ficha")):
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"},
+                                   headers=_AUTH)
+
+    assert r.status_code == 502
+    assert r.get_json()["ok"] is False
+    assert get_notion_clients(app.config["DB_PATH"]) == []
+
+
+def test_crear_sin_permiso_ni_token_se_rechaza(app):
+    with patch("routes.notion_clients.crear_cliente") as crear:
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"})
+    assert r.status_code in (401, 403)
+    crear.assert_not_called()
 
 
 def test_el_autosync_sigue_trayendo_tareas_si_los_clientes_explotan(monkeypatch):

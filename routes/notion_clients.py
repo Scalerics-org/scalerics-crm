@@ -1,9 +1,10 @@
 """Panel de clientes: espejo de la database Clientes, con arrastre de estado.
 
-Lo unico que el CRM le escribe a esa database es el estado de una ficha,
-cuando alguien la arrastra a otra columna del tablero. Nombre, descripcion,
-fechas y proyecto se siguen manejando solo en Notion: no hay POST para crear
-ni PUT para editar una ficha.
+Lo que el CRM le escribe a esa database es el estado de una ficha, cuando
+alguien la arrastra a otra columna del tablero, y las fichas nuevas, que se
+crean desde el boton "Nueva ficha". Nombre, descripcion, fechas y proyecto de
+una ficha que ya existe se siguen manejando solo en Notion: no hay PUT para
+editarla.
 """
 
 import os
@@ -15,8 +16,9 @@ from database import (ETAPAS_CLIENTE, get_business, get_notion_client_by_id,
                       vincular_notion_client)
 from services.auth import require_panel
 from services.notion_service import (ESTADO_ACEPTADO, GRUPOS_CLIENTES,
-                                     estados_de_clientes, grupo_de_cliente,
-                                     mover_cliente, pasar_a_cliente)
+                                     crear_cliente, estados_de_clientes,
+                                     grupo_de_cliente, mover_cliente,
+                                     pasar_a_cliente)
 
 notion_clients_bp = Blueprint("notion_clients", __name__)
 
@@ -47,6 +49,68 @@ def api_notion_clients():
             for c in get_notion_clients(db)
         ],
     })
+
+
+@notion_clients_bp.route("/api/notion-clients", methods=["POST"])
+def api_crear_cliente():
+    """Crea una ficha nueva desde el CRM, sin tener que abrir Notion.
+
+    Body: `{"name": "...", "estado": "...", "descripcion": "...", "business_id": N}`.
+    Solo `name` es obligatorio; sin `estado` entra en la primera columna del
+    tablero. La ficha se escribe en Notion primero (`crear_cliente`) y despues
+    queda en el espejo, asi el equipo la ve en los dos lados.
+
+    Sincrono a proposito, como el arrastre: si Notion no la acepta, el front
+    tiene que enterarse y no mostrar una ficha que no existe.
+    """
+    db = current_app.config["DB_PATH"]
+    if not _token_admin_ok():
+        candado = require_panel(db, "notion_clients")
+        if candado:
+            return candado
+
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict):
+        return jsonify({"ok": False, "error": "falta el cuerpo de la ficha"}), 400
+    nombre = str(datos.get("name") or "").strip()
+    if not nombre:
+        return jsonify({"ok": False, "error": "la ficha necesita un nombre"}), 400
+    if len(nombre) > 200:
+        return jsonify({"ok": False, "error": "el nombre es demasiado largo (máximo 200)"}), 400
+    estado = str(datos.get("estado") or "").strip() or next(iter(GRUPOS_CLIENTES))
+    if estado not in GRUPOS_CLIENTES:
+        return jsonify({"ok": False,
+                        "error": f"'{estado}' no es una columna del tablero"}), 400
+    descripcion = str(datos.get("descripcion") or "").strip() or None
+
+    business_id = datos.get("business_id")
+    negocio = None
+    if business_id is not None:
+        if isinstance(business_id, bool) or not isinstance(business_id, int) or business_id <= 0:
+            return jsonify({"ok": False,
+                            "error": "business_id tiene que ser el id de una persona del CRM"}), 400
+        negocio = get_business(db, business_id)
+        if not negocio:
+            return jsonify({"ok": False, "error": "esa persona no existe en el CRM"}), 404
+
+    page_id, error = crear_cliente(db, nombre, estado, descripcion)
+    if not page_id:
+        return jsonify({"ok": False, "error": error or "no se pudo crear la ficha"}), 502
+
+    ficha = next((c for c in get_notion_clients(db)
+                  if c.get("notion_page_id") == page_id), None)
+    if not ficha:
+        return jsonify({"ok": False, "error": "la ficha se creó pero no quedó en el espejo"}), 500
+
+    quien = session.get("user_name", "sistema")
+    paso = False
+    if negocio:
+        vincular_notion_client(db, ficha["id"], business_id)
+        paso = pasar_a_cliente(db, get_notion_client_by_id(db, ficha["id"]), quien=quien)
+    log_activity(db, quien, "notion_client_created", "notion_client", ficha["id"],
+                 nombre, estado, user_id=session.get("user_id"))
+    return jsonify({"ok": True, "id": ficha["id"], "estado": estado,
+                    "grupo": grupo_de_cliente(estado), "paso_a_clientes": paso}), 201
 
 
 @notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/estado", methods=["POST"])
