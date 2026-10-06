@@ -384,12 +384,13 @@ def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
         "Demo Agendada",
         "Hay que hacer Presupuesto",
         "Esperando Confirmación Presupuesto",
+        "Pausado",
         "Perdido",
         "Presupuesto Rechazado",
         "Presupuesto Aceptado",
     ]
     assert [c["grupo"] for c in datos["columnas"]] == [
-        "todo", "in_progress", "in_progress", "done", "done", "done"]
+        "todo", "in_progress", "in_progress", "in_progress", "done", "done", "done"]
 
 
 def test_el_kanban_no_dibuja_las_columnas_por_grupo(app):
