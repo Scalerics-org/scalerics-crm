@@ -533,6 +533,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **6/10 — Proceso de venta: botón "Nueva ficha", pedido de Juan.** Worktree
+  `../crm-nueva-ficha`, rama `feat/proceso-venta-nueva-ficha`, sale de `main`. Antes las
+  fichas del tablero solo se podían crear en Notion. Ahora `POST /api/notion-clients`
+  (`routes/notion_clients.py`) usa el `crear_cliente` que ya existía: escribe en Notion y
+  deja la ficha en el espejo. **Zona compartida: toqué `dashboard.py`** (botón y modal del
+  panel Proceso de venta, JS `_ncAbrirNueva`/`_ncCrear`, etiqueta `notion_client_created`
+  en el feed). Edición de fichas que ya existen sigue sin ruta (solo Notion). El test
+  `test_no_hay_ruta_para_crear...` pasó a `test_no_hay_ruta_para_editar...` y se agregaron
+  los de creación. Sin merge ni deploy.
+
 - **5/10 — Clientes: columna "Mantenimiento" (cuota mensual), pedido de Juan.** Worktree
   `../crm-mantenimiento`, rama `feat/clientes-mantenimiento`, sale de `main`.
   **Zona compartida: toqué `database.py`** (columnas `businesses.mantenimiento_monto` y

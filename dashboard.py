@@ -2532,6 +2532,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .nc-vinculo-vacio{font-size:.78rem;color:var(--texto-debil);padding:6px 2px}
 .nc-vinculo-error{font-size:.78rem;color:var(--rojo-texto);min-height:1em;margin-top:8px}
 .nc-vinculo-acciones{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.nc-cabecera{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+#nc-nueva-modal textarea{resize:vertical;font-family:inherit}
 .nc-vinculo-acciones [hidden]{display:none}
 .cal-mobile-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .cal-mobile-act{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.78rem;font-weight:600;font-family:inherit;text-decoration:none;cursor:pointer}
@@ -4693,10 +4695,27 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= PIPELINE NOTION PANEL ======= -->
   <div id="notion_clients-panel" class="panel">
     <div class="panel-head">
-      <h1>Proceso de venta</h1>
-      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
+      <div class="nc-cabecera">
+        <h1>Proceso de venta</h1>
+        <button class="btn-primary" onclick="_ncAbrirNueva()">+ Nueva ficha</button>
+      </div>
+      <p class="panel-sub">Espejo de la database Clientes. Son las fichas del proceso de venta, no los leads del CRM. Podés crear una desde acá con "Nueva ficha": se guarda también en Notion. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
     </div>
     <div id="notion-clients-board" class="kanban"></div>
+    <div class="modal-overlay" id="nc-nueva-modal" onclick="if(event.target===this)_ncCerrarNueva()">
+      <div class="modal">
+        <h3>Nueva ficha</h3>
+        <p>Entra al proceso de venta y también se crea en Notion.</p>
+        <input id="nc-nueva-nombre" class="search-box nc-vinculo-buscar" placeholder="Nombre (negocio o persona)" maxlength="200" autocomplete="off" onkeydown="if(event.key==='Enter')_ncCrear()">
+        <select id="nc-nueva-estado" class="search-box nc-vinculo-buscar"></select>
+        <textarea id="nc-nueva-desc" class="search-box nc-vinculo-buscar" rows="3" maxlength="1900" placeholder="Descripción (opcional)"></textarea>
+        <div id="nc-nueva-error" class="nc-vinculo-error"></div>
+        <div class="nc-vinculo-acciones">
+          <button class="btn-ghost" onclick="_ncCerrarNueva()">Cancelar</button>
+          <button id="nc-nueva-crear" class="btn-primary" onclick="_ncCrear()">Crear ficha</button>
+        </div>
+      </div>
+    </div>
     <div class="modal-overlay" id="nc-vinculo-modal" onclick="if(event.target===this)_ncCerrarVinculo()">
       <div class="modal">
         <h3>Conectar con el CRM</h3>
@@ -10594,6 +10613,58 @@ function _notionClientCardHtml(c, arrastrable) {
     ${_ncVinculoHtml(c)}
     ${slBotonNotionHtml(c)}
   </div>`;
+}
+
+// ── Crear una ficha nueva desde el CRM ───────────────────────────────────────
+// Antes las fichas solo se podian crear en Notion. El backend la escribe en
+// Notion primero y despues en el espejo, asi que si Notion la rechaza el error
+// vuelve aca y el modal queda abierto con lo que se habia escrito.
+function _ncAbrirNueva() {
+  const sel = document.getElementById('nc-nueva-estado');
+  sel.innerHTML = _ncColumnas.map(col =>
+    '<option value="' + esc(col.estado) + '">' + esc(col.estado) + '</option>').join('');
+  document.getElementById('nc-nueva-nombre').value = '';
+  document.getElementById('nc-nueva-desc').value = '';
+  document.getElementById('nc-nueva-error').textContent = '';
+  document.getElementById('nc-nueva-crear').disabled = false;
+  document.getElementById('nc-nueva-modal').classList.add('open');
+  document.getElementById('nc-nueva-nombre').focus();
+}
+
+function _ncCerrarNueva() {
+  document.getElementById('nc-nueva-modal').classList.remove('open');
+}
+
+async function _ncCrear() {
+  const nombre = document.getElementById('nc-nueva-nombre').value.trim();
+  const error = document.getElementById('nc-nueva-error');
+  const boton = document.getElementById('nc-nueva-crear');
+  if (!nombre) { error.textContent = 'Escribí el nombre de la ficha.'; return; }
+  error.textContent = '';
+  boton.disabled = true;
+  try {
+    const r = await fetch('/api/notion-clients', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: nombre,
+        estado: document.getElementById('nc-nueva-estado').value,
+        descripcion: document.getElementById('nc-nueva-desc').value.trim(),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) {
+      error.textContent = d.error || 'No se pudo crear la ficha.';
+      boton.disabled = false;
+      return;
+    }
+  } catch {
+    error.textContent = 'No se pudo hablar con el servidor.';
+    boton.disabled = false;
+    return;
+  }
+  _ncCerrarNueva();
+  loadNotionClients();
 }
 
 // ── Conectar una ficha con su persona del CRM ────────────────────────────────
@@ -20784,11 +20855,12 @@ const _actActionLabels = {
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
   notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en Proceso de venta`,
+  notion_client_created: (i) => `creó la ficha <b>${esc(i.entity_name)}</b> en <b>${esc(i.detail)}</b> (Proceso de venta)`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',asunto_agendado:'📅',asunto_movido:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',asunto_agendado:'📅',asunto_movido:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀',notion_client_created:'➕'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
