@@ -213,6 +213,15 @@ def test_no_hay_ruta_para_editar_un_cliente_de_notion(app):
                          headers=_AUTH).status_code in (404, 405)
 
 
+def test_el_tablero_tiene_la_columna_pausado_antes_de_perdido(app):
+    r = app.test_client().get("/api/notion-clients", headers=_AUTH)
+
+    estados = [c["estado"] for c in r.get_json()["columnas"]]
+    assert "Pausado" in estados
+    assert estados.index("Pausado") < estados.index("Perdido")
+    assert ns.grupo_de_cliente("Pausado") == "in_progress"
+
+
 def _crear_mock(app, page_id="pagina-nueva"):
     """Un `crear_cliente` que deja la ficha en el espejo, como el real."""
     ruta = app.config["DB_PATH"]
