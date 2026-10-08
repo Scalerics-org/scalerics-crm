@@ -314,9 +314,37 @@ def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
         "Perdido",
         "Presupuesto Rechazado",
         "Presupuesto Aceptado",
+        "En pausa",  # solo del CRM, siempre al final
     ]
     assert [c["grupo"] for c in datos["columnas"]] == [
-        "todo", "in_progress", "in_progress", "done", "done", "done"]
+        "todo", "in_progress", "in_progress", "done", "done", "done", "pausa"]
+
+
+def test_pausar_y_asignar_programador(app):
+    from database import get_notion_client_by_id, listar_programadores
+    ruta = app.config["DB_PATH"]
+    cid = upsert_notion_client(ruta, "c-2", "Rodelú", status="Demo Agendada")
+    cli = app.test_client()
+
+    r = cli.post(f"/api/notion-clients/{cid}/pausa", json={"en_pausa": True}, headers=_AUTH)
+    assert r.get_json()["en_pausa"] is True
+    assert get_notion_client_by_id(ruta, cid)["en_pausa"] == 1
+    # el sync no pisa la pausa
+    upsert_notion_client(ruta, "c-2", "Rodelú", status="Demo Agendada")
+    assert get_notion_client_by_id(ruta, cid)["en_pausa"] == 1
+
+    prog = listar_programadores(ruta)[0]
+    r = cli.put(f"/api/notion-clients/{cid}/programador",
+                json={"programador_id": prog["id"]}, headers=_AUTH)
+    assert r.get_json()["programador_nombre"] == prog["nombre"]
+    datos = cli.get("/api/notion-clients", headers=_AUTH).get_json()
+    ficha = next(c for c in datos["clientes"] if c["id"] == cid)
+    assert ficha["programador_nombre"] == prog["nombre"] and ficha["en_pausa"] is True
+    assert prog["id"] in [p["id"] for p in datos["programadores"]]
+
+    r = cli.put(f"/api/notion-clients/{cid}/programador",
+                json={"programador_id": 99999}, headers=_AUTH)
+    assert r.status_code == 404
 
 
 def test_el_kanban_no_dibuja_las_columnas_por_grupo(app):

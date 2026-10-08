@@ -11,14 +11,19 @@ import os
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (ETAPAS_CLIENTE, get_business, get_notion_client_by_id,
-                      get_notion_clients, get_projects, log_activity,
-                      vincular_notion_client)
+                      get_notion_clients, get_projects, listar_programadores,
+                      log_activity, set_notion_client_pausa,
+                      set_notion_client_programador, vincular_notion_client)
 from services.auth import require_panel
 from services.notion_service import (ESTADO_ACEPTADO, GRUPOS_CLIENTES,
                                      estados_de_clientes, grupo_de_cliente,
                                      mover_cliente, pasar_a_cliente)
 
 notion_clients_bp = Blueprint("notion_clients", __name__)
+
+# Columna que existe solo en el CRM: no es un estado de Notion, asi que mover una
+# ficha ahi no escribe en Notion (ver `en_pausa` en `notion_clients`).
+COLUMNA_PAUSA = "En pausa"
 
 
 def _token_admin_ok() -> bool:
@@ -39,14 +44,68 @@ def api_notion_clients():
     db = current_app.config["DB_PATH"]
     proyectos = {p["notion_page_id"]: p["name"] for p in get_projects(db)}
     return jsonify({
-        "columnas": estados_de_clientes(),
+        "columnas": estados_de_clientes() + [{"estado": COLUMNA_PAUSA, "grupo": "pausa"}],
+        "programadores": [{"id": p["id"], "nombre": p["nombre"]}
+                          for p in listar_programadores(db)],
         "clientes": [
             {**c,
+             "en_pausa": bool(c.get("en_pausa")),
              "grupo": grupo_de_cliente(c.get("status")),
              "project_name": proyectos.get(c.get("notion_project_page_id"))}
             for c in get_notion_clients(db)
         ],
     })
+
+
+@notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/pausa", methods=["POST"])
+def api_pausar_cliente(cliente_id):
+    """Pone la ficha en la columna "En pausa", o la saca. Solo del CRM."""
+    db = current_app.config["DB_PATH"]
+    if not _token_admin_ok():
+        candado = require_panel(db, "notion_clients")
+        if candado:
+            return candado
+    cliente = get_notion_client_by_id(db, cliente_id)
+    if not cliente:
+        return jsonify({"ok": False, "error": "la ficha no existe"}), 404
+    en_pausa = bool((request.get_json(silent=True) or {}).get("en_pausa"))
+    set_notion_client_pausa(db, cliente_id, en_pausa)
+    if bool(cliente.get("en_pausa")) != en_pausa:
+        log_activity(db, session.get("user_name", "sistema"), "notion_client_moved",
+                     "notion_client", cliente_id, cliente.get("name", ""),
+                     COLUMNA_PAUSA if en_pausa else (cliente.get("status") or ""),
+                     user_id=session.get("user_id"))
+    return jsonify({"ok": True, "en_pausa": en_pausa})
+
+
+@notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/programador", methods=["PUT"])
+def api_asignar_programador(cliente_id):
+    """Asigna un programador a la ficha. Body: `{"programador_id": <id>|null}`."""
+    db = current_app.config["DB_PATH"]
+    if not _token_admin_ok():
+        candado = require_panel(db, "notion_clients")
+        if candado:
+            return candado
+    cliente = get_notion_client_by_id(db, cliente_id)
+    if not cliente:
+        return jsonify({"ok": False, "error": "la ficha no existe"}), 404
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict) or "programador_id" not in datos:
+        return jsonify({"ok": False, "error": "falta programador_id"}), 400
+    pid = datos["programador_id"]
+    nombre = None
+    if pid is not None:
+        if isinstance(pid, bool) or not isinstance(pid, int):
+            return jsonify({"ok": False, "error": "programador_id invalido"}), 400
+        programador = next((p for p in listar_programadores(db) if p["id"] == pid), None)
+        if not programador:
+            return jsonify({"ok": False, "error": "ese programador no existe"}), 404
+        nombre = programador["nombre"]
+    set_notion_client_programador(db, cliente_id, pid)
+    log_activity(db, session.get("user_name", "sistema"), "notion_client_assigned",
+                 "notion_client", cliente_id, cliente.get("name", ""), nombre or "",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "programador_id": pid, "programador_nombre": nombre})
 
 
 @notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/estado", methods=["POST"])
@@ -81,6 +140,9 @@ def api_mover_cliente(cliente_id):
     ok, error = mover_cliente(db, cliente_id, estado)
     if not ok:
         return jsonify({"ok": False, "error": error}), 502
+    # Arrastrarla a una columna real la saca de "En pausa".
+    if cliente.get("en_pausa"):
+        set_notion_client_pausa(db, cliente_id, False)
 
     if cliente.get("status") != estado:
         log_activity(db, session.get("user_name", "sistema"), "notion_client_moved",

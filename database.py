@@ -561,6 +561,11 @@ def init_db(db_path: str) -> None:
         # 14/9 es el unico camino, porque se saco el tablero de Pre-clientes.
         # El upsert del sync no lista esta columna, asi que no la pisa.
         _add_column(conn, "notion_clients", "business_id", "INTEGER")
+        # "En pausa" y el programador asignado viven solo en el CRM: en Notion no
+        # hay una columna "En pausa" ni un campo de programador en esta database.
+        # Igual que business_id, el upsert del sync no las lista y no las pisa.
+        _add_column(conn, "notion_clients", "en_pausa", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "notion_clients", "programador_id", "INTEGER")
 
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -3206,10 +3211,34 @@ def get_notion_clients(db_path: str) -> list[dict]:
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT nc.*, b.name AS business_name "
+            "SELECT nc.*, b.name AS business_name, ep.nombre AS programador_nombre "
             "FROM notion_clients nc LEFT JOIN businesses b ON b.id = nc.business_id "
+            "LEFT JOIN equipo_personas ep ON ep.id = nc.programador_id "
             "ORDER BY nc.name COLLATE NOCASE")
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def set_notion_client_pausa(db_path: str, cliente_id: int, en_pausa: bool) -> None:
+    """Pone o saca una ficha de la columna "En pausa" (solo del CRM)."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE notion_clients SET en_pausa = ? WHERE id = ?",
+                     (1 if en_pausa else 0, cliente_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_notion_client_programador(db_path: str, cliente_id: int,
+                                  programador_id: int | None) -> None:
+    """Asigna un programador a la ficha, o lo saca con None."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE notion_clients SET programador_id = ? WHERE id = ?",
+                     (programador_id, cliente_id))
+        conn.commit()
     finally:
         conn.close()
 
