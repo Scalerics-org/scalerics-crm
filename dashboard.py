@@ -10496,7 +10496,9 @@ async function loadProjects() {
 const _COLOR_GRUPO_CLIENTE = {todo:'#94a3b8', in_progress:'#3b82f6', done:'#10b981', otros:'#f59e0b', pausa:'#a855f7'};
 const _NC_PAUSA = 'En pausa';  // columna solo del CRM: no es un estado de Notion
 // La columna donde se dibuja una ficha: "En pausa" gana sobre su estado de Notion.
-function _ncColDe(c) { return c.en_pausa ? _NC_PAUSA : c.status; }
+function _ncColDe(c) {
+  return c.en_pausa ? _NC_PAUSA : c.status;
+}
 
 // Lo que se dibujo la ultima vez. El arrastre lo modifica y vuelve a dibujar;
 // si Notion rechaza, se restaura desde aca y la ficha vuelve a su columna.

@@ -311,13 +311,13 @@ def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
         "Demo Agendada",
         "Hay que hacer Presupuesto",
         "Esperando Confirmación Presupuesto",
+        "En pausa",  # solo del CRM, al lado de "Esperando Confirmación"
         "Perdido",
         "Presupuesto Rechazado",
         "Presupuesto Aceptado",
-        "En pausa",  # solo del CRM, siempre al final
     ]
     assert [c["grupo"] for c in datos["columnas"]] == [
-        "todo", "in_progress", "in_progress", "done", "done", "done", "pausa"]
+        "todo", "in_progress", "in_progress", "pausa", "done", "done", "done"]
 
 
 def test_pausar_y_asignar_programador(app):

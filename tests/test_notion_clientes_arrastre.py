@@ -380,9 +380,10 @@ def _funcion(nombre: str) -> str:
 def _correr(cuerpo: str, tmp_path) -> str:
     colores = re.search(r"^const _COLOR_GRUPO_CLIENTE = .*$", HTML, re.M).group(0)
     fuente = "\n".join([
-        dashboard.ESC_JS, colores,
+        dashboard.ESC_JS, colores, "const _NC_PAUSA = 'En pausa'; let _ncProgramadores = [];",
         *(_funcion(n) for n in ("_ncPuedeArrastrar", "_ncDibujar", "_notionClientColHtml",
                                 "_notionClientCardHtml", "_ncVinculoHtml",
+                                "_ncColDe", "_ncProgramadorHtml", "_ncPausar",
                                 # El boton "Recordatorio de llamado" de Seguimiento de leads.
                                 "slBotonNotionHtml", "_ncDragStart",
                                 "_ncOver", "_ncDrop", "_ncMover")),

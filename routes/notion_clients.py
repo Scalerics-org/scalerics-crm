@@ -26,6 +26,16 @@ notion_clients_bp = Blueprint("notion_clients", __name__)
 COLUMNA_PAUSA = "En pausa"
 
 
+def _columnas_con_pausa() -> list[dict]:
+    """Las columnas de Notion con "En pausa" justo despues de "Esperando
+    Confirmación Presupuesto"."""
+    columnas = estados_de_clientes()
+    pausa = {"estado": COLUMNA_PAUSA, "grupo": "pausa"}
+    pos = next((i + 1 for i, c in enumerate(columnas)
+                if c["estado"] == "Esperando Confirmación Presupuesto"), len(columnas))
+    return columnas[:pos] + [pausa] + columnas[pos:]
+
+
 def _token_admin_ok() -> bool:
     esperado = os.environ.get("ADMIN_TOKEN", "")
     return bool(esperado) and request.headers.get("x-admin-token", "") == esperado
@@ -44,7 +54,7 @@ def api_notion_clients():
     db = current_app.config["DB_PATH"]
     proyectos = {p["notion_page_id"]: p["name"] for p in get_projects(db)}
     return jsonify({
-        "columnas": estados_de_clientes() + [{"estado": COLUMNA_PAUSA, "grupo": "pausa"}],
+        "columnas": _columnas_con_pausa(),
         "programadores": [{"id": p["id"], "nombre": p["nombre"]}
                           for p in listar_programadores(db)],
         "clientes": [
