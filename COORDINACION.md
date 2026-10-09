@@ -533,6 +533,24 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **9/10 — Proceso de venta: asignar programador a cada ficha (pedido de Juan, 8/10) y choque con "Nueva ficha".**
+  Agregué `notion_clients.programador_id` (desplegable en cada tarjeta, `PUT /api/notion-clients/<id>/programador`;
+  las opciones salen de `listar_programadores`). **Error mío:** el 8/10 deployé `main` sin haber traído el PR #139
+  (botón "Nueva ficha" + columna "Pausado") y producción perdió esas dos cosas; además había hecho una columna
+  "En pausa" propia que duplicaba "Pausado". Ya mergeé `origin/main`, saqué mi "En pausa" (queda "Pausado", que tiene
+  que existir con ese nombre en la property Status de Notion) y re-deployé. Moraleja de la regla 2: antes de deployar,
+  `git fetch` y mirar que `main` local no esté atrás de `origin/main`.
+
+- **6/10 — Proceso de venta: botón "Nueva ficha", pedido de Juan.** Worktree
+  `../crm-nueva-ficha`, rama `feat/proceso-venta-nueva-ficha`, sale de `main`. Antes las
+  fichas del tablero solo se podían crear en Notion. Ahora `POST /api/notion-clients`
+  (`routes/notion_clients.py`) usa el `crear_cliente` que ya existía: escribe en Notion y
+  deja la ficha en el espejo. **Zona compartida: toqué `dashboard.py`** (botón y modal del
+  panel Proceso de venta, JS `_ncAbrirNueva`/`_ncCrear`, etiqueta `notion_client_created`
+  en el feed). Edición de fichas que ya existen sigue sin ruta (solo Notion). El test
+  `test_no_hay_ruta_para_crear...` pasó a `test_no_hay_ruta_para_editar...` y se agregaron
+  los de creación. Sin merge ni deploy.
+
 - **5/10 — Clientes: columna "Mantenimiento" (cuota mensual), pedido de Juan.** Worktree
   `../crm-mantenimiento`, rama `feat/clientes-mantenimiento`, sale de `main`.
   **Zona compartida: toqué `database.py`** (columnas `businesses.mantenimiento_monto` y

@@ -75,6 +75,10 @@ GRUPOS_CLIENTES = {
     "Demo Agendada": "todo",
     "Hay que hacer Presupuesto": "in_progress",
     "Esperando Confirmación Presupuesto": "in_progress",
+    # Lo pidio Juan el 6-10-2026: la ficha esta frenada, ni perdida ni aceptada.
+    # El estado tiene que existir tambien en la property Status de Notion con
+    # este mismo nombre: si no, mover o crear una ficha aca falla en Notion.
+    "Pausado": "in_progress",
     "Perdido": "done",
     "Presupuesto Rechazado": "done",
     "Presupuesto Aceptado": "done",

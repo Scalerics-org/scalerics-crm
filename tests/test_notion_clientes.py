@@ -203,14 +203,87 @@ def test_la_ruta_devuelve_los_clientes_con_el_nombre_de_su_proyecto(app):
     assert por_nombre["Garrido"]["status"] == "Perdido"
 
 
-def test_no_hay_ruta_para_crear_ni_editar_un_cliente_de_notion(app):
-    """El espejo es de solo lectura: si alguna vez aparece un POST o un PUT
-    aca, el CRM puede escribirle a una database que el equipo maneja a mano."""
+def test_no_hay_ruta_para_editar_un_cliente_de_notion(app):
+    """Crear una ficha se puede desde el CRM, pero editar una que ya existe no:
+    nombre, descripcion y fechas se siguen manejando en Notion."""
     cliente = app.test_client()
-    assert cliente.post("/api/notion-clients", json={"name": "X"},
-                        headers=_AUTH).status_code == 405
     assert cliente.put("/api/notion-clients/1", json={"name": "X"},
                        headers=_AUTH).status_code in (404, 405)
+    assert cliente.patch("/api/notion-clients/1", json={"name": "X"},
+                         headers=_AUTH).status_code in (404, 405)
+
+
+def test_el_tablero_tiene_la_columna_pausado_antes_de_perdido(app):
+    r = app.test_client().get("/api/notion-clients", headers=_AUTH)
+
+    estados = [c["estado"] for c in r.get_json()["columnas"]]
+    assert "Pausado" in estados
+    assert estados.index("Pausado") < estados.index("Perdido")
+    assert ns.grupo_de_cliente("Pausado") == "in_progress"
+
+
+def _crear_mock(app, page_id="pagina-nueva"):
+    """Un `crear_cliente` que deja la ficha en el espejo, como el real."""
+    ruta = app.config["DB_PATH"]
+
+    def falso(db, nombre, estado, descripcion=None):
+        upsert_notion_client(db, page_id, nombre, status=estado, descripcion=descripcion)
+        return page_id, None
+    return patch("routes.notion_clients.crear_cliente", side_effect=falso)
+
+
+def test_crear_una_ficha_desde_el_crm_la_deja_en_el_espejo(app):
+    with _crear_mock(app) as crear:
+        r = app.test_client().post(
+            "/api/notion-clients",
+            json={"name": " Ferretería Zetta ", "estado": "Demo Agendada",
+                  "descripcion": "viene por Instagram"},
+            headers=_AUTH)
+
+    assert r.status_code == 201
+    assert r.get_json()["ok"] is True
+    crear.assert_called_once_with(app.config["DB_PATH"], "Ferretería Zetta",
+                                  "Demo Agendada", "viene por Instagram")
+    fichas = get_notion_clients(app.config["DB_PATH"])
+    assert [(c["name"], c["status"]) for c in fichas] == [("Ferretería Zetta", "Demo Agendada")]
+
+
+def test_crear_sin_estado_entra_en_la_primera_columna(app):
+    with _crear_mock(app) as crear:
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"},
+                                   headers=_AUTH)
+
+    assert r.status_code == 201
+    assert crear.call_args.args[2] == "Demo Agendada"
+
+
+def test_crear_sin_nombre_o_con_estado_raro_se_rechaza_sin_tocar_notion(app):
+    with patch("routes.notion_clients.crear_cliente") as crear:
+        c = app.test_client()
+        assert c.post("/api/notion-clients", json={"name": "  "}, headers=_AUTH).status_code == 400
+        assert c.post("/api/notion-clients", json={"name": "X", "estado": "Inventado"},
+                      headers=_AUTH).status_code == 400
+        assert c.post("/api/notion-clients", json={"name": "X", "business_id": 99999},
+                      headers=_AUTH).status_code == 404
+    crear.assert_not_called()
+
+
+def test_si_notion_rechaza_la_ficha_la_ruta_avisa_y_no_queda_nada(app):
+    with patch("routes.notion_clients.crear_cliente",
+               return_value=(None, "Notion devolvio HTTP 400 al crear la ficha")):
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"},
+                                   headers=_AUTH)
+
+    assert r.status_code == 502
+    assert r.get_json()["ok"] is False
+    assert get_notion_clients(app.config["DB_PATH"]) == []
+
+
+def test_crear_sin_permiso_ni_token_se_rechaza(app):
+    with patch("routes.notion_clients.crear_cliente") as crear:
+        r = app.test_client().post("/api/notion-clients", json={"name": "Milky"})
+    assert r.status_code in (401, 403)
+    crear.assert_not_called()
 
 
 def test_el_autosync_sigue_trayendo_tareas_si_los_clientes_explotan(monkeypatch):
@@ -311,27 +384,21 @@ def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
         "Demo Agendada",
         "Hay que hacer Presupuesto",
         "Esperando Confirmación Presupuesto",
-        "En pausa",  # solo del CRM, al lado de "Esperando Confirmación"
+        "Pausado",
         "Perdido",
         "Presupuesto Rechazado",
         "Presupuesto Aceptado",
     ]
     assert [c["grupo"] for c in datos["columnas"]] == [
-        "todo", "in_progress", "in_progress", "pausa", "done", "done", "done"]
+        "todo", "in_progress", "in_progress", "in_progress", "done", "done", "done"]
 
 
-def test_pausar_y_asignar_programador(app):
+
+def test_asignar_programador(app):
     from database import get_notion_client_by_id, listar_programadores
     ruta = app.config["DB_PATH"]
     cid = upsert_notion_client(ruta, "c-2", "Rodelú", status="Demo Agendada")
     cli = app.test_client()
-
-    r = cli.post(f"/api/notion-clients/{cid}/pausa", json={"en_pausa": True}, headers=_AUTH)
-    assert r.get_json()["en_pausa"] is True
-    assert get_notion_client_by_id(ruta, cid)["en_pausa"] == 1
-    # el sync no pisa la pausa
-    upsert_notion_client(ruta, "c-2", "Rodelú", status="Demo Agendada")
-    assert get_notion_client_by_id(ruta, cid)["en_pausa"] == 1
 
     prog = listar_programadores(ruta)[0]
     r = cli.put(f"/api/notion-clients/{cid}/programador",
@@ -339,7 +406,7 @@ def test_pausar_y_asignar_programador(app):
     assert r.get_json()["programador_nombre"] == prog["nombre"]
     datos = cli.get("/api/notion-clients", headers=_AUTH).get_json()
     ficha = next(c for c in datos["clientes"] if c["id"] == cid)
-    assert ficha["programador_nombre"] == prog["nombre"] and ficha["en_pausa"] is True
+    assert ficha["programador_nombre"] == prog["nombre"]
     assert prog["id"] in [p["id"] for p in datos["programadores"]]
 
     r = cli.put(f"/api/notion-clients/{cid}/programador",
