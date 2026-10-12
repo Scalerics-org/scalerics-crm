@@ -533,6 +533,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **12/10 — Semáforo de Meta: color naranja "Agendó y no se conectó" (pedido de Juan).** Worktree
+  `../crm-semaforo-noshow`, rama `feat/semaforo-no-se-conecto`, sale de `main` local (`6ac8871`, lo que corre en
+  producción). Estado nuevo `no_se_conecto`, color de planilla `#ff9900` (y el desteñido `#fce5cd`), token
+  `--semaforo-naranja`. **Zona compartida: toqué `database.py`** (`no_se_conecto` en `ETAPAS_PRECLIENTE`, después
+  de `demo_agendada`: aparece como columna en Pre-clientes) y `dashboard.py` (token, `.mm-c-naranja`,
+  `MM_SEMAFORO`, etiqueta y punto del panel de cliente). Reglas: mismo `RANK` que la agendada (4); el ida y vuelta
+  agendada <-> no se conectó lo aplica `aplicar` solo si la planilla se repintó (si no, una reagenda del
+  calendario volvía al naranja). En `FUNNEL` va entre `demo_agendada` y `demo_1`: cuenta como agendada, no como
+  demo. No es demo para el Registro de demos (si una fila pasa de verde a naranja, se borra la demo de planilla de
+  ese mes, como con cualquier color que no es demo). **No tiene secuencia de mails.** `routes/calendar.py`: marcar
+  hecha una reunión también lo pasa a `demo_1`. Falta que Juan agregue el naranja a la leyenda de la pestaña
+  `Semaforo`. Sin merge ni deploy.
+
 - **9/10 — Proceso de venta: asignar programador a cada ficha (pedido de Juan, 8/10) y choque con "Nueva ficha".**
   Agregué `notion_clients.programador_id` (desplegable en cada tarjeta, `PUT /api/notion-clients/<id>/programador`;
   las opciones salen de `listar_programadores`). **Error mío:** el 8/10 deployé `main` sin haber traído el PR #139

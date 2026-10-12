@@ -1826,6 +1826,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --violeta:#a78bfa;
   --sombra:rgba(0,0,0,.4);
   --semaforo-verde:#00ff00;
+  --semaforo-naranja:#ff9900;
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
@@ -1878,6 +1879,7 @@ body.light{
   --violeta:#6d28d9;
   --sombra:rgba(0,0,0,.12);
   --semaforo-verde:#00ff00;
+  --semaforo-naranja:#ff9900;
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
@@ -2154,6 +2156,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .mm-c-rojo{--mm-color:var(--semaforo-rojo)}
 .mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
 .mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-naranja{--mm-color:var(--semaforo-naranja)}
 .mm-c-celeste{--mm-color:var(--semaforo-celeste)}
 .mm-c-violeta{--mm-color:var(--semaforo-violeta)}
 .mm-c-venta{--mm-color:var(--semaforo-venta)}
@@ -6941,6 +6944,7 @@ const MM_SEMAFORO = [
   {clave: 'rojo', etiqueta: 'No atiende'},
   {clave: 'amarillo', etiqueta: 'Interesado'},
   {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'naranja', etiqueta: 'Agendó y no se conectó'},
   {clave: 'celeste', etiqueta: 'Demo realizada'},
   {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
   {clave: 'venta', etiqueta: 'Venta concretada'},
@@ -12187,8 +12191,8 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {demo_agendada:'Demo agendada',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
-  const crmDot = {demo_agendada:'#3b82f6',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
+  const crmLabels = {demo_agendada:'Demo agendada',no_se_conecto:'No se conectó',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmDot = {demo_agendada:'#3b82f6',no_se_conecto:'#ff9900',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const dot = crmDot[e.new_status] || '#0088cc';

@@ -48,6 +48,8 @@ COLOR_A_ESTADO = {
     "ffff00": "interesado",           # atendio, sin reunion agendada
     "fff2cc": "interesado",           # el mismo amarillo desteñido
     "00ff00": "demo_agendada",        # atendio y se agendo demo
+    "ff9900": "no_se_conecto",        # agendo y no se conecto a la demo
+    "fce5cd": "no_se_conecto",        # el mismo naranja desteñido
     "00ffff": "demo_1",               # demo realizada
     "ff00ff": "presupuesto_enviado",  # hubo demo y no cerro
     "274e13": "cerrado",              # venta concretada
@@ -70,6 +72,9 @@ RANK = {
     "contactado": 3,
     "interesado": 3,
     "demo_agendada": 4,
+    # Mismo rango que la agendada: no es un avance ni un retroceso, es la misma
+    # agenda que fallo. El ida y vuelta entre las dos lo resuelve `aplicar`.
+    "no_se_conecto": 4,
     "demo_1": 5,
     "demo_2": 5,
     "demo_3": 5,
@@ -93,7 +98,7 @@ RANK = {
 NOTA_EVENTO = "sync planilla semaforo"
 
 # ── El semaforo como lo ve la gente ──────────────────────────────────────────
-# Los siete colores de la leyenda, con el nombre que se muestra en el CRM (los
+# Los ocho colores de la leyenda, con el nombre que se muestra en el CRM (los
 # cuatro de demo, iguales que en el Registro de demos) y el estado del CRM que
 # significan. `hex` es el tono puro de la planilla: el mismo que los tokens
 # --semaforo-* del panel. El orden es el del embudo, que es como se lee.
@@ -102,6 +107,7 @@ SEMAFORO = (
     ("rojo",      "No atiende",            "llamar_despues",       "ff0000"),
     ("amarillo",  "Interesado",            "interesado",           "ffff00"),
     ("verde",     "Demo agendada",         "demo_agendada",        "00ff00"),
+    ("naranja",   "Agendó y no se conectó", "no_se_conecto",       "ff9900"),
     ("celeste",   "Demo realizada",        "demo_1",               "00ffff"),
     ("violeta",   "Hubo demo y no cerró",  "presupuesto_enviado",  "ff00ff"),
     ("venta",     "Venta concretada",      "cerrado",              "38761d"),
@@ -123,6 +129,7 @@ ESTADO_A_COLOR = {
     "llamar_despues": "rojo",
     "interesado": "amarillo", "contactado": "amarillo",
     "demo_agendada": "verde", "reunion_agendada": "verde", "agendo": "verde",
+    "no_se_conecto": "naranja",
     "demo_1": "celeste", "demo_2": "celeste", "demo_3": "celeste",
     "reunion_hecha": "celeste",
     "presupuesto_enviado": "violeta", "follow_up_1": "violeta",
@@ -285,7 +292,13 @@ def aplicar(db_path: str, filas: list, dry_run: bool = False) -> dict:
         baja_deliberada = (estado == "no_interesa"
                            and RANK.get(actual, 0) < RANK["cerrado"]
                            and not (a_mano and ficha["visto"] is None))
-        if not (avanza or baja_deliberada):
+        # Agendada <-> no se conecto: mismo rango, asi que ninguna "avanza". Pasa
+        # solo si la planilla se repinto (trae algo distinto de la ultima
+        # lectura): si no, una reunion reagendada desde el calendario volveria a
+        # "no se conecto" en el proximo sync porque la celda sigue naranja.
+        reagenda = ({estado, actual} == {"demo_agendada", "no_se_conecto"}
+                    and estado != ficha["visto"])
+        if not (avanza or baja_deliberada or reagenda):
             resumen["no_retrocede"] += 1
             continue
         resumen["cambios"].append({"id": bid, "de": actual, "a": estado})

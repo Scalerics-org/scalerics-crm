@@ -34,6 +34,7 @@ preclientes_bp = Blueprint("preclientes", __name__)
 # no puedan divergir, que es como se perdio el panel SDR en su momento.
 ETIQUETAS_ETAPA = {
     "demo_agendada":       "Demo agendada",
+    "no_se_conecto":       "No se conectó",
     "demo_1":              "Demo 1",
     "demo_2":              "Demo 2",
     "demo_3":              "Demo 3",

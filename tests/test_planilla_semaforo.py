@@ -313,3 +313,63 @@ def test_el_resto_de_los_colores_sigue_sin_retroceder(db):
     _lead(db, 1, "+59899913326", estado="presupuesto_enviado")
     aplicar(db, [{"tel": "59899913326", "color": AMARILLO}])
     assert _estado(db, 1) == "presupuesto_enviado", "amarillo no puede bajar un ppto"
+
+
+# ── Agendo y no se conecto (naranja, pedido de Juan 12/10) ────────────────────
+
+NARANJA = "#ff9900"       # no_se_conecto
+VERDE = "#00ff00"         # demo_agendada
+
+
+def test_el_naranja_es_no_se_conecto():
+    assert estado_de_color(NARANJA) == "no_se_conecto"
+    assert estado_de_color("#fce5cd") == "no_se_conecto", "el naranja desteñido tambien"
+
+
+def test_una_agendada_pasa_a_no_se_conecto(db):
+    """Mismo rango que la agendada, pero la planilla trae algo nuevo: pasa."""
+    _lead(db, 1, "+59899913326", estado="demo_agendada")
+    r = aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    assert _estado(db, 1) == "no_se_conecto"
+    assert r["actualizados"] == 1
+
+
+def test_y_vuelve_a_agendada_si_la_repintan_de_verde(db):
+    """Reagendo: la celda pasa de naranja a verde y el CRM la sigue."""
+    _lead(db, 1, "+59899913326", estado="demo_agendada")
+    aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    aplicar(db, [{"tel": "59899913326", "color": VERDE}])
+    assert _estado(db, 1) == "demo_agendada"
+
+
+def test_una_reagenda_del_calendario_no_vuelve_al_naranja(db):
+    """Si se reagenda desde el CRM y la celda sigue naranja, la planilla no
+    dice nada nuevo: el proximo sync no puede devolverlo a 'no se conecto'."""
+    _lead(db, 1, "+59899913326", estado="demo_agendada")
+    aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE businesses SET crm_status='demo_agendada' WHERE id=1")
+    conn.commit()
+    conn.close()
+    r = aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    assert _estado(db, 1) == "demo_agendada"
+    assert r["actualizados"] == 0
+
+
+def test_el_naranja_no_baja_una_demo_hecha(db):
+    _lead(db, 1, "+59899913326", estado="demo_1")
+    r = aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    assert _estado(db, 1) == "demo_1"
+    assert r["no_retrocede"] == 1
+
+
+def test_el_naranja_avanza_a_un_interesado(db):
+    _lead(db, 1, "+59899913326", estado="interesado")
+    aplicar(db, [{"tel": "59899913326", "color": NARANJA}])
+    assert _estado(db, 1) == "no_se_conecto"
+
+
+def test_en_el_embudo_cuenta_como_agendada_y_no_como_demo():
+    from services.embudo import alcanzo
+    assert alcanzo({"no_se_conecto"}, "demo_agendada")
+    assert not alcanzo({"no_se_conecto"}, "demo_1")

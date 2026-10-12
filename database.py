@@ -107,6 +107,7 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
 # negociacion), que no describian como se vende aca: el eje real son las demos.
 ETAPAS_PRECLIENTE = (
     "demo_agendada",        # pactada, todavia no se dio
+    "no_se_conecto",        # estaba agendada y no se conecto: hay que reagendar
     "demo_1",
     "demo_2",
     "demo_3",
