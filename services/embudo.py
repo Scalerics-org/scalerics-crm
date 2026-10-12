@@ -18,8 +18,11 @@ Se movio sin tocar el comportamiento. Los tests de finanzas pasan identicos.
 # anteriores. Meterlos en la lista ordenada haria que un lead rechazado
 # figurara mas avanzado que uno en `presupuesto_enviado`, que es al reves de
 # lo que paso: un lead que se cayo ahi igual paso por lo que haya pasado antes.
+#
+# `no_se_conecto` va entre la agendada y la demo: llego a agendar (cuenta como
+# agendada) pero la demo no se dio (no cuenta como demo).
 FUNNEL = ["sin_contactar", "interesado", "contactado",
-          "demo_agendada", "demo_1", "demo_2", "demo_3",
+          "demo_agendada", "no_se_conecto", "demo_1", "demo_2", "demo_3",
           "presupuesto_enviado", "follow_up_1", "follow_up_2", "acepto",
           "cerrado", "en_desarrollo", "finalizado"]
 

@@ -100,7 +100,8 @@ def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
     # Rojo, amarillo y negro se sumaron el 15/9 con el semaforo de Meta Ads:
     # la fila del lead se pinta con el color que la gente pinta en la planilla
     # (borde pleno y un tinte mezclado con la superficie, que si cambia de tema).
-    esperadas = {"--azul", "--semaforo-verde", "--semaforo-celeste",
+    # El naranja ("agendo y no se conecto") se sumo el 12/10.
+    esperadas = {"--azul", "--semaforo-verde", "--semaforo-naranja", "--semaforo-celeste",
                  "--semaforo-violeta", "--semaforo-venta", "--semaforo-rojo",
                  "--semaforo-amarillo", "--semaforo-negro"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}

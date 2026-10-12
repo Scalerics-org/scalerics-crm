@@ -728,7 +728,7 @@ def test_cada_lead_se_pinta_con_su_color_y_tocar_una_opcion_lo_guarda(cli, db, t
     assert "mm-opciones" not in ini
 
     abierto = s["abierto"]
-    assert abierto.count('class="mm-opcion ') == 8
+    assert abierto.count('class="mm-opcion ') == len(SEMAFORO) + 1, "cada color y 'sin color'"
     for clave, etiqueta, _, _ in SEMAFORO:
         assert f"mmMarcarColor(1, '{clave}')\"><span class=\"mm-punto\"></span>{etiqueta}</button>" in abierto
     assert "mm-opcion mm-c-celeste mm-actual" in abierto

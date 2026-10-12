@@ -770,7 +770,7 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
             # No pisa a quien ya esta mas adelante.
             _ANTES_DE_LA_REUNION = {
                 "sin_contactar", "interesado", "contactado",
-                "demo_agendada", "llamar_despues",
+                "demo_agendada", "llamar_despues", "no_se_conecto",
             }
             biz = get_business(_db(), cid)
             if biz and biz.get("crm_status") in _ANTES_DE_LA_REUNION:

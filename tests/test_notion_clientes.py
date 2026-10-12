@@ -393,6 +393,27 @@ def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
         "todo", "in_progress", "in_progress", "in_progress", "done", "done", "done"]
 
 
+
+def test_asignar_programador(app):
+    from database import get_notion_client_by_id, listar_programadores
+    ruta = app.config["DB_PATH"]
+    cid = upsert_notion_client(ruta, "c-2", "Rodelú", status="Demo Agendada")
+    cli = app.test_client()
+
+    prog = listar_programadores(ruta)[0]
+    r = cli.put(f"/api/notion-clients/{cid}/programador",
+                json={"programador_id": prog["id"]}, headers=_AUTH)
+    assert r.get_json()["programador_nombre"] == prog["nombre"]
+    datos = cli.get("/api/notion-clients", headers=_AUTH).get_json()
+    ficha = next(c for c in datos["clientes"] if c["id"] == cid)
+    assert ficha["programador_nombre"] == prog["nombre"]
+    assert prog["id"] in [p["id"] for p in datos["programadores"]]
+
+    r = cli.put(f"/api/notion-clients/{cid}/programador",
+                json={"programador_id": 99999}, headers=_AUTH)
+    assert r.status_code == 404
+
+
 def test_el_kanban_no_dibuja_las_columnas_por_grupo(app):
     """Guard del bug que motivo el cambio: el tablero mostraba tres columnas
     (Pendientes / En progreso / Cerrados) y los seis estados del equipo

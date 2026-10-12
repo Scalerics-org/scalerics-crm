@@ -12,8 +12,8 @@ import os
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (ETAPAS_CLIENTE, get_business, get_notion_client_by_id,
-                      get_notion_clients, get_projects, log_activity,
-                      vincular_notion_client)
+                      get_notion_clients, get_projects, listar_programadores,
+                      log_activity, set_notion_client_programador, vincular_notion_client)
 from services.auth import require_panel
 from services.notion_service import (ESTADO_ACEPTADO, GRUPOS_CLIENTES,
                                      crear_cliente, estados_de_clientes,
@@ -21,7 +21,6 @@ from services.notion_service import (ESTADO_ACEPTADO, GRUPOS_CLIENTES,
                                      pasar_a_cliente)
 
 notion_clients_bp = Blueprint("notion_clients", __name__)
-
 
 def _token_admin_ok() -> bool:
     esperado = os.environ.get("ADMIN_TOKEN", "")
@@ -42,6 +41,8 @@ def api_notion_clients():
     proyectos = {p["notion_page_id"]: p["name"] for p in get_projects(db)}
     return jsonify({
         "columnas": estados_de_clientes(),
+        "programadores": [{"id": p["id"], "nombre": p["nombre"]}
+                          for p in listar_programadores(db)],
         "clientes": [
             {**c,
              "grupo": grupo_de_cliente(c.get("status")),
@@ -111,6 +112,36 @@ def api_crear_cliente():
                  nombre, estado, user_id=session.get("user_id"))
     return jsonify({"ok": True, "id": ficha["id"], "estado": estado,
                     "grupo": grupo_de_cliente(estado), "paso_a_clientes": paso}), 201
+
+
+@notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/programador", methods=["PUT"])
+def api_asignar_programador(cliente_id):
+    """Asigna un programador a la ficha. Body: `{"programador_id": <id>|null}`."""
+    db = current_app.config["DB_PATH"]
+    if not _token_admin_ok():
+        candado = require_panel(db, "notion_clients")
+        if candado:
+            return candado
+    cliente = get_notion_client_by_id(db, cliente_id)
+    if not cliente:
+        return jsonify({"ok": False, "error": "la ficha no existe"}), 404
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict) or "programador_id" not in datos:
+        return jsonify({"ok": False, "error": "falta programador_id"}), 400
+    pid = datos["programador_id"]
+    nombre = None
+    if pid is not None:
+        if isinstance(pid, bool) or not isinstance(pid, int):
+            return jsonify({"ok": False, "error": "programador_id invalido"}), 400
+        programador = next((p for p in listar_programadores(db) if p["id"] == pid), None)
+        if not programador:
+            return jsonify({"ok": False, "error": "ese programador no existe"}), 404
+        nombre = programador["nombre"]
+    set_notion_client_programador(db, cliente_id, pid)
+    log_activity(db, session.get("user_name", "sistema"), "notion_client_assigned",
+                 "notion_client", cliente_id, cliente.get("name", ""), nombre or "",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "programador_id": pid, "programador_nombre": nombre})
 
 
 @notion_clients_bp.route("/api/notion-clients/<int:cliente_id>/estado", methods=["POST"])

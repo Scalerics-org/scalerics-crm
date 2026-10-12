@@ -1826,6 +1826,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --violeta:#a78bfa;
   --sombra:rgba(0,0,0,.4);
   --semaforo-verde:#00ff00;
+  --semaforo-naranja:#ff9900;
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
@@ -1878,6 +1879,7 @@ body.light{
   --violeta:#6d28d9;
   --sombra:rgba(0,0,0,.12);
   --semaforo-verde:#00ff00;
+  --semaforo-naranja:#ff9900;
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
@@ -2154,6 +2156,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .mm-c-rojo{--mm-color:var(--semaforo-rojo)}
 .mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
 .mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-naranja{--mm-color:var(--semaforo-naranja)}
 .mm-c-celeste{--mm-color:var(--semaforo-celeste)}
 .mm-c-violeta{--mm-color:var(--semaforo-violeta)}
 .mm-c-venta{--mm-color:var(--semaforo-venta)}
@@ -2521,6 +2524,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-mobile-act-enviar{color:var(--azul-claro)}
 .cal-meet-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;margin:0 0 12px;border-radius:8px;border:1px solid var(--borde);background:var(--verde-tinte);color:var(--verde-texto);font-size:.8rem;font-weight:700;text-decoration:none}
 /* Pipeline Notion: con quien del CRM esta conectada cada ficha */
+.nc-programador{display:block;margin-top:8px;max-width:100%;padding:4px 8px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer}
 .nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
 .nc-vinculo-buscar{width:100%;margin-bottom:10px}
@@ -6940,6 +6944,7 @@ const MM_SEMAFORO = [
   {clave: 'rojo', etiqueta: 'No atiende'},
   {clave: 'amarillo', etiqueta: 'Interesado'},
   {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'naranja', etiqueta: 'Agendó y no se conectó'},
   {clave: 'celeste', etiqueta: 'Demo realizada'},
   {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
   {clave: 'venta', etiqueta: 'Venta concretada'},
@@ -10517,6 +10522,7 @@ const _COLOR_GRUPO_CLIENTE = {todo:'#94a3b8', in_progress:'#3b82f6', done:'#10b9
 // si Notion rechaza, se restaura desde aca y la ficha vuelve a su columna.
 let _ncColumnas = [];
 let _ncClientes = [];
+let _ncProgramadores = [];
 let _ncArrastrando = null;  // id de la ficha que va en la mano
 let _ncGuardando = false;   // un movimiento esperando la respuesta de Notion
 
@@ -10551,6 +10557,7 @@ async function loadNotionClients() {
   }
   _ncColumnas = columnas;
   _ncClientes = clientes;
+  _ncProgramadores = Array.isArray(datos.programadores) ? datos.programadores : [];
   _ncDibujar();
 }
 
@@ -10610,9 +10617,44 @@ function _notionClientCardHtml(c, arrastrable) {
     <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener" draggable="false">${esc(c.name)}</a>
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
+    ${_ncProgramadorHtml(c)}
     ${_ncVinculoHtml(c)}
     ${slBotonNotionHtml(c)}
   </div>`;
+}
+
+// ── Programador asignado a la ficha ──────────────────────────────────────────
+function _ncProgramadorHtml(c) {
+  const opts = ['<option value="">Sin programador</option>'].concat(
+    _ncProgramadores.map(p => '<option value="' + Number(p.id) + '"'
+      + (Number(p.id) === Number(c.programador_id) ? ' selected' : '') + '>' + esc(p.nombre) + '</option>'));
+  return '<select class="nc-programador" draggable="false" title="Programador asignado"'
+    + ' onclick="event.stopPropagation()" onchange="_ncAsignarProgramador(' + Number(c.id) + ', this)">'
+    + opts.join('') + '</select>';
+}
+
+async function _ncAsignarProgramador(id, sel) {
+  const c = _ncClientes.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  const valor = sel.value === '' ? null : Number(sel.value);
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(id) + '/programador', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({programador_id: valor})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  if (!d.ok) {
+    alert('No se pudo asignar el programador. ' + (d.error || ''));
+    sel.value = c.programador_id == null ? '' : String(c.programador_id);
+    return;
+  }
+  c.programador_id = d.programador_id;
+  c.programador_nombre = d.programador_nombre;
 }
 
 // ── Crear una ficha nueva desde el CRM ───────────────────────────────────────
@@ -12149,8 +12191,8 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {demo_agendada:'Demo agendada',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
-  const crmDot = {demo_agendada:'#3b82f6',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
+  const crmLabels = {demo_agendada:'Demo agendada',no_se_conecto:'No se conectó',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmDot = {demo_agendada:'#3b82f6',no_se_conecto:'#ff9900',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const dot = crmDot[e.new_status] || '#0088cc';
@@ -20855,6 +20897,7 @@ const _actActionLabels = {
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
   notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en Proceso de venta`,
+  notion_client_assigned: (i) => i.detail ? `asignó a <b>${esc(i.detail)}</b> como programador de <b>${esc(i.entity_name)}</b>` : `sacó al programador de <b>${esc(i.entity_name)}</b>`,
   notion_client_created: (i) => `creó la ficha <b>${esc(i.entity_name)}</b> en <b>${esc(i.detail)}</b> (Proceso de venta)`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
