@@ -483,8 +483,15 @@ def api_actualizar_recurrente(rec_id):
     # 1/10 cualquier cambio de lo que genera el mes: Juan cambió el monto de dos
     # fijos y Movimientos de octubre siguió con el viejo. Los meses anteriores
     # no se tocan, y `rehacer_mes_en_curso` decide los casos que no se rehacen.
+    # Un fijo que arranca después de este mes también pasa: lo que haya
+    # generado este mes sobra (12/10, el de Claude pasado a 2027). Va aunque
+    # `desde` no cambie, para que volver a guardarlo limpie un mes que quedó
+    # de antes de este arreglo.
+    hoy = date.today()
+    arranca_despues = campos["desde"] > f"{hoy.year:04d}-{hoy.month:02d}"
     rehecho = False
-    if any(k in campos and _mismo(viejo.get(k)) != _mismo(campos[k]) for k in _CAMPOS_QUE_REHACEN):
+    if arranca_despues or any(k in campos and _mismo(viejo.get(k)) != _mismo(campos[k])
+                              for k in _CAMPOS_QUE_REHACEN):
         rehecho = rehacer_mes_en_curso(db, rec_id)
     uid, nombre = _quien()
     log_activity(db, nombre, "finanzas_fijo_editado", "finanzas", rec_id,

@@ -504,13 +504,55 @@ def test_guardar_sin_cambios_no_rehace(app, cli):
     assert r.get_json()["mes_rehecho"] is False
 
 
+def _mes(delta):
+    hoy = date.today()
+    i = hoy.year * 12 + hoy.month - 1 + delta
+    return f"{i // 12:04d}-{i % 12 + 1:02d}"
+
+
 def test_darlo_de_baja_no_borra_el_mes_en_curso(app, cli):
     db, cid, rid = _fijo_generado(app, cli, "De Baja", "+598700907")
-    hoy = date.today()
-    sig = f"{hoy.year + (hoy.month == 12):04d}-{hoy.month % 12 + 1:02d}"
-    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "monto": 99, "desde": sig})
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}",
+                json={**_cuerpo_fijo(cid, None), "monto": 99, "hasta": _mes(-1)})
     assert r.get_json()["mes_rehecho"] is False
     assert listar_movimientos(db)[0]["monto"] == 120
+
+
+def test_apagarlo_no_borra_el_mes_en_curso(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Apagado", "+598700909")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "activo": False})
+    assert r.get_json()["mes_rehecho"] is False
+    assert len(listar_movimientos(db)) == 1
+
+
+def test_pasarle_el_arranque_al_futuro_borra_el_mes_en_curso(app, cli):
+    """Juan (12/10): pasó el fijo de Claude a octubre de 2027 y seguía en
+    Movimientos de octubre. No es una baja: nunca tuvo que correr este mes."""
+    db, cid, rid = _fijo_generado(app, cli, "Arranca Despues", "+598700910")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "desde": _mes(12)})
+    assert r.get_json()["mes_rehecho"] is True
+    assert listar_movimientos(db) == []
+
+
+def test_volver_a_guardar_un_fijo_futuro_limpia_el_mes_que_quedo(app, cli):
+    """El de Claude ya tenía `desde` en 2027 antes del arreglo: guardarlo de
+    nuevo sin cambios tiene que sacar el mes que quedó."""
+    from database import actualizar_recurrente
+    db, cid, rid = _fijo_generado(app, cli, "Quedo De Antes", "+598700911")
+    actualizar_recurrente(db, rid, desde=_mes(12))
+    assert len(listar_movimientos(db)) == 1
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}", json={**_cuerpo_fijo(cid, None), "desde": _mes(12)})
+    assert r.get_json()["mes_rehecho"] is True
+    assert listar_movimientos(db) == []
+
+
+def test_pasarle_el_arranque_al_futuro_a_uno_con_tarjeta_borra_el_cobro_entero(app, cli):
+    db, cid, rid = _fijo_generado(app, cli, "Futuro Tarjeta", "+598700912", "visa_debito")
+    r = cli.put(f"/api/finanzas/recurrentes/{rid}",
+                json={**_cuerpo_fijo(cid, "visa_debito"), "desde": _mes(12)})
+    assert r.get_json()["mes_rehecho"] is True
+    assert listar_movimientos(db) == []
+    assert cli.get("/api/finanzas/cobros-tarjeta").get_json() == []
 
 
 def test_si_lo_cobra_plexo_no_se_rehace(app, cli):
