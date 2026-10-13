@@ -1626,6 +1626,13 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "semaforo_at", "TEXT")
         _add_column(conn, "businesses", "semaforo_planilla", "TEXT")
 
+        # Lead cargado a mano en Meta Ads (pedido de Juan, 13/10): llego por
+        # otro lado (WhatsApp, referido, llamada...) y se lo suma a la lista.
+        # Es `source='meta'` como cualquier otro y cuenta igual en todo (asi lo
+        # pidio Juan); esta columna solo dice por donde llego, para el sello de
+        # la lista. NULL = vino de un formulario de Meta.
+        _add_column(conn, "businesses", "origen_manual", "TEXT")
+
         # Cada formulario de Meta enviado, por separado. Una ficha puede tener
         # varios: la persona que vuelve a escribir meses despues cuenta tambien
         # en el mes de la vuelta, como la cuenta Meta. `meta_lead_id` es el
@@ -2323,6 +2330,8 @@ ALLOWED_COLUMNS = {
     "monto_pagado", "moneda_pagado",
     # Cuota mensual de mantenimiento, cargada a mano desde Clientes.
     "mantenimiento_monto", "mantenimiento_moneda",
+    # Por donde llego un lead cargado a mano en Meta Ads.
+    "origen_manual",
 }
 
 

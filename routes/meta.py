@@ -554,6 +554,178 @@ def meta_marcar_semaforo(lead_id):
     return jsonify({"ok": True, **resultado})
 
 
+# ── Lead cargado a mano (pedido de Juan, 13/10) ──────────────────────────────
+#
+# "Que a los leads de Meta se les pueda agregar leads manual que nos llegan por
+# otro lado". Queda como un lead de Meta mas (`source='meta'`): sale en la
+# lista, tiene semaforo, entra en la secuencia de mails si tiene mail y cuenta
+# en los numeros de Meta, porque asi lo pidio Juan. `origen_manual` dice por
+# donde llego. Las respuestas del formulario se guardan con las MISMAS claves
+# que manda Meta: la lista y los mails las leen de ahi.
+
+ORIGENES_MANUALES = {
+    "whatsapp": "WhatsApp",
+    "instagram": "Mensaje de Instagram",
+    "referido": "Referido",
+    "llamada": "Llamada",
+    "web": "Página web",
+    "otro": "Otro",
+}
+CLAVE_FORM_NEGOCIO = "¿cómo_se_llama_tu_negocio?"
+CLAVE_FORM_BUSCA = "¿que_es_lo_que_buscás_para_tu_negocio?"
+CLAVE_FORM_PRESUPUESTO = "¿contás_con_un_presupuesto_para_este_proyecto?"
+# Los valores tal cual los manda el formulario de Meta (ver
+# email_service._FRASES_RUBRO y los rotulos de la lista en dashboard.py).
+BUSCA_MANUAL = ("una_nueva_página_web", "crear_mi_ecommerce",
+                "un_software_a_medida", "automatizaciones")
+PRESUPUESTO_MANUAL = ("menos_de_usd_500", "entre_usd_500_y_usd_1.000",
+                      "entre_usd_1.000_y_usd_3.000", "más_de_usd_3.000", "aún_no_lo_se")
+_MAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _telefono_manual(texto: str) -> str:
+    """El telefono tipeado, con la grafia de Meta (+598...).
+
+    A mano llega "099 555 123", "99555123" o "+598 99 555 123": sin normalizar,
+    la misma persona cargada dos veces no choca con el UNIQUE ni con
+    get_business_by_phone, y el lead que despues llena el formulario tampoco.
+    Un numero que no es uruguayo queda con sus digitos (y el + si lo traia).
+    """
+    digitos = re.sub(r"\D", "", texto or "")
+    if not digitos:
+        return ""
+    if digitos.startswith("598") and len(digitos) == 11:
+        return "+" + digitos
+    if digitos.startswith("0") and len(digitos) == 9:
+        return "+598" + digitos[1:]
+    if digitos.startswith("9") and len(digitos) == 8:
+        return "+598" + digitos
+    return ("+" if texto.strip().startswith("+") else "") + digitos
+
+
+def _fecha_manual(texto: str):
+    """'AAAA-MM-DD' (dia en Montevideo) -> scraped_at en UTC, o None si es invalida.
+
+    Hoy (o vacio) es ahora mismo. Otro dia queda al mediodia de Montevideo: con
+    hora, para que la lista lo ordene y lo muestre como a los demas, y lejos de
+    la medianoche, para que no se corra de dia ni de mes. Nunca al futuro.
+    """
+    from datetime import date, datetime, timedelta, timezone
+    ahora = datetime.now(timezone.utc)
+    hoy_local = (ahora - timedelta(hours=3)).date()
+    texto = (texto or "").strip()
+    if not texto:
+        return ahora.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        dia = date.fromisoformat(texto)
+    except ValueError:
+        return None
+    if dia > hoy_local:
+        return None
+    if dia == hoy_local:
+        return ahora.strftime("%Y-%m-%d %H:%M:%S")
+    return f"{dia.isoformat()} 15:00:00"
+
+
+@meta_bp.route("/api/meta/leads", methods=["POST"])
+def meta_crear_lead_manual():
+    """Agrega a Meta Ads un lead que llego por otro lado.
+
+    Cuerpo: `name` (obligatorio), `phone` o `email` (al menos uno), `origen`
+    (clave de ORIGENES_MANUALES), y opcionales `negocio`, `city`, `busca`,
+    `presupuesto`, `fecha` ('AAAA-MM-DD', dia en que llego) y `nota`.
+
+    Si ya hay un lead de Meta con ese telefono o mail, 409 con su id: no se
+    duplica. Si el telefono es de una ficha de otra cohorte (un negocio de
+    Google, de discovery), esa ficha pasa a Meta, como cuando ese negocio llena
+    el formulario (ver `_merge_lead_into_existing`).
+    """
+    from flask import session
+    from services.auth import require_panel
+    bloqueo = require_panel(_db(), "meta")
+    if bloqueo:
+        return bloqueo
+
+    data = request.get_json(silent=True) or {}
+    texto = lambda k, n=200: str(data.get(k) or "").strip()[:n]
+    name, email = texto("name"), texto("email").lower()
+    phone = _telefono_manual(texto("phone", 40))
+    origen = texto("origen", 20)
+    busca, presupuesto = texto("busca", 60), texto("presupuesto", 60)
+
+    if not name:
+        return jsonify({"ok": False, "error": "Falta el nombre."}), 400
+    if not phone and not email:
+        return jsonify({"ok": False, "error": "Poné un teléfono o un mail para poder contactarlo."}), 400
+    if email and not _MAIL_RE.match(email):
+        return jsonify({"ok": False, "error": "El mail no parece válido."}), 400
+    if origen not in ORIGENES_MANUALES:
+        return jsonify({"ok": False, "error": "Elegí por dónde llegó."}), 400
+    if busca and busca not in BUSCA_MANUAL:
+        return jsonify({"ok": False, "error": "Opción de 'qué busca' desconocida."}), 400
+    if presupuesto and presupuesto not in PRESUPUESTO_MANUAL:
+        return jsonify({"ok": False, "error": "Opción de presupuesto desconocida."}), 400
+    scraped_at = _fecha_manual(texto("fecha", 10))
+    if not scraped_at:
+        return jsonify({"ok": False, "error": "La fecha no es válida (no puede ser futura)."}), 400
+
+    db = _db()
+    ya = (get_business_by_phone(db, phone) if phone else None) or buscar_ficha_meta_por_mail(db, email)
+    if ya and (ya.get("source") or "") == "meta":
+        return jsonify({"ok": False, "error": f"Ya está en Meta Ads: {ya.get('name') or 'sin nombre'}.",
+                        "id": ya["id"]}), 409
+
+    fields = {"full_name": name}
+    if phone:
+        fields["phone_number"] = phone
+    if email:
+        fields["email"] = email
+    if texto("city"):
+        fields["city"] = texto("city")
+    if texto("negocio"):
+        fields[CLAVE_FORM_NEGOCIO] = texto("negocio")
+    if busca:
+        fields[CLAVE_FORM_BUSCA] = busca
+    if presupuesto:
+        fields[CLAVE_FORM_PRESUPUESTO] = presupuesto
+
+    etiqueta = ORIGENES_MANUALES[origen]
+    nota = texto("nota", 1000)
+    notes = f"Cargado a mano · llegó por {etiqueta}" + (f"\n{nota}" if nota else "")
+    quien = session.get("user_name", "sistema")
+
+    biz_id = insert_business(db, {
+        "name":       name,
+        "phone":      phone or None,
+        "email":      email or None,
+        "city":       texto("city") or None,
+        "category":   "Meta Lead Ad",
+        "notes":      notes,
+        "score":      70,
+        "source":     "meta",
+        "form_data":  json.dumps(fields, ensure_ascii=False),
+        "scraped_at": scraped_at,
+    })
+    pasada = False
+    if not biz_id:
+        # El INSERT choco con el telefono de una ficha de otra cohorte.
+        biz_id = _merge_lead_into_existing(db, phone, email, fields)
+        if not biz_id:
+            return jsonify({"ok": False, "error": "No se pudo guardar el lead."}), 500
+        pasada = True
+        # Su scraped_at es el de la otra cohorte: sin este envio no apareceria
+        # en el mes en que llego.
+        registrar_envio_meta(db, biz_id, f"manual-{biz_id}-{scraped_at}", scraped_at,
+                             form_data=json.dumps(fields, ensure_ascii=False))
+    update_business(db, biz_id, origen_manual=origen)
+
+    log_activity(db, quien, "lead_created", "lead", biz_id, name,
+                 f"Cargado a mano en Meta Ads · llegó por {etiqueta}"
+                 + (" · ya estaba en el CRM, pasó a Meta" if pasada else ""),
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "id": biz_id, "pasada": pasada})
+
+
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])
 def meta_import_leads():
     from flask import session

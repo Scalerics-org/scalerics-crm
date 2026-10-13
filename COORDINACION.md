@@ -533,6 +533,17 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **13/10 — Meta Ads: agregar leads a mano (pedido de Juan).** Worktree `../crm-meta-manual`, rama
+  `feat/meta-lead-manual`, sale de `origin/main` (`b0bd6ab`). Botón "+ Agregar lead" en el panel Meta Ads y
+  `POST /api/meta/leads` (`routes/meta.py`, pide el panel `meta`). **Juan eligió que cuenten como leads de Meta en
+  todo**: quedan `source='meta'`, así que suman en el dossier, costo por lead, finanzas, semáforo y la secuencia de
+  mails (si tienen mail). **Zona compartida: toqué `database.py`** (columna nueva `businesses.origen_manual`, en
+  `ALLOWED_COLUMNS`; NULL = vino del formulario) y `dashboard.py` (botón, modal, sello "Manual · <origen>" en vez de
+  IG/FB). Las respuestas se guardan con las mismas claves del formulario de Meta. El teléfono se normaliza a
+  `+598...` para que no se duplique; si ya hay un lead de Meta con ese teléfono/mail, 409. Si el teléfono es de una
+  ficha de otra cohorte, pasa a Meta (como el webhook) y se registra un envío `manual-<id>-<fecha>` para que salga
+  en el mes en que llegó. Sin merge ni deploy.
+
 - **12/10 — Semáforo de Meta: color naranja "Agendó y no se conectó" (pedido de Juan).** Worktree
   `../crm-semaforo-noshow`, rama `feat/semaforo-no-se-conecto`, sale de `main` local (`6ac8871`, lo que corre en
   producción). Estado nuevo `no_se_conecto`, color de planilla `#ff9900` (y el desteñido `#fce5cd`), token

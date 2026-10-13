@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 import secrets
 import threading
@@ -2180,7 +2180,12 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .mm-vuelta{display:inline-block;margin-left:4px;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--azul-tinte);color:var(--azul-claro);white-space:nowrap}
 .mm-vuelta-primero{display:block;font-size:.68rem;color:var(--texto-debil);margin-top:2px}
 .mm-fecha{font-size:.72rem;color:var(--texto-debil)}
+.mm-manual{display:inline-block;margin-left:4px;font-size:.65rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto-tenue);white-space:nowrap}
+.mm-alta-grilla{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.mm-alta-grilla .mm-alta-ancho{grid-column:1/-1}
+.mm-alta-grilla label{display:block;font-size:.72rem;color:var(--texto-tenue);margin-bottom:3px}
 @media (max-width:768px){
+  .mm-alta-grilla{grid-template-columns:1fr}
   #meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color)!important;background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))!important}
   .mm-opcion{min-height:44px;flex:1 1 45%}
   .mm-nav-mes{width:100%;justify-content:space-between}
@@ -4502,6 +4507,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div>
         <h1>Meta Ads</h1>
         <div class="page-date">Leads de formularios de Facebook e Instagram</div>
+      </div>
+      <button class="btn-primary" onclick="mmAbrirAlta()">+ Agregar lead</button>
+    </div>
+    <div class="modal-overlay" id="meta-alta-modal" onclick="if(event.target===this)mmCerrarAlta()">
+      <div class="modal">
+        <h3>Agregar lead</h3>
+        <p>Para un lead que llegó por otro lado. Queda en esta lista como uno de Meta: con semáforo, mails de seguimiento y contando en los números.</p>
+        <div class="mm-alta-grilla">
+          <div><label for="meta-alta-nombre">Nombre *</label><input id="meta-alta-nombre" class="modal-input" maxlength="200" autocomplete="off"></div>
+          <div><label for="meta-alta-negocio">Negocio</label><input id="meta-alta-negocio" class="modal-input" maxlength="200" autocomplete="off"></div>
+          <div><label for="meta-alta-tel">Teléfono</label><input id="meta-alta-tel" class="modal-input" maxlength="40" inputmode="tel" autocomplete="off" placeholder="099 123 456"></div>
+          <div><label for="meta-alta-mail">Mail</label><input id="meta-alta-mail" class="modal-input" maxlength="200" type="email" autocomplete="off"></div>
+          <div><label for="meta-alta-origen">Por dónde llegó *</label><select id="meta-alta-origen" class="modal-input">
+            <option value="">Elegí…</option><option value="whatsapp">WhatsApp</option><option value="instagram">Mensaje de Instagram</option><option value="referido">Referido</option><option value="llamada">Llamada</option><option value="web">Página web</option><option value="otro">Otro</option>
+          </select></div>
+          <div><label for="meta-alta-fecha">Día que llegó</label><input id="meta-alta-fecha" class="modal-input" type="date"></div>
+          <div><label for="meta-alta-busca">Qué busca</label><select id="meta-alta-busca" class="modal-input">
+            <option value="">—</option><option value="una_nueva_página_web">Nueva web</option><option value="crear_mi_ecommerce">E-commerce</option><option value="un_software_a_medida">App/Software</option><option value="automatizaciones">Automatizaciones</option>
+          </select></div>
+          <div><label for="meta-alta-presup">Presupuesto</label><select id="meta-alta-presup" class="modal-input">
+            <option value="">—</option><option value="menos_de_usd_500">&lt; USD 500</option><option value="entre_usd_500_y_usd_1.000">USD 500-1K</option><option value="entre_usd_1.000_y_usd_3.000">USD 1K-3K</option><option value="más_de_usd_3.000">&gt; USD 3K</option><option value="aún_no_lo_se">No sabe</option>
+          </select></div>
+          <div><label for="meta-alta-ciudad">Ciudad</label><input id="meta-alta-ciudad" class="modal-input" maxlength="100" autocomplete="off"></div>
+          <div class="mm-alta-ancho"><label for="meta-alta-nota">Nota</label><textarea id="meta-alta-nota" class="modal-input" rows="2" maxlength="1000"></textarea></div>
+        </div>
+        <div id="meta-alta-error" class="nc-vinculo-error"></div>
+        <div class="nc-vinculo-acciones">
+          <button class="btn-ghost" onclick="mmCerrarAlta()">Cancelar</button>
+          <button id="meta-alta-crear" class="btn-primary" onclick="mmCrearLead()">Agregar</button>
+        </div>
       </div>
     </div>
     <div class="filters">
@@ -7273,7 +7308,7 @@ function renderMetaTable() {
     <div class="table-row no-cb ${mmColor ? 'mm-pintado mm-c-' + mmColor : 'row-' + crm}" data-mm-color="${mmColor}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
-        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
+        ${b.origen_manual ? `<span class="mm-manual" title="Cargado a mano">Manual · ${esc(MM_ORIGENES[b.origen_manual] || b.origen_manual)}</span>` : '<span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>'}${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
         <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
         ${mmVuelta ? '<span class="mm-vuelta-primero">Primer contacto: ' + esc(mmFechaCorta(mmPrimerEnvio(b))) + '</span>' : ''}
       </div>
@@ -7291,6 +7326,64 @@ function renderMetaTable() {
     </div>${mmAbierto === b.id ? mmOpcionesHtml(b) : ''}`;
   }).join('');
   _populateNotes(body);
+}
+
+// -- Agregar un lead a mano (pedido de Juan, 13/10) ---------------------------
+// Para los que llegan por otro lado. El backend (POST /api/meta/leads) lo deja
+// como un lead de Meta mas; aca solo se junta el formulario. Mismas claves que
+// routes/meta.ORIGENES_MANUALES.
+const MM_ORIGENES = {whatsapp: 'WhatsApp', instagram: 'Mensaje de Instagram', referido: 'Referido',
+                     llamada: 'Llamada', web: 'Página web', otro: 'Otro'};
+const MM_ALTA_CAMPOS = {nombre: 'name', negocio: 'negocio', tel: 'phone', mail: 'email', origen: 'origen',
+                        fecha: 'fecha', busca: 'busca', presup: 'presupuesto', ciudad: 'city', nota: 'nota'};
+
+// 'AAAA-MM-DD' de hoy en Montevideo: el tope del selector de fecha.
+function mmHoyLocal() { return new Date(Date.now() - MM_HORAS_UTC).toISOString().slice(0, 10); }
+
+function mmAbrirAlta() {
+  Object.keys(MM_ALTA_CAMPOS).forEach(k => { document.getElementById('meta-alta-' + k).value = ''; });
+  const fecha = document.getElementById('meta-alta-fecha');
+  fecha.value = mmHoyLocal();
+  fecha.max = mmHoyLocal();
+  document.getElementById('meta-alta-error').textContent = '';
+  document.getElementById('meta-alta-crear').disabled = false;
+  document.getElementById('meta-alta-modal').classList.add('open');
+  document.getElementById('meta-alta-nombre').focus();
+}
+
+function mmCerrarAlta() { document.getElementById('meta-alta-modal').classList.remove('open'); }
+
+async function mmCrearLead() {
+  const cuerpo = {};
+  Object.keys(MM_ALTA_CAMPOS).forEach(k => { cuerpo[MM_ALTA_CAMPOS[k]] = document.getElementById('meta-alta-' + k).value.trim(); });
+  const error = document.getElementById('meta-alta-error');
+  const boton = document.getElementById('meta-alta-crear');
+  if (!cuerpo.name) { error.textContent = 'Falta el nombre.'; return; }
+  if (!cuerpo.phone && !cuerpo.email) { error.textContent = 'Poné un teléfono o un mail para poder contactarlo.'; return; }
+  if (!cuerpo.origen) { error.textContent = 'Elegí por dónde llegó.'; return; }
+  error.textContent = '';
+  boton.disabled = true;
+  let d = {};
+  try {
+    const r = await fetch('/api/meta/leads', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo),
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) {
+      error.textContent = d.error || 'No se pudo agregar el lead.';
+      boton.disabled = false;
+      return;
+    }
+  } catch (e) {
+    error.textContent = 'No se pudo hablar con el servidor.';
+    boton.disabled = false;
+    return;
+  }
+  mmCerrarAlta();
+  // Vuelve al mes de hoy (loadMetaPanel lo hace); si llego otro mes, se va a ese.
+  const mesAlta = cuerpo.fecha ? cuerpo.fecha.slice(0, 7) : '';
+  await loadMetaPanel();
+  if (mesAlta && mesAlta !== mmMesActual()) { mmMesVista = mesAlta; renderMetaTable(); }
 }
 
 // ── Cola stats ────────────────────────────────────────────────────────────────
