@@ -24,7 +24,7 @@ Se movio sin tocar el comportamiento. Los tests de finanzas pasan identicos.
 FUNNEL = ["sin_contactar", "interesado", "contactado",
           "demo_agendada", "no_se_conecto", "demo_1", "demo_2", "demo_3",
           "presupuesto_enviado", "follow_up_1", "follow_up_2", "acepto",
-          "cerrado", "en_desarrollo", "finalizado"]
+          "cerrado", "en_desarrollo", "en_mantenimiento", "finalizado"]
 
 # Exclusiones explicitas y documentadas: por que cada una no entra a FUNNEL
 # aunque forme parte de ETAPAS_PRECLIENTE / ETAPAS_CLIENTE.

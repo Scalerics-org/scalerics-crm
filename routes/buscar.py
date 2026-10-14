@@ -14,6 +14,7 @@ import unicodedata
 
 from flask import Blueprint, current_app, jsonify, request, session
 
+from database import ETAPAS_CLIENTE
 from services.auth import tiene_panel
 
 buscar_bp = Blueprint("buscar", __name__)
@@ -58,7 +59,7 @@ def api_buscar():
                                f"FROM businesses {filtro} ORDER BY id DESC"):
                 f = dict(f)
                 if _coincide(q, f["name"], f.get("phone"), *[f.get(x) for x in extra]):
-                    cliente = f.get("crm_status") in ("cerrado", "en_desarrollo", "finalizado")
+                    cliente = f.get("crm_status") in ETAPAS_CLIENTE
                     items.append({"id": f["id"], "titulo": f["name"],
                                   "detalle": ("Cliente" if cliente else "Lead") + (f" · {f['phone']}" if f.get("phone") else ""),
                                   "tipo": "negocio"})

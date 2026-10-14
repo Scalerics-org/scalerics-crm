@@ -533,6 +533,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/10 — Clientes: estado nuevo `en_mantenimiento` (pedido de Juan).** Rama `feat/cliente-en-mantenimiento`.
+  **Zona compartida: toqué `database.py`** (`ETAPAS_CLIENTE` = cerrado, en_desarrollo, en_mantenimiento,
+  finalizado). En la tabla de Clientes y en el alta solo se eligen En desarrollo / En mantenimiento / Finalizado;
+  `cerrado` sigue existiendo como estado de ENTRADA (planilla "venta", Notion "Presupuesto Aceptado") y se muestra
+  "Cerrado — elegí estado" hasta que alguien lo clasifique. Sumado en `FUNNEL` (entre desarrollo y finalizado),
+  `anuncios.py`, `planilla_semaforo` (RANK 9, color venta), `leads.py` (métricas), `sombra_meta.py`, `buscar.py` y
+  todos los mapas de etiquetas/colores del dashboard. No recibe secuencia de mails (como los otros de cliente).
+  Si tenés código con la lista de estados de cliente escrita a mano, sumale `en_mantenimiento`.
+  También: PR #143 (alta desde lead), #144 (contador) y #145 (estado editable) mergeados y deployados (v319–v321).
+
 - **14/10 — Clientes: "Nuevo cliente" deja elegir un lead (pedido de Juan).** Worktree `../crm-cliente-desde-lead`,
   rama `feat/cliente-desde-lead`, sale de `origin/main` (`b687d25`). El modal tiene un buscador arriba
   (`GET /api/clientes-activos/candidatos?q=`, misma regla de coincidencia que `routes/buscar.py`; saca clientes y

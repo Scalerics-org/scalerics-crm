@@ -64,7 +64,7 @@ MIN_LEADS_FORMULARIO = 20
 CAIDA_FORMULARIO = 0.7      # leads de los ultimos 28 dias <= 70% de los 28 anteriores
 AVANCE_FORMULARIO = 0.4     # y al menos 40% de esos leads paso de "sin contactar"
 ESTADOS_QUE_AVANZAN = ("interesado", "demo_1", "demo_agendada", "presupuesto_enviado",
-                       "follow_up_1", "en_desarrollo", "finalizado")
+                       "follow_up_1", "en_desarrollo", "en_mantenimiento", "finalizado")
 
 
 def activo() -> bool:

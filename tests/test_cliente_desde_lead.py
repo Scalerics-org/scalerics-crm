@@ -177,3 +177,32 @@ def test_la_tabla_de_clientes_tiene_el_selector_de_estado():
     html = dashboard.DASHBOARD_HTML
     assert 'onchange="cliCambiarEstado(${b.id}, this)"' in html
     assert "fetch('/api/leads/' + clientId + '/crm-status'" in html
+
+
+# ── En mantenimiento (pedido de Juan, 14/10) ────────────────────────────────
+
+def test_en_mantenimiento_es_estado_de_cliente(cli, db):
+    assert "en_mantenimiento" in ETAPAS_CLIENTE
+    etapas = cli.get("/api/preclientes/etapas").get_json()["clientes"]
+    assert {"key": "en_mantenimiento", "label": "En mantenimiento"} in etapas
+    lid = _lead(db, "Óptica Luz", "+59899111222", etapa="en_desarrollo")
+    assert cli.post(f"/api/leads/{lid}/crm-status", json={"crm_status": "en_mantenimiento"}).status_code == 200
+    cliente = next(c for c in cli.get("/api/clientes-activos").get_json()["clientes"] if c["id"] == lid)
+    assert cliente["crm_status"] == "en_mantenimiento"
+    # Ya es cliente: no se ofrece para volver a darlo de alta.
+    assert cli.get("/api/clientes-activos/candidatos?q=optica").get_json()["leads"] == []
+
+
+def test_en_mantenimiento_cuenta_como_venta_y_no_se_baja_desde_la_planilla(db):
+    from services.embudo import FUNNEL
+    from services.planilla_semaforo import ESTADOS_DE_CLIENTE, color_de_estado
+    assert FUNNEL.index("en_desarrollo") < FUNNEL.index("en_mantenimiento") < FUNNEL.index("finalizado")
+    assert color_de_estado("en_mantenimiento") == "venta"
+    assert "en_mantenimiento" in ESTADOS_DE_CLIENTE
+
+
+def test_el_selector_ofrece_solo_los_tres_estados():
+    html = dashboard.DASHBOARD_HTML
+    assert "const CLI_ESTADOS_ELEGIBLES = ['en_desarrollo', 'en_mantenimiento', 'finalizado'];" in html
+    assert "— elegí estado" in html, "un 'cerrado' viejo se muestra para clasificar"
+    assert "etapas = etapas.filter(e => e.key !== 'cerrado');" in html, "el alta tampoco ofrece Cerrado"

@@ -46,6 +46,7 @@ ETIQUETAS_ETAPA = {
     "rechazo":             "Rechazo",
     "cerrado":             "Cerrado",
     "en_desarrollo":       "En desarrollo",
+    "en_mantenimiento":    "En mantenimiento",
     "finalizado":          "Finalizado",
 }
 

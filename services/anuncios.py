@@ -167,7 +167,8 @@ def _filas(db_path: str, desde: str, hasta: str) -> list:
                                           ('demo_1','demo_2','demo_3',
                                            'presupuesto_enviado','follow_up_1',
                                            'follow_up_2','acepto','cerrado',
-                                           'en_desarrollo','finalizado')))
+                                           'en_desarrollo','en_mantenimiento',
+                                           'finalizado')))
                      AS demos
               FROM meta_ads a
               JOIN meta_ad_insights i ON i.ad_id = a.ad_id
@@ -549,7 +550,7 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             "AND EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = v.id "
             "  AND e.new_status IN ('demo_1','demo_2','demo_3',"
             "      'presupuesto_enviado','follow_up_1','follow_up_2',"
-            "      'acepto','cerrado','en_desarrollo','finalizado')) "
+            "      'acepto','cerrado','en_desarrollo','en_mantenimiento','finalizado')) "
             "GROUP BY NULLIF(v.meta_ad_id, '')", (desde, hasta)).fetchall()
     finally:
         conn.close()
