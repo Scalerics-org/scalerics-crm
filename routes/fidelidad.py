@@ -282,17 +282,64 @@ def api_lista():
         limite = 150
     return jsonify(fid.armar_lista(_db(), ciudad=request.args.get("ciudad") or None,
                                    rubro=request.args.get("rubro") or None,
-                                   q=request.args.get("q") or None, cuando=_ahora(), limite=limite))
+                                   q=request.args.get("q") or None, cuando=_ahora(), limite=limite,
+                                   vista=request.args.get("vista") or None,
+                                   barrio=request.args.get("barrio") or None,
+                                   orden=request.args.get("orden") or None))
 
 
 @fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/accion", methods=["POST"])
 def api_accion(pid):
     d = request.get_json(silent=True) or {}
     p, lid, error = fid.registrar_accion(_db(), pid, d.get("accion") or "", _usuario(),
-                                         fecha=d.get("fecha"), nota=d.get("nota") or "", cuando=_ahora())
+                                         fecha=d.get("fecha"), nota=d.get("nota") or "", cuando=_ahora(),
+                                         motivo=d.get("motivo"))
     if error:
         return _error(error, 404 if error == "el prospecto no existe" else 400)
     return jsonify({"ok": True, "llamada_id": lid, "prospecto": p}), 201
+
+
+# ── WhatsApp, mails y reunión y demo (14/10) ─────────────────────────────────
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/propuestas", methods=["POST"])
+def api_propuesta_crear(pid):
+    p, error = fid.guardar_propuesta(_db(), pid, request.get_json(silent=True) or {}, _usuario(), cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "el prospecto no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p}), 201
+
+
+@fidelidad_bp.route("/api/fidelidad/propuestas/<int:prop_id>", methods=["PUT"])
+def api_propuesta_editar(prop_id):
+    p, error = fid.guardar_propuesta(_db(), None, request.get_json(silent=True) or {}, _usuario(),
+                                     prop_id=prop_id, cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "ese envío no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/propuestas/<int:prop_id>", methods=["DELETE"])
+def api_propuesta_borrar(prop_id):
+    p = fid.borrar_propuesta(_db(), prop_id)
+    if p is None:
+        return _error("ese envío no existe", 404)
+    return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/seguimiento", methods=["PUT"])
+def api_seguimiento(pid):
+    p, error = fid.guardar_seguimiento(_db(), pid, request.get_json(silent=True) or {}, _usuario(), cuando=_ahora())
+    if error:
+        return _error(error, 404 if error == "el prospecto no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/seguimiento", methods=["DELETE"])
+def api_seguimiento_borrar(pid):
+    p = fid.borrar_seguimiento(_db(), pid)
+    if not p:
+        return _error("el prospecto no existe", 404)
+    return jsonify({"ok": True, "prospecto": p})
 
 
 @fidelidad_bp.route("/api/fidelidad/llamadas/<int:lid>", methods=["PUT"])
