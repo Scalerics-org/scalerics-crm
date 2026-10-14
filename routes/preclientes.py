@@ -267,20 +267,79 @@ def api_mantenimiento(client_id):
     return jsonify({"ok": True, **campos})
 
 
+_CANDIDATOS_MAX = 8
+
+
+@preclientes_bp.route("/api/clientes-activos/candidatos")
+def api_candidatos_a_cliente():
+    """Leads que se pueden pasar a cliente desde "Nuevo cliente" (pedido de
+    Juan, 14/10: "que te lo deje seleccionar por leads así no cargo los datos a
+    mano"). `?q=` busca por nombre, teléfono, mail o ciudad, con la misma regla
+    que el buscador de arriba (sin tildes, todas las palabras). Quedan afuera
+    los que ya son clientes y los archivados."""
+    from routes.buscar import _coincide, _normal
+
+    q = _normal(request.args.get("q"))
+    if len(q) < 2:
+        return jsonify({"leads": []})
+    marcadores = ",".join("?" * len(ETAPAS_CLIENTE))
+    conn = _db_connect(_db())
+    try:
+        filas = conn.execute(f"""
+            SELECT id, name, phone, email, city, crm_status, source
+            FROM businesses
+            WHERE COALESCE(crm_status, '') NOT IN ({marcadores})
+              AND archivado_en IS NULL
+            ORDER BY id DESC
+        """, list(ETAPAS_CLIENTE)).fetchall()
+    finally:
+        conn.close()
+    leads = []
+    for f in filas:
+        if _coincide(q, f["name"], f["phone"], f["email"], f["city"]):
+            leads.append(dict(f))
+            if len(leads) >= _CANDIDATOS_MAX:
+                break
+    return jsonify({"leads": leads})
+
+
+def _lead_a_cliente(lead_id, etapa: str, monto: dict):
+    """Pasa a cliente un lead que ya estaba: misma ficha, con su historial.
+
+    El estado cambia por `registrar_cambio_de_estado`, como desde la ficha:
+    deja el evento, la actividad y mueve la meta de clientes cerrados."""
+    from routes.leads import registrar_cambio_de_estado
+
+    try:
+        lead_id = int(lead_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "lead_id inválido"}), 400
+    lead = get_business(_db(), lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "Ese lead ya no existe"}), 404
+    if lead.get("crm_status") in ETAPAS_CLIENTE:
+        return jsonify({"ok": False, "error": f"{lead.get('name') or 'Ese lead'} ya es cliente"}), 409
+
+    registrar_cambio_de_estado(_db(), lead_id, etapa, "Pasado a cliente desde Clientes")
+    if monto.get("monto_pagado") is not None:
+        update_business(_db(), lead_id, **monto)
+    return jsonify({"ok": True, "id": lead_id, "crm_status": etapa, "desde_lead": True,
+                    **monto}), 201
+
+
 @preclientes_bp.route("/api/clientes-activos", methods=["POST"])
 def api_crear_cliente():
     """Alta de un cliente directo en Clientes, sin pasar por la Cola.
 
     Body: {name, phone?, city?, crm_status?, monto?, moneda?}. Todo se valida
     antes de insertar: un monto mal escrito no puede dejar un cliente creado a
-    medias."""
+    medias.
+
+    Con `lead_id` no se crea nada: ese lead pasa a cliente (ver
+    `_lead_a_cliente`) y name/phone/city se ignoran, salen de su ficha."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-
-    nombre = str(data.get("name") or "").strip()[:200]
-    if not nombre:
-        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
 
     etapa = data.get("crm_status") or ETAPAS_CLIENTE[0]
     if etapa not in ETAPAS_CLIENTE:
@@ -290,6 +349,13 @@ def api_crear_cliente():
     monto, error = _monto_pagado_valido(data)
     if error:
         return jsonify({"ok": False, "error": error}), 400
+
+    if data.get("lead_id") not in (None, ""):
+        return _lead_a_cliente(data.get("lead_id"), etapa, monto)
+
+    nombre = str(data.get("name") or "").strip()[:200]
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
 
     telefono = str(data.get("phone") or "").strip()[:40] or None
     ciudad = str(data.get("city") or "").strip()[:120] or None

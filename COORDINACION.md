@@ -533,6 +533,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/10 — Clientes: "Nuevo cliente" deja elegir un lead (pedido de Juan).** Worktree `../crm-cliente-desde-lead`,
+  rama `feat/cliente-desde-lead`, sale de `origin/main` (`b687d25`). El modal tiene un buscador arriba
+  (`GET /api/clientes-activos/candidatos?q=`, misma regla de coincidencia que `routes/buscar.py`; saca clientes y
+  archivados). Elegir uno manda `lead_id` a `POST /api/clientes-activos`: no se crea ficha, ese lead pasa a cliente
+  por `registrar_cambio_de_estado` (evento, actividad y meta, como desde la ficha); sin monto no pisa el que tenía;
+  409 si ya es cliente. La carga a mano sigue igual. Solo `routes/preclientes.py` y `dashboard.py` (modal de alta).
+  Sin migraciones.
+
+- **13/10 — (nota) El alta manual de leads en Meta Ads de abajo ya está mergeada (PR #142) y deployada (`v318`).**
+
 - **13/10 — Meta Ads: agregar leads a mano (pedido de Juan).** Worktree `../crm-meta-manual`, rama
   `feat/meta-lead-manual`, sale de `origin/main` (`b0bd6ab`). Botón "+ Agregar lead" en el panel Meta Ads y
   `POST /api/meta/leads` (`routes/meta.py`, pide el panel `meta`). **Juan eligió que cuenten como leads de Meta en
