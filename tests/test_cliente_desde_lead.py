@@ -154,3 +154,10 @@ def test_el_modal_tiene_el_buscador():
     assert 'id="cli-nuevo-buscar"' in html and "cliNuevoBuscar(this.value)" in html
     assert "/api/clientes-activos/candidatos?q=" in html
     assert "lead_id: lead.id" in html
+
+
+def test_clientes_tiene_el_contador_de_cerrados():
+    html = dashboard.DASHBOARD_HTML
+    panel = html[html.index('<div id="clientes-panel"'):]
+    assert panel.index('id="cli-contador"') < panel.index('id="clientes-body"'), "va arriba de la tabla"
+    assert "cliPintarContador(clientes, crmLabels, crmColor)" in html

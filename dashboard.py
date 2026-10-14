@@ -2198,6 +2198,15 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 /* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
 .cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
 .cli-monto:hover{border-color:var(--borde-fuerte)}
+/* Contador de clientes cerrados, arriba de la tabla. */
+.cli-contador{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 18px;margin-bottom:14px}
+.cli-contador[hidden]{display:none}
+.cli-contador-total{display:flex;align-items:baseline;gap:10px}
+.cli-contador-num{font-size:2rem;font-weight:800;line-height:1;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.cli-contador-txt{font-size:.9rem;color:var(--texto-tenue);font-weight:600}
+.cli-contador-estados{display:flex;gap:8px;flex-wrap:wrap}
+.cli-contador-estado{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:650;color:var(--texto);background:var(--relleno);border:1px solid var(--borde);border-radius:999px;padding:3px 10px}
+.cli-contador-punto{width:8px;height:8px;border-radius:50%}
 /* Nuevo cliente: elegir un lead que ya esta en el CRM. */
 .cli-nuevo-resultados{display:flex;flex-direction:column;gap:4px;margin:-6px 0 10px;max-height:240px;overflow-y:auto}
 .cli-nuevo-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:var(--relleno);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-family:inherit;color:var(--texto);cursor:pointer}
@@ -4615,6 +4624,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <button class="export-btn" onclick="cliNuevoAbrir()">+ Nuevo cliente</button>
     </div>
+    <div class="cli-contador" id="cli-contador" hidden></div>
     <div class="table-wrap">
       <div class="table-header tbl-cli">
         <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Mantenimiento</span><span>Día a día</span><span>Encargado mant.</span><span>Cobros</span><span>Acciones</span>
@@ -8218,6 +8228,22 @@ async function cliNuevoGuardar() {
   } finally { btn.disabled = false; }
 }
 
+// Cuantos clientes llevamos cerrados (pedido de Juan, 14/10): todos los que
+// estan en Clientes, y cuantos hay en cada estado. Sale de la misma lista que
+// la tabla, asi el numero no puede no coincidir con las filas.
+function cliPintarContador(clientes, etiquetas, colores) {
+  const caja = document.getElementById('cli-contador');
+  if (!caja) return;
+  const por = {};
+  clientes.forEach(b => { const k = b.crm_status || ''; por[k] = (por[k] || 0) + 1; });
+  const partes = Object.keys(etiquetas).filter(k => por[k]).map(k =>
+    `<span class="cli-contador-estado"><span class="cli-contador-punto" style="background:${colores[k]}"></span>${por[k]} ${esc(etiquetas[k])}</span>`);
+  caja.innerHTML = `<div class="cli-contador-total"><span class="cli-contador-num">${clientes.length}</span>
+      <span class="cli-contador-txt">${clientes.length === 1 ? 'cliente cerrado' : 'clientes cerrados'}</span></div>
+    <div class="cli-contador-estados">${partes.join('')}</div>`;
+  caja.hidden = false;
+}
+
 // ── Clientes ──────────────────────────────────────────────────────────────────
 async function loadClientesPanel() {
   const body = document.getElementById('clientes-body');
@@ -8232,9 +8258,10 @@ async function loadClientesPanel() {
       _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado};
       _cliMants[b.id] = {monto: b.mantenimiento_monto, moneda: b.mantenimiento_moneda};
     });
-    if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
     const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
     const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
+    cliPintarContador(clientes, crmLabels, crmColor);
+    if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
 
     // Un select por rol. El valor vacio es un puesto vacante de verdad, no un
     // "todavia no cargue los usuarios".
