@@ -2198,6 +2198,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 /* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
 .cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
 .cli-monto:hover{border-color:var(--borde-fuerte)}
+/* Nuevo cliente: elegir un lead que ya esta en el CRM. */
+.cli-nuevo-resultados{display:flex;flex-direction:column;gap:4px;margin:-6px 0 10px;max-height:240px;overflow-y:auto}
+.cli-nuevo-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:var(--relleno);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-family:inherit;color:var(--texto);cursor:pointer}
+.cli-nuevo-opcion:hover,.cli-nuevo-opcion:focus-visible{border-color:var(--azul);outline:none}
+.cli-nuevo-opcion-nombre{font-size:.86rem;font-weight:650;color:var(--texto-fuerte)}
+.cli-nuevo-opcion-dato{font-size:.74rem;color:var(--texto-tenue)}
+.cli-nuevo-vacio{font-size:.78rem;color:var(--texto-tenue);padding:4px 2px}
+.cli-nuevo-elegido{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--azul-tinte);border:1px solid var(--azul);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.cli-nuevo-elegido[hidden],#cli-nuevo-manual[hidden],#cli-nuevo-buscar[hidden]{display:none}
+.cli-nuevo-o{font-size:.74rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.5px;margin:2px 0 8px}
 .cli-monto:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
 .cli-monto.vacio{color:var(--texto-debil);font-weight:500;font-size:.76rem;border:1px dashed var(--borde)}
 .cli-monto-mon{font-size:.66rem;font-weight:700;color:var(--texto-debil);letter-spacing:.4px;margin-right:4px}
@@ -8078,6 +8088,13 @@ async function cliNuevoAbrir() {
   m.onclick = ev => { if (ev.target === m) cliNuevoCerrar(); };
   m.innerHTML = `<div class="modal" style="width:440px;max-width:95vw">
     <h3>Nuevo cliente</h3>
+    <label class="modal-label">Buscar en los leads</label>
+    <input type="text" id="cli-nuevo-buscar" class="modal-input" maxlength="100" autocomplete="off"
+           placeholder="Nombre, teléfono o mail" oninput="cliNuevoBuscar(this.value)">
+    <div id="cli-nuevo-resultados" class="cli-nuevo-resultados"></div>
+    <div id="cli-nuevo-elegido" class="cli-nuevo-elegido" hidden></div>
+    <div id="cli-nuevo-manual">
+    <div class="cli-nuevo-o">o cargalo a mano</div>
     <label class="modal-label">Nombre del negocio *</label>
     <input type="text" id="cli-nuevo-nombre" class="modal-input" maxlength="200" placeholder="Ej: Bloquera Norte">
     <div class="modal-row">
@@ -8089,6 +8106,7 @@ async function cliNuevoAbrir() {
         <label class="modal-label">Ciudad</label>
         <input type="text" id="cli-nuevo-ciudad" class="modal-input" maxlength="120" placeholder="(opcional)">
       </div>
+    </div>
     </div>
     <label class="modal-label">Estado</label>
     <select id="cli-nuevo-estado" class="modal-input">${opciones}</select>
@@ -8107,17 +8125,75 @@ async function cliNuevoAbrir() {
   </div>`;
   document.body.appendChild(m);
   _cliNuevoModal = m;
-  document.getElementById('cli-nuevo-nombre').focus();
+  _cliNuevoLead = null;
+  document.getElementById('cli-nuevo-buscar').focus();
 }
 
 function cliNuevoCerrar() {
   if (_cliNuevoModal) { _cliNuevoModal.remove(); _cliNuevoModal = null; }
+  _cliNuevoLead = null;
+}
+
+// Elegir un lead que ya esta en el CRM (pedido de Juan, 14/10): pasa a cliente
+// la misma ficha, sin volver a tipear sus datos ni duplicarla.
+let _cliNuevoLead = null;
+let _cliNuevoTimer = null;
+let _cliNuevoPedido = 0;
+let _cliNuevoLista = [];
+
+function cliNuevoBuscar(q) {
+  clearTimeout(_cliNuevoTimer);
+  const caja = document.getElementById('cli-nuevo-resultados');
+  if (q.trim().length < 2) { caja.innerHTML = ''; return; }
+  _cliNuevoTimer = setTimeout(async () => {
+    const pedido = ++_cliNuevoPedido;
+    let leads = [];
+    try {
+      const r = await fetch('/api/clientes-activos/candidatos?q=' + encodeURIComponent(q.trim()));
+      leads = r.ok ? ((await r.json()).leads || []) : [];
+    } catch (e) { leads = []; }
+    if (pedido !== _cliNuevoPedido || !document.getElementById('cli-nuevo-resultados')) return;
+    _cliNuevoLista = leads;
+    caja.innerHTML = leads.length
+      ? leads.map((l, i) => `<button type="button" class="cli-nuevo-opcion" onclick="cliNuevoElegir(${i})">
+          <span class="cli-nuevo-opcion-nombre">${esc(l.name || 'Sin nombre')}</span>
+          <span class="cli-nuevo-opcion-dato">${esc([l.phone, l.email, l.city].filter(Boolean).join(' · ') || '—')}</span>
+        </button>`).join('')
+      : '<div class="cli-nuevo-vacio">No hay leads con eso. Cargalo a mano abajo.</div>';
+  }, 250);
+}
+
+function cliNuevoElegir(i) {
+  const l = _cliNuevoLista[i];
+  if (!l) return;
+  _cliNuevoLead = l;
+  const elegido = document.getElementById('cli-nuevo-elegido');
+  elegido.innerHTML = `<div><div class="cli-nuevo-opcion-nombre">${esc(l.name || 'Sin nombre')}</div>
+      <div class="cli-nuevo-opcion-dato">${esc([l.phone, l.email, l.city].filter(Boolean).join(' · ') || 'Sin datos de contacto')}</div></div>
+    <button type="button" class="btn-cancel" onclick="cliNuevoSoltar()">Cambiar</button>`;
+  elegido.hidden = false;
+  document.getElementById('cli-nuevo-resultados').innerHTML = '';
+  document.getElementById('cli-nuevo-buscar').hidden = true;
+  document.getElementById('cli-nuevo-manual').hidden = true;
+  document.getElementById('cli-nuevo-guardar').textContent = 'Pasar a cliente';
+}
+
+function cliNuevoSoltar() {
+  _cliNuevoLead = null;
+  document.getElementById('cli-nuevo-elegido').hidden = true;
+  const buscar = document.getElementById('cli-nuevo-buscar');
+  buscar.hidden = false;
+  document.getElementById('cli-nuevo-manual').hidden = false;
+  document.getElementById('cli-nuevo-guardar').textContent = 'Crear cliente';
+  buscar.focus();
+  cliNuevoBuscar(buscar.value);
 }
 
 async function cliNuevoGuardar() {
   const val = id => document.getElementById(id).value.trim();
+  const lead = _cliNuevoLead;
   const nombre = val('cli-nuevo-nombre');
-  if (!nombre) { alert('Poné el nombre del negocio.'); return; }
+  if (!lead && !nombre) { alert('Elegí un lead o poné el nombre del negocio.'); return; }
   const monto = _cliMontoParse(val('cli-nuevo-monto'));
   if (monto !== null && !(monto >= 0)) {
     alert('El monto tiene que ser un número mayor o igual a cero, o quedar vacío.');
@@ -8128,10 +8204,10 @@ async function cliNuevoGuardar() {
   try {
     const r = await fetch('/api/clientes-activos', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        name: nombre, phone: val('cli-nuevo-tel'), city: val('cli-nuevo-ciudad'),
-        crm_status: val('cli-nuevo-estado'), monto: monto, moneda: val('cli-nuevo-moneda'),
-      }),
+      body: JSON.stringify(Object.assign(
+        lead ? {lead_id: lead.id}
+             : {name: nombre, phone: val('cli-nuevo-tel'), city: val('cli-nuevo-ciudad')},
+        {crm_status: val('cli-nuevo-estado'), monto: monto, moneda: val('cli-nuevo-moneda')})),
     });
     const d = await r.json().catch(() => ({}));
     if (!d.ok) { alert(d.error || 'No se pudo crear el cliente.'); return; }
