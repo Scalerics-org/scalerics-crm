@@ -533,6 +533,20 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/10 — Outbound de Fidelidad: los cambios que pidió Lucas desde la calle (PDF del 14/10).** Worktree
+  `../crm-fid-calle`, rama `feat/fid-cambios-calle`, sale de `origin/main` (`e430132`). Solo
+  `services/fidelidad.py`, `routes/fidelidad.py`, `dashboard.py` (FID_JS, CSS y el panel `cola`) y tests.
+  (1) "No atendió" pide motivo obligatorio (`MOTIVOS_NO_CONTACTO`, columna `fid_llamadas.motivo_no_contacto`) y
+  cada motivo propone cuándo reintentar; contador de intentos por local. (2) y (3) acciones nuevas «Pidió info por
+  WhatsApp» y «Pidió propuesta por mail»; cada envío es una fila de la tabla nueva `fid_propuestas` (destino,
+  persona, cargo, qué se envió, fecha, estado pendiente/enviada/respondió/sin respuesta). A los `dias_insistir`
+  (config, 3 por defecto) sin respuesta pide el segundo toque. Mandar un mail por Gmail marca enviado el que
+  estaba "a enviar". (4) pestañas por estado arriba de la lista (`armar_lista(vista=, barrio=, orden=)`), con
+  totales. (5) tabla nueva `fid_seguimientos` (reunión y demo, una por local); Cerrado/Perdido mueven la etapa y
+  el próximo paso con fecha pasa a ser la próxima llamada. TNT Burger, Los Sopranos y Rodelú entran solos en el
+  arranque si ya están cargados (marca por nombre en `fid_config`). Ficha del local nueva (botón «Ficha»).
+  Sin merge ni deploy.
+
 - **14/10 — Clientes: "Nuevo cliente" deja elegir un lead (pedido de Juan).** Worktree `../crm-cliente-desde-lead`,
   rama `feat/cliente-desde-lead`, sale de `origin/main` (`b687d25`). El modal tiene un buscador arriba
   (`GET /api/clientes-activos/candidatos?q=`, misma regla de coincidencia que `routes/buscar.py`; saca clientes y

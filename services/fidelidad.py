@@ -162,7 +162,10 @@ DIAS_REACTIVAR = 90
 
 CONFIG_DEFAULT = {"precio_usd": 150, "meta_llamadas_dia": 25,
                   "meta_reuniones_semana": 8, "meta_cierres_mes": 5,
-                  "meta_mrr": 1500, "comision_pct": 0}
+                  "meta_mrr": 1500, "comision_pct": 0,
+                  # Días sin respuesta a un WhatsApp o un mail hasta que pide
+                  # el segundo toque (14/10, pedido de Lucas).
+                  "dias_insistir": 3}
 
 MOTIVOS = ["Precio", "Ya tiene sistema", "No ve el valor", "Lo decide otro",
            "Cierra el local", "Otro"]
@@ -453,11 +456,14 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:
             pass  # ya existe
-    try:
-        # Lo que hace falta para deshacer una llamada tocada por error.
-        conn.execute("ALTER TABLE fid_llamadas ADD COLUMN antes TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Lo que hace falta para deshacer una llamada tocada por error, y por qué
+    # no se concretó (14/10).
+    for col in ("antes", "motivo_no_contacto"):
+        try:
+            conn.execute(f"ALTER TABLE fid_llamadas ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass
+    init_seguimiento(conn)
     conn.execute("UPDATE fid_prospectos SET ciudad = 'Montevideo' WHERE ciudad IS NULL")
     # Todo Montevideo abierto (28/9): lo que quedó oculto por estar fuera de
     # Municipio CH y Carrasco vuelve a la lista.
@@ -654,6 +660,12 @@ def get_prospecto(db: str, pid: int) -> dict | None:
             "SELECT * FROM fid_mails WHERE prospecto_id = ? ORDER BY enviado_en DESC, id DESC", (pid,))]
         p["visitas"] = [dict(x) for x in c.execute(
             "SELECT * FROM fid_visitas WHERE prospecto_id = ? ORDER BY hecha_en DESC, id DESC", (pid,))]
+        dias = int(get_config_conn(c)["dias_insistir"])
+        hoy = ahora().strftime("%Y-%m-%d")
+        p["propuestas"] = [_con_insistir(dict(x), dias, hoy) for x in c.execute(
+            "SELECT * FROM fid_propuestas WHERE prospecto_id = ? ORDER BY id", (pid,))]
+        s = c.execute("SELECT * FROM fid_seguimientos WHERE prospecto_id = ?", (pid,)).fetchone()
+        p["seguimiento"] = _con_vencido(dict(s), hoy) if s else None
         return p
     finally:
         c.close()
@@ -1144,6 +1156,10 @@ DIAS_NO_INTERESA = 365
 ACCIONES = {
     "no_atendio": {"label": "No atendió", "pide": "fecha"},
     "otro_dia": {"label": "Otro día", "pide": "fecha", "efectivo": True},
+    # Pidió que le manden la info (14/10, Lucas): la llamada deja anotado a
+    # dónde mandarla y el seguimiento del envío (`fid_propuestas`).
+    "info_whatsapp": {"label": "Pidió info por WhatsApp", "canal": "whatsapp", "efectivo": True},
+    "info_mail": {"label": "Pidió propuesta por mail", "canal": "mail", "efectivo": True},
     "reunion": {"label": "Reunión", "pide": "reunion", "estado": "reunion_agendada", "efectivo": True},
     "cerro": {"label": "Cerró", "estado": "cerrado", "efectivo": True},
     "no_interesa": {"label": "No interesa", "estado": "descartado", "efectivo": True},
@@ -1152,10 +1168,33 @@ EFECTIVOS = EFECTIVOS | {k for k, a in ACCIONES.items() if a.get("efectivo")}
 _COLS_ANTES = ("estado", "proxima_llamada", "fecha_reunion", "motivo_descarte", "cerrado_en",
                "piloto_inicio", "primera_llamada", "mensual_usd")
 
+# Por qué no se concretó la llamada (14/10, Lucas). Es obligatorio en "No
+# atendió": sin el motivo todos los intentos fallidos se mezclan y no se sabe
+# a cuál vale la pena volver. Cada uno propone cuándo reintentar.
+MOTIVOS_NO_CONTACTO = {
+    "buzon": "Buzón de voz",
+    "no_contesta": "Suena y no contesta",
+    "ocupado": "Ocupado",
+    "inexistente": "Número inexistente / fuera de servicio",
+    "equivocado": "Número equivocado",
+    "cortaron": "Cortaron la llamada",
+    "cerrado_horario": "Cerrado por horario",
+}
 
-def fecha_propuesta(accion: str, cuando: datetime) -> datetime | None:
+
+def fecha_propuesta(accion: str, cuando: datetime, motivo: str | None = None) -> datetime | None:
     """La fecha con la que se guarda la llamada antes de que el vendedor elija."""
     if accion == "no_atendio":
+        dia = lambda n, h: datetime.combine(_sumar_habiles(cuando.date(), n), datetime.min.time()).replace(hour=h)  # noqa: E731
+        if motivo == "ocupado":
+            return cuando + timedelta(minutes=15)  # el número anda: reintentar en el momento
+        if motivo == "no_contesta":
+            return cuando + timedelta(hours=2) if cuando.hour < 18 else dia(1, 11)
+        if motivo in ("inexistente", "equivocado"):
+            return dia(1, 11)  # antes hay que conseguir otro teléfono
+        if motivo == "cerrado_horario":
+            return dia(1, 12)  # dentro del horario del local
+        # Buzón, cortaron o sin motivo: otro horario, al día siguiente.
         return proxima_llamada("no_atendio", cuando)
     if accion in ("otro_dia", "reunion"):
         return datetime.combine(_sumar_habiles(cuando.date(), 1), datetime.min.time()).replace(hour=11)
@@ -1166,22 +1205,29 @@ def fecha_propuesta(accion: str, cuando: datetime) -> datetime | None:
 
 
 def registrar_accion(db: str, pid: int, accion: str, usuario: str, fecha: str | None = None,
-                     nota: str = "", cuando: datetime | None = None) -> tuple[dict | None, int | None, str | None]:
+                     nota: str = "", cuando: datetime | None = None,
+                     motivo: str | None = None) -> tuple[dict | None, int | None, str | None]:
     """Un toque en la lista. Devuelve (prospecto, id de la llamada, error)."""
     a = ACCIONES.get(accion)
     if not a:
         return None, None, "acción inválida"
+    if accion == "no_atendio" and motivo not in MOTIVOS_NO_CONTACTO:
+        return None, None, "elegí por qué no se concretó la llamada"
+    motivo = motivo if accion == "no_atendio" else None
     cuando = cuando or ahora()
     elegida = parse_dt(fecha)
     if elegida and elegida < cuando - timedelta(minutes=5):
         return None, None, "la fecha no puede quedar en el pasado"
-    prox = elegida or fecha_propuesta(accion, cuando)
     c = _conn(db)
     try:
         f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
         if not f:
             return None, None, "el prospecto no existe"
         p = dict(f)
+        if a.get("canal"):
+            prox = elegida or insistir_desde(cuando.date(), int(get_config_conn(c)["dias_insistir"]))
+        else:
+            prox = elegida or fecha_propuesta(accion, cuando, motivo)
         antes = {k: p.get(k) for k in _COLS_ANTES}
         cambios = {}
         if not p.get("primera_llamada"):
@@ -1204,14 +1250,21 @@ def registrar_accion(db: str, pid: int, accion: str, usuario: str, fecha: str | 
         if nuevo == "cerrado" and not p.get("mensual_usd"):
             cambios["mensual_usd"] = get_config_conn(c)["precio_usd"]
         cur = c.execute(
-            "INSERT INTO fid_llamadas (prospecto_id, hecha_en, resultado, efectivo, nota, proxima, usuario, antes) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO fid_llamadas (prospecto_id, hecha_en, resultado, efectivo, nota, proxima, usuario, antes, "
+            "motivo_no_contacto) VALUES (?,?,?,?,?,?,?,?,?)",
             (pid, fmt(cuando), accion, 1 if accion in EFECTIVOS else 0, (nota or "").strip()[:2000] or None,
-             cambios.get("proxima_llamada") or cambios.get("fecha_reunion"), usuario, json.dumps(antes)))
+             cambios.get("proxima_llamada") or cambios.get("fecha_reunion"), usuario, json.dumps(antes), motivo))
+        lid = cur.lastrowid
+        if a.get("canal"):
+            # Queda anotado a dónde mandar la info, pendiente de enviar. Se
+            # completa en la ficha; deshacer la llamada lo borra.
+            c.execute("INSERT INTO fid_propuestas (prospecto_id, canal, destino, persona, estado, llamada_id, usuario, "
+                      "creado_en, actualizado_en) VALUES (?,?,?,?,?,?,?,?,?)",
+                      (pid, a["canal"], _destino_sugerido(p, a["canal"]), p.get("contacto"), "pendiente", lid,
+                       usuario, fmt(cuando), fmt(cuando)))
         c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
                   list(cambios.values()) + [pid])
         c.commit()
-        lid = cur.lastrowid
     finally:
         c.close()
     return get_prospecto(db, pid), lid, None
@@ -1271,6 +1324,7 @@ def deshacer_llamada(db: str, lid: int) -> tuple[dict | None, str | None]:
                   list(antes.values()) + [ll["prospecto_id"]])
         c.execute("DELETE FROM fid_cambios WHERE prospecto_id = ? AND en = ? AND a != ?",
                   (ll["prospecto_id"], ll["hecha_en"], antes["estado"]))
+        c.execute("DELETE FROM fid_propuestas WHERE llamada_id = ?", (lid,))
         c.execute("DELETE FROM fid_llamadas WHERE id = ?", (lid,))
         c.commit()
     finally:
@@ -1278,16 +1332,78 @@ def deshacer_llamada(db: str, lid: int) -> tuple[dict | None, str | None]:
     return get_prospecto(db, ll["prospecto_id"]), None
 
 
+# ── listas por estado (14/10) ────────────────────────────────────────────────
+# Lucas, desde el uso en la calle: "hoy todo está en una sola lista y no se
+# puede separar en qué etapa está cada local". La lista de siempre queda como
+# «Todos»; al lado, una vista por estado, cada una con su total, filtro por
+# zona o barrio y orden por nombre, último contacto o intentos. Un local puede
+# estar en más de una (un "Ya llamados" que pidió info por WhatsApp).
+
+VISTAS = {
+    "todos": "Todos",
+    "sin_llamar": "Sin llamar",
+    "llamados": "Ya llamados",
+    "no_atendieron": "No atendieron",
+    "whatsapp": "Pidieron info por WhatsApp",
+    "mail": "Pidieron propuesta por mail",
+    "reunion": "Reunión y demo",
+    "descartados": "Descartados",
+}
+ORDENES = ("prioridad", "nombre", "contacto_viejo", "contacto_nuevo", "intentos")
+_ABIERTOS = ("cerrado", "descartado")
+
+
+def _en_vista(f: dict, vista: str) -> bool:
+    if vista == "todos":
+        return True
+    if vista == "sin_llamar":
+        return f["estado"] == "sin_contactar" and not (f["intentos"] or f["ultima_visita"]
+                                                       or f["propuestas"] or f["seguimiento"])
+    if vista == "llamados":
+        return f["intentos"] > 0
+    if vista == "no_atendieron":
+        return f["ultimo_resultado"] == "no_atendio" and f["estado"] in ("sin_contactar", "contactado")
+    if vista in CANALES:
+        return f["estado"] not in _ABIERTOS and any(
+            x["canal"] == vista and x["estado"] != "respondio" for x in f["propuestas"])
+    if vista == "reunion":
+        return f["estado"] not in _ABIERTOS and (
+            bool(f["seguimiento"]) or f["estado"] in ("reunion_agendada", "reunion_hecha", "piloto"))
+    if vista == "descartados":
+        return f["estado"] == "descartado"
+    return False
+
+
+def _urgencia(f: dict, vista: str) -> tuple:
+    """El orden de 'prioridad' de cada vista: lo que hay que hacer hoy, arriba."""
+    if vista in CANALES:
+        props = [x for x in f["propuestas"] if x["canal"] == vista and x["estado"] != "respondio"]
+        # Primero lo que hay que mandar, después el segundo toque, después lo que espera.
+        return (min((0 if x["estado"] == "pendiente" else 1 if x["insistir"] else 2) for x in props),
+                min((x.get("enviado_en") or "") for x in props))
+    if vista == "reunion":
+        s = f["seguimiento"] or {}
+        fecha = s.get("proximo_paso_fecha") or (f["fecha_reunion"] if f["estado"] == "reunion_agendada" else None)
+        return (0 if s.get("vencido") else 1, fecha or "9999")
+    if vista == "no_atendieron":
+        return (f["grupo"], f["cuando"] or "9999")
+    return (f["grupo"], -f["target"])
+
+
 def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q: str | None = None,
-                cuando: datetime | None = None, limite: int = 150) -> dict:
-    """La lista única. Grupos, en este orden:
+                cuando: datetime | None = None, limite: int = 150, vista: str | None = None,
+                barrio: str | None = None, orden: str | None = None) -> dict:
+    """La lista. En «Todos» (la de siempre) los grupos van en este orden:
     0 vencidas (rojo): la llamada o la reunión quedó en un día que ya pasó;
     1 hoy (verde): llamada o reunión de hoy;
     2 el resto, del más target al menos (incluye los agendados para después);
     3 clientes y descartados, al final.
-    Dentro de cada grupo manda el target: primero el que más chance tiene."""
+    Dentro de cada grupo manda el target: primero el que más chance tiene.
+    Las otras vistas (VISTAS) filtran por estado y traen su propio orden."""
     cuando = cuando or ahora()
     hoy = cuando.strftime("%Y-%m-%d")
+    vista = vista if vista in VISTAS else "todos"
+    orden = orden if orden in ORDENES else "prioridad"
     ciudad = normalizar_ciudad(ciudad) if ciudad else None
     cond, params = ["archivado = 0"], []
     if ciudad:
@@ -1303,14 +1419,18 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
             f"WHERE {' AND '.join(cond)}", params)]
         rep = repetidos_en([{"nombre": f[0]} for f in c.execute("SELECT nombre FROM fid_prospectos")])
         ult = _ultimo_resultado(c)
-        notas, hoy_ll, llam_nota_en = {}, {}, {}
-        for f in c.execute("SELECT id, prospecto_id, hecha_en, resultado, nota, proxima FROM fid_llamadas "
-                           "ORDER BY hecha_en, id"):
+        notas, hoy_ll, llam_nota_en, intentos, motivo, contacto = {}, {}, {}, Counter(), {}, {}
+        for f in c.execute("SELECT id, prospecto_id, hecha_en, resultado, nota, proxima, motivo_no_contacto "
+                           "FROM fid_llamadas ORDER BY hecha_en, id"):
+            pid = f["prospecto_id"]
+            intentos[pid] += 1
+            motivo[pid] = f["motivo_no_contacto"]
+            contacto[pid] = f["hecha_en"]
             if f["nota"]:
-                notas[f["prospecto_id"]] = f["nota"]
-                llam_nota_en[f["prospecto_id"]] = f["hecha_en"]
+                notas[pid] = f["nota"]
+                llam_nota_en[pid] = f["hecha_en"]
             if f["hecha_en"][:10] == hoy:
-                hoy_ll[f["prospecto_id"]] = dict(f)
+                hoy_ll[pid] = dict(f)
         llam_hoy = c.execute("SELECT COUNT(*) FROM fid_llamadas WHERE substr(hecha_en, 1, 10) = ?",
                              (hoy,)).fetchone()[0]
         mails = {f["prospecto_id"]: f["enviado_en"] for f in c.execute(
@@ -1320,25 +1440,41 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
             visitas[f["prospecto_id"]] = {"hecha_en": f["hecha_en"], "resultado": f["resultado"]}
             if f["nota"]:
                 nota_en[f["prospecto_id"]] = (f["hecha_en"], f["nota"])
+        dias = int(get_config_conn(c)["dias_insistir"])
+        propuestas = defaultdict(list)
+        for f in c.execute("SELECT * FROM fid_propuestas ORDER BY id"):
+            propuestas[f["prospecto_id"]].append(_con_insistir(dict(f), dias, hoy))
+        seguimientos = {f["prospecto_id"]: _con_vencido(dict(f), hoy)
+                        for f in c.execute("SELECT * FROM fid_seguimientos")}
     finally:
         c.close()
     cfg = get_config(db)
     if q:
         nq = normalizar(q)
         filas = [f for f in filas if nq in normalizar(" ".join(str(f.get(k) or "") for k in (
-            "nombre", "barrio", "tipo", "contacto", "contacto_tel", "telefono", "direccion", "notas"))
+            "nombre", "barrio", "tipo", "contacto", "contacto_tel", "telefono", "direccion", "notas", "email"))
             + " " + (notas.get(f["id"]) or ""))]
     for f in filas:
-        u = ult.get(f["id"], {})
+        pid = f["id"]
+        u = ult.get(pid, {})
         f["n_no_atendio"] = u.get("n_no_atendio", 0)
         f["ultimo_resultado"] = u.get("ultimo")
-        f["ultima_nota"] = notas.get(f["id"])
-        f["llamada_hoy"] = hoy_ll.get(f["id"])
-        f["ultimo_mail"] = mails.get(f["id"])
-        f["ultima_visita"] = visitas.get(f["id"])
+        f["intentos"] = intentos[pid]
+        f["motivo_no_contacto"] = motivo.get(pid) if f["ultimo_resultado"] == "no_atendio" else None
+        f["ultima_nota"] = notas.get(pid)
+        f["llamada_hoy"] = hoy_ll.get(pid)
+        f["ultimo_mail"] = mails.get(pid)
+        f["ultima_visita"] = visitas.get(pid)
+        f["propuestas"] = propuestas.get(pid, [])
+        f["seguimiento"] = seguimientos.get(pid)
+        # El último contacto de cualquier tipo: llamada, visita, mail o envío de info.
+        f["ultimo_contacto"] = max([x for x in (contacto.get(pid), mails.get(pid),
+                                                (visitas.get(pid) or {}).get("hecha_en"),
+                                                *(p.get("enviado_en") for p in f["propuestas"])) if x],
+                                   default=None)
         # La nota más nueva, sea de una llamada o de una visita.
-        nv = nota_en.get(f["id"])
-        if nv and (not f["ultima_nota"] or nv[0] >= (llam_nota_en.get(f["id"]) or "")):
+        nv = nota_en.get(pid)
+        if nv and (not f["ultima_nota"] or nv[0] >= (llam_nota_en.get(pid) or "")):
             f["ultima_nota"] = nv[1]
         f["target"] = target(f, rep)
         cuando_txt = f["fecha_reunion"] if f["estado"] == "reunion_agendada" else f["proxima_llamada"]
@@ -1351,18 +1487,301 @@ def armar_lista(db: str, ciudad: str | None = None, rubro: str | None = None, q:
             f["grupo"] = 1
         else:
             f["grupo"] = 2
+    # Las zonas y barrios que hay, antes de filtrar por uno.
+    zonas = Counter(f.get("barrio") or f.get("zona") for f in filas if f.get("barrio") or f.get("zona"))
+    if barrio:
+        nb = normalizar(barrio)
+        filas = [f for f in filas if nb in (normalizar(f.get("barrio")), normalizar(f.get("zona")))]
+    conteos = {v: sum(1 for f in filas if _en_vista(f, v)) for v in VISTAS}
+    filas = [f for f in filas if _en_vista(f, vista)]
     # En "hoy", lo que ya es hora va antes que lo agendado para más tarde.
     ahora_txt = fmt(cuando)
-    filas.sort(key=lambda f: (f["grupo"], f["grupo"] == 1 and (f["cuando"] or "") > ahora_txt,
-                              -f["target"], f["nombre"]))
+    if orden == "nombre":
+        filas.sort(key=lambda f: normalizar(f["nombre"]))
+    elif orden in ("contacto_viejo", "contacto_nuevo"):
+        # Los que nunca se contactaron van al final en los dos sentidos.
+        con = sorted((f for f in filas if f["ultimo_contacto"]), key=lambda f: f["ultimo_contacto"],
+                     reverse=orden == "contacto_nuevo")
+        filas = con + sorted((f for f in filas if not f["ultimo_contacto"]), key=lambda f: -f["target"])
+    elif orden == "intentos":
+        filas.sort(key=lambda f: (-f["intentos"], normalizar(f["nombre"])))
+    elif vista == "todos":
+        filas.sort(key=lambda f: (f["grupo"], f["grupo"] == 1 and (f["cuando"] or "") > ahora_txt,
+                                  -f["target"], f["nombre"]))
+    else:
+        filas.sort(key=lambda f: (_urgencia(f, vista), f["nombre"]))
+    abiertas = [x for f in filas for x in f["propuestas"] if x["estado"] != "respondio"]
     return {
-        "items": filas[:max(1, limite)], "total": len(filas),
+        "items": filas[:max(1, limite)], "total": len(filas), "vista": vista, "orden": orden,
+        "conteos": conteos,
+        "zonas": [{"nombre": k, "n": n} for k, n in sorted(zonas.items(), key=lambda x: normalizar(x[0]))],
         "kpis": {"vencidas": sum(1 for f in filas if f["grupo"] == 0),
                  "hoy": sum(1 for f in filas if f["grupo"] == 1),
-                 "llamadas_hoy": llam_hoy, "meta_llamadas_dia": int(cfg["meta_llamadas_dia"])},
+                 "llamadas_hoy": llam_hoy, "meta_llamadas_dia": int(cfg["meta_llamadas_dia"]),
+                 "a_enviar": sum(1 for x in abiertas if x["canal"] == vista and x["estado"] == "pendiente"),
+                 "insistir": sum(1 for x in abiertas if x["canal"] == vista and x["insistir"]),
+                 "pasos_vencidos": sum(1 for f in filas if (f["seguimiento"] or {}).get("vencido"))},
+        "dias_insistir": dias,
         "acciones": {k: v["label"] for k, v in ACCIONES.items()},
         "ciudades": CIUDADES, "rubros": RUBROS,
     }
+
+
+# ── WhatsApp y mails con seguimiento (14/10) ─────────────────────────────────
+# Lucas: cuando atienden y piden la info por WhatsApp, o lo derivan al mail, no
+# quedaba registro de a qué número o dirección escribió, qué mandó ni cuándo
+# insistir. Cada envío es una fila de `fid_propuestas`, con su estado. Un local
+# puede tener varias (el mail del dueño y el de administración).
+
+CANALES = {"whatsapp": "WhatsApp", "mail": "Mail"}
+ESTADOS_PROPUESTA = {"pendiente": "Pendiente de enviar", "enviada": "Enviada",
+                     "respondio": "Respondió", "sin_respuesta": "Sin respuesta"}
+# Reunión y demo: los locales que ya vieron la plataforma. Es la lista de cierre.
+ETAPAS_SEGUIMIENTO = {"demo_mostrada": "Demo mostrada", "propuesta_enviada": "Propuesta enviada",
+                      "negociando": "Negociando", "cerrado": "Cerrado", "perdido": "Perdido"}
+# Los que entraron a la lista el día que se pidió (14/10).
+SEMILLA_SEGUIMIENTO = ("TNT Burger", "Los Sopranos", "Rodelú")
+
+
+def init_seguimiento(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_propuestas (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospecto_id    INTEGER NOT NULL REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            canal           TEXT NOT NULL,
+            destino         TEXT,
+            persona         TEXT,
+            cargo           TEXT,
+            contenido       TEXT,
+            enviado_en      TEXT,
+            estado          TEXT NOT NULL DEFAULT 'pendiente',
+            nota            TEXT,
+            llamada_id      INTEGER,
+            usuario         TEXT,
+            creado_en       TEXT,
+            actualizado_en  TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fid_propuestas_p ON fid_propuestas(prospecto_id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fid_seguimientos (
+            prospecto_id        INTEGER PRIMARY KEY REFERENCES fid_prospectos(id) ON DELETE CASCADE,
+            fecha_reunion       TEXT,
+            con_quien           TEXT,
+            cargo               TEXT,
+            demo_marca          INTEGER NOT NULL DEFAULT 0,
+            enviado             TEXT,
+            etapa               TEXT NOT NULL DEFAULT 'demo_mostrada',
+            proximo_paso        TEXT,
+            proximo_paso_fecha  TEXT,
+            usuario             TEXT,
+            actualizado_en      TEXT
+        )
+    """)
+    # Los de la lista de Lucas, si ya están cargados. Cada uno una sola vez:
+    # si después lo sacan de la lista, no vuelve a aparecer en el próximo arranque.
+    for nombre in SEMILLA_SEGUIMIENTO:
+        marca = "semilla_seguimiento_" + normalizar(nombre).replace(" ", "_")
+        if conn.execute("SELECT 1 FROM fid_config WHERE clave = ?", (marca,)).fetchone():
+            continue
+        base = _nombre_base(nombre)
+        fila = next((f for f in conn.execute("SELECT id, nombre, fecha_reunion FROM fid_prospectos "
+                                             "WHERE archivado = 0 ORDER BY id")
+                     if _nombre_base(f[1]) == base), None)
+        if not fila:
+            continue
+        conn.execute("INSERT OR IGNORE INTO fid_seguimientos (prospecto_id, fecha_reunion, etapa, usuario, "
+                     "actualizado_en) VALUES (?,?,?,?,?)",
+                     (fila[0], fila[2], "demo_mostrada", "Scalerics", fmt(ahora())))
+        conn.execute("INSERT INTO fid_config (clave, valor) VALUES (?, '1')", (marca,))
+
+
+def insistir_desde(d: date, dias: int) -> datetime:
+    """Cuándo toca el segundo toque de un envío sin respuesta."""
+    return datetime.combine(_habil(d + timedelta(days=max(0, dias))), datetime.min.time()).replace(hour=11)
+
+
+def _con_insistir(x: dict, dias: int, hoy: str) -> dict:
+    """Marca el envío que ya pide el segundo toque: lo enviado hace `dias` o
+    más sin respuesta, y lo que se marcó «sin respuesta» a mano."""
+    env = parse_dt(x.get("enviado_en"))
+    x["insistir"] = x["estado"] == "sin_respuesta" or (
+        x["estado"] == "enviada" and bool(env) and fmt(insistir_desde(env.date(), dias))[:10] <= hoy)
+    return x
+
+
+def _con_vencido(s: dict, hoy: str) -> dict:
+    s["vencido"] = bool(s.get("proximo_paso_fecha")) and s["proximo_paso_fecha"][:10] < hoy \
+        and s.get("etapa") not in ("cerrado", "perdido")
+    return s
+
+
+def _destino_sugerido(p: dict, canal: str) -> str | None:
+    if canal == "mail":
+        return p.get("email") or None
+    # Para WhatsApp, el celular: primero el del dueño, después el del local.
+    for tel in (p.get("contacto_tel"), p.get("telefono")):
+        if tel and es_celular(tel):
+            return tel
+    return p.get("contacto_tel") or None
+
+
+def _fecha_dia(texto) -> str | None:
+    dt = parse_dt(texto)
+    return dt.strftime("%Y-%m-%d") if dt else None
+
+
+def guardar_propuesta(db: str, pid: int | None, datos: dict, usuario: str, prop_id: int | None = None,
+                      cuando: datetime | None = None) -> tuple[dict | None, str | None]:
+    """Crea (con `pid`) o edita (con `prop_id`) un envío por WhatsApp o mail.
+    Al marcarlo enviado deja la llamada del segundo toque en la cola.
+    Devuelve (prospecto, error)."""
+    cuando = cuando or ahora()
+    c = _conn(db)
+    try:
+        if prop_id:
+            previo = c.execute("SELECT * FROM fid_propuestas WHERE id = ?", (prop_id,)).fetchone()
+            if not previo:
+                return None, "ese envío no existe"
+            x = dict(previo)
+            pid = x["prospecto_id"]
+            antes = (x["estado"], x.get("enviado_en"))
+        else:
+            if datos.get("canal") not in CANALES:
+                return None, "elegí si es por WhatsApp o por mail"
+            x = {"canal": datos["canal"], "estado": "pendiente"}
+            antes = None
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None, "el prospecto no existe"
+        p = dict(f)
+        for k, largo in (("destino", 120), ("persona", 80), ("cargo", 60), ("contenido", 200), ("nota", 1000)):
+            if k in datos:
+                x[k] = (str(datos[k] or "").strip()[:largo]) or None
+        if "estado" in datos:
+            if datos["estado"] not in ESTADOS_PROPUESTA:
+                return None, "estado inválido"
+            x["estado"] = datos["estado"]
+        if "enviado_en" in datos:
+            x["enviado_en"] = _fecha_dia(datos["enviado_en"])
+        if x["canal"] == "mail" and x.get("destino") and not es_mail(x["destino"]):
+            return None, "poné un mail válido"
+        if x["estado"] != "pendiente":
+            if not x.get("destino"):
+                return None, "falta " + ("el mail" if x["canal"] == "mail" else "el número de WhatsApp")
+            x["enviado_en"] = x.get("enviado_en") or cuando.strftime("%Y-%m-%d")
+        cols = ("destino", "persona", "cargo", "contenido", "enviado_en", "estado", "nota")
+        valores = [x.get(k) for k in cols] + [fmt(cuando)]
+        if prop_id:
+            c.execute(f"UPDATE fid_propuestas SET {', '.join(k + ' = ?' for k in cols)}, actualizado_en = ? "
+                      "WHERE id = ?", valores + [prop_id])
+        else:
+            c.execute(f"INSERT INTO fid_propuestas (prospecto_id, canal, {', '.join(cols)}, actualizado_en, usuario, "
+                      f"creado_en) VALUES ({', '.join('?' * (len(cols) + 5))})",
+                      [pid, x["canal"]] + valores + [usuario, fmt(cuando)])
+        # Lo que faltaba en la ficha del local se completa; lo cargado no se pisa.
+        cambios = {}
+        if x["canal"] == "mail" and x.get("destino") and not p.get("email"):
+            cambios["email"] = x["destino"]
+        if x["canal"] == "whatsapp" and x.get("destino") and not p.get("contacto_tel") \
+                and digitos(x["destino"]) != digitos(p.get("telefono")):
+            cambios["contacto_tel"] = x["destino"]
+        if x.get("persona") and not p.get("contacto"):
+            cambios["contacto"] = x["persona"]
+        # Recién enviado (o con otra fecha): el segundo toque queda en la cola.
+        # Editar la nota de algo ya enviado no la vuelve a mover.
+        if x["estado"] == "enviada" and antes != ("enviada", x["enviado_en"]) \
+                and p["estado"] not in ("cerrado", "reunion_agendada"):
+            cambios["proxima_llamada"] = fmt(insistir_desde(parse_dt(x["enviado_en"]).date(),
+                                                            int(get_config_conn(c)["dias_insistir"])))
+            if p["estado"] in ("sin_contactar", "descartado"):
+                cambios.update(_cambiar_estado(c, p, "contactado", cuando, usuario))
+        if cambios:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                      list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid), None
+
+
+def borrar_propuesta(db: str, prop_id: int) -> dict | None:
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT prospecto_id FROM fid_propuestas WHERE id = ?", (prop_id,)).fetchone()
+        if not f:
+            return None
+        c.execute("DELETE FROM fid_propuestas WHERE id = ?", (prop_id,))
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, f[0])
+
+
+def guardar_seguimiento(db: str, pid: int, datos: dict, usuario: str,
+                        cuando: datetime | None = None) -> tuple[dict | None, str | None]:
+    """La ficha de reunión y demo del local (una por local). El próximo paso
+    con fecha queda además como la próxima llamada, así aparece en la cola el
+    día que toca. Cerrado y Perdido mueven la etapa del local."""
+    cuando = cuando or ahora()
+    etapa = datos.get("etapa") or "demo_mostrada"
+    if etapa not in ETAPAS_SEGUIMIENTO:
+        return None, "etapa inválida"
+    paso_fecha = parse_dt(datos.get("proximo_paso_fecha"))
+    if datos.get("proximo_paso_fecha") and not paso_fecha:
+        return None, "la fecha del próximo paso no es válida"
+    reunion = parse_dt(datos.get("fecha_reunion"))
+    c = _conn(db)
+    try:
+        f = c.execute("SELECT * FROM fid_prospectos WHERE id = ?", (pid,)).fetchone()
+        if not f:
+            return None, "el prospecto no existe"
+        p = dict(f)
+        txt = lambda k, n: (str(datos.get(k) or "").strip()[:n]) or None  # noqa: E731
+        fila = {
+            "fecha_reunion": (fmt(reunion) if len(str(datos["fecha_reunion"]).strip()) > 10
+                              else reunion.strftime("%Y-%m-%d")) if reunion else p.get("fecha_reunion"),
+            "con_quien": txt("con_quien", 80), "cargo": txt("cargo", 60),
+            "demo_marca": 1 if datos.get("demo_marca") in (True, 1, "1", "si", "true") else 0,
+            "enviado": txt("enviado", 300), "etapa": etapa, "proximo_paso": txt("proximo_paso", 300),
+            "proximo_paso_fecha": paso_fecha.strftime("%Y-%m-%d") if paso_fecha else None,
+            "usuario": usuario, "actualizado_en": fmt(cuando),
+        }
+        c.execute(f"INSERT INTO fid_seguimientos (prospecto_id, {', '.join(fila)}) "
+                  f"VALUES ({', '.join('?' * (len(fila) + 1))}) ON CONFLICT(prospecto_id) DO UPDATE SET "
+                  + ", ".join(f"{k} = excluded.{k}" for k in fila), [pid] + list(fila.values()))
+        cambios = {}
+        if fila["con_quien"] and not p.get("contacto"):
+            cambios["contacto"] = fila["con_quien"]
+        if etapa == "cerrado":
+            cambios.update(_cambiar_estado(c, p, "cerrado", cuando, usuario))
+            cambios["proxima_llamada"] = None
+            if not p.get("mensual_usd"):
+                cambios["mensual_usd"] = get_config_conn(c)["precio_usd"]
+        elif etapa == "perdido":
+            cambios.update(_cambiar_estado(c, p, "descartado", cuando, usuario))
+            cambios["motivo_descarte"] = "Perdido después de la demo"
+            cambios["proxima_llamada"] = fmt(fecha_propuesta("no_interesa", cuando))
+        elif paso_fecha:
+            hora = paso_fecha.hour if len(str(datos.get("proximo_paso_fecha")).strip()) > 10 else 11
+            cambios["proxima_llamada"] = fmt(paso_fecha.replace(hour=hora))
+        if cambios:
+            c.execute(f"UPDATE fid_prospectos SET {', '.join(k + ' = ?' for k in cambios)} WHERE id = ?",
+                      list(cambios.values()) + [pid])
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid), None
+
+
+def borrar_seguimiento(db: str, pid: int) -> dict | None:
+    c = _conn(db)
+    try:
+        c.execute("DELETE FROM fid_seguimientos WHERE prospecto_id = ?", (pid,))
+        c.commit()
+    finally:
+        c.close()
+    return get_prospecto(db, pid)
 
 
 # ── mail con borrador (25/9) ─────────────────────────────────────────────────
@@ -1567,6 +1986,11 @@ def registrar_mail(db: str, pid: int, usuario: str, de: str, para: str, asunto: 
         p = dict(f)
         c.execute("INSERT INTO fid_mails (prospecto_id, enviado_en, usuario, de, para, asunto, gmail_id) "
                   "VALUES (?,?,?,?,?,?,?)", (pid, fmt(cuando), usuario, de, para, asunto, gmail_id))
+        # Si ese mail estaba anotado como «a enviar», queda enviado (14/10).
+        c.execute("UPDATE fid_propuestas SET estado = 'enviada', enviado_en = ?, destino = ?, actualizado_en = ? "
+                  "WHERE prospecto_id = ? AND canal = 'mail' AND estado = 'pendiente' "
+                  "AND (COALESCE(destino, '') = '' OR lower(destino) = lower(?))",
+                  (cuando.strftime("%Y-%m-%d"), para, fmt(cuando), pid, para))
         cambios = {}
         if not p.get("email"):
             cambios["email"] = para

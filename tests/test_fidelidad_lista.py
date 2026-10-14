@@ -187,7 +187,7 @@ def test_vencidas_primero_despues_hoy_despues_el_mas_target(db):
 
 def test_no_atendio_se_cuenta_al_toque_y_propone_manana(db):
     pid = _p(db, "Pizzería La Esquina")
-    p, lid, err = fid.registrar_accion(db, pid, "no_atendio", "Lucas", cuando=AHORA)
+    p, lid, err = fid.registrar_accion(db, pid, "no_atendio", "Lucas", cuando=AHORA, motivo="buzon")
     assert err is None and lid
     assert p["estado"] == "sin_contactar"  # no habló con nadie
     assert p["proxima_llamada"] == "2026-09-24 16:00"
@@ -234,7 +234,7 @@ def test_el_boton_equivocado_se_deshace_sin_rastro(db):
 
 def test_solo_se_deshace_la_ultima(db):
     pid = _p(db, "Pizzería La Esquina")
-    _, primera, _ = fid.registrar_accion(db, pid, "no_atendio", "Lucas", cuando=AHORA)
+    _, primera, _ = fid.registrar_accion(db, pid, "no_atendio", "Lucas", cuando=AHORA, motivo="buzon")
     fid.registrar_accion(db, pid, "otro_dia", "Lucas", cuando=AHORA)
     _, err = fid.deshacer_llamada(db, primera)
     assert err == "solo se puede deshacer la última llamada"
@@ -244,7 +244,7 @@ def test_solo_se_deshace_la_ultima(db):
 
 def test_la_api_de_punta_a_punta(db, cli):
     pid = _p(db, "Pizzería La Esquina")
-    r = cli.post(f"/api/fidelidad/prospectos/{pid}/accion", json={"accion": "no_atendio"})
+    r = cli.post(f"/api/fidelidad/prospectos/{pid}/accion", json={"accion": "no_atendio", "motivo": "buzon"})
     assert r.status_code == 201
     lid = r.get_json()["llamada_id"]
     r = cli.put(f"/api/fidelidad/llamadas/{lid}", json={"fecha": "2026-09-25T11:00", "nota": "probar a la tarde"})
@@ -415,7 +415,7 @@ def test_resumen_de_actividad_por_persona(db, cli):
     a, b = _p(db, "Pizzería A"), _p(db, "Pizzería B")
     cli.post("/api/fidelidad/visitas", json={"nombre": "Pizzería A", "resultado": "interesado", "autor": "Gonzalo"})
     cli.post("/api/fidelidad/visitas", json={"nombre": "Pizzería B", "resultado": "reunion", "autor": "Lucas"})
-    fid.registrar_accion(db, a, "no_atendio", "Lucas", cuando=AHORA)
+    fid.registrar_accion(db, a, "no_atendio", "Lucas", cuando=AHORA, motivo="buzon")
     d = cli.get("/api/fidelidad/resumen").get_json()
     assert d["desde"] == "2026-09-23" and d["visitas"]["total"] == 2
     assert d["visitas"]["por_persona"] == {"Gonzalo": 1, "Lucas": 1}
