@@ -161,3 +161,19 @@ def test_clientes_tiene_el_contador_de_cerrados():
     panel = html[html.index('<div id="clientes-panel"'):]
     assert panel.index('id="cli-contador"') < panel.index('id="clientes-body"'), "va arriba de la tabla"
     assert "cliPintarContador(clientes, crmLabels, crmColor)" in html
+
+
+@pytest.mark.parametrize("estado", ["cerrado", "en_desarrollo", "finalizado"])
+def test_el_estado_del_cliente_se_cambia_desde_la_tabla(cli, db, estado):
+    lid = _lead(db, "Óptica Luz", "+59899111222", etapa="cerrado" if estado != "cerrado" else "finalizado")
+    r = cli.post(f"/api/leads/{lid}/crm-status", json={"crm_status": estado})
+    assert r.status_code == 200 and r.get_json()["ok"]
+    assert get_business(db, lid)["crm_status"] == estado
+    ids = [c["id"] for c in cli.get("/api/clientes-activos").get_json()["clientes"]]
+    assert lid in ids, "sigue en Clientes"
+
+
+def test_la_tabla_de_clientes_tiene_el_selector_de_estado():
+    html = dashboard.DASHBOARD_HTML
+    assert 'onchange="cliCambiarEstado(${b.id}, this)"' in html
+    assert "fetch('/api/leads/' + clientId + '/crm-status'" in html

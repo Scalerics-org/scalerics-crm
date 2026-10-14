@@ -2231,6 +2231,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .resp-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
 .resp-sel:hover{border-color:var(--borde-fuerte)}
 .resp-sel.vacante{color:var(--texto-debil)}
+.cli-estado-sel{font-size:.74rem;font-weight:650;font-family:inherit;color:var(--cli-estado);background:color-mix(in srgb,var(--cli-estado) 12%,transparent);border:1px solid color-mix(in srgb,var(--cli-estado) 40%,transparent);border-radius:99px;padding:3px 8px;cursor:pointer;max-width:100%}
+.cli-estado-sel:hover,.cli-estado-sel:focus-visible{border-color:var(--cli-estado);outline:none}
+.cli-estado-sel option{color:var(--texto);background:var(--superficie)}
 @media (max-width:768px){
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
@@ -7947,6 +7950,29 @@ async function borrarDemo(id) {
 
 // == Responsables del cliente ==================================================
 
+// Cambiar a mano el estado de un cliente desde la tabla (pedido de Juan,
+// 14/10): Cerrado / En desarrollo / Finalizado. Mismo cambio de estado que la
+// ficha (evento, actividad, metas). Al guardar se repinta todo el panel para
+// que el contador de arriba y el color de la fila acompañen.
+async function cliCambiarEstado(clientId, sel) {
+  const previo = sel.dataset.previo || '';
+  if (sel.value === previo) return;
+  sel.disabled = true;
+  try {
+    const r = await fetch('/api/leads/' + clientId + '/crm-status', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({crm_status: sel.value}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    loadClientesPanel();
+  } catch (e) {
+    alert('No se pudo cambiar el estado: ' + e.message);
+    sel.value = previo;
+    sel.disabled = false;
+  }
+}
+
 async function guardarResponsable(clientId, campo, valor, sel) {
   const previo = sel.dataset.previo || '';
   sel.disabled = true;
@@ -8285,7 +8311,10 @@ async function loadClientesPanel() {
           <div class="biz-sub">${esc(b.city||'')}</div>
           ${tel}
         </div>
-        <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
+        <div data-rol="Estado"><select class="cli-estado-sel" style="--cli-estado:${color}" data-previo="${esc(crm)}"
+          aria-label="Estado de ${esc(b.name||'')}" onchange="cliCambiarEstado(${b.id}, this)">
+          ${Object.keys(crmLabels).map(k => `<option value="${k}"${k === crm ? ' selected' : ''}>${crmLabels[k]}</option>`).join('')}
+        </select></div>
         <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
         <div data-rol="Mantenimiento por mes" id="cli-mant-${b.id}">${_cliMontoCelda(b.id, 'mant')}</div>
         <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
