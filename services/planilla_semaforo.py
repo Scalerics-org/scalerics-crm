@@ -86,6 +86,7 @@ RANK = {
     "acepto": 8,
     "cerrado": 8,
     "en_desarrollo": 9,
+    "en_mantenimiento": 9,
     "finalizado": 10,
     # Los nombres viejos siguen mapeados: quedan leads con estos estados en
     # cualquier base que no haya arrancado con la migracion todavia.
@@ -136,7 +137,7 @@ ESTADO_A_COLOR = {
     "follow_up_2": "violeta", "en_espera": "violeta", "rechazo": "violeta",
     "negociacion": "violeta",
     "acepto": "venta", "cerrado": "venta", "en_desarrollo": "venta",
-    "finalizado": "venta", "cliente_cerrado": "venta", "firmo": "venta",
+    "en_mantenimiento": "venta", "finalizado": "venta", "cliente_cerrado": "venta", "firmo": "venta",
 }
 
 # Un cliente no se baja con un toque: ahi hay plata. Misma idea que la

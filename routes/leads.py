@@ -411,7 +411,7 @@ def api_metrics():
     funnel_order = [
         "sin_contactar", "interesado", "reunion_agendada",
         "reunion_hecha", "presupuesto_enviado", "negociacion",
-        "cliente_cerrado", "en_desarrollo", "finalizado",
+        "cliente_cerrado", "en_desarrollo", "en_mantenimiento", "finalizado",
     ]
     _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada", "contactado": "interesado"}
     def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
@@ -441,10 +441,10 @@ def api_metrics():
     _contacted_st = {"interesado", "llamar_despues", "no_interesa",
                      "contactado", "reunion_agendada", "reunion_hecha",
                      "presupuesto_enviado", "negociacion",
-                     "cliente_cerrado", "en_desarrollo", "finalizado"}
+                     "cliente_cerrado", "en_desarrollo", "en_mantenimiento", "finalizado"}
     _meeting_st   = {"reunion_agendada", "reunion_hecha", "presupuesto_enviado",
-                     "negociacion", "cliente_cerrado", "en_desarrollo", "finalizado"}
-    _closed_st    = {"cliente_cerrado", "en_desarrollo", "finalizado"}
+                     "negociacion", "cliente_cerrado", "en_desarrollo", "en_mantenimiento", "finalizado"}
+    _closed_st    = {"cliente_cerrado", "en_desarrollo", "en_mantenimiento", "finalizado"}
 
     contacted = sum(1 for b in businesses if _norm(b.get("crm_status")) in _contacted_st)
     meetings  = sum(1 for b in businesses if _norm(b.get("crm_status")) in _meeting_st)
@@ -521,7 +521,7 @@ def api_metrics_meta():
 
     _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada", "contactado": "interesado"}
     def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
-    _closed_st = {"cliente_cerrado", "en_desarrollo", "finalizado"}
+    _closed_st = {"cliente_cerrado", "en_desarrollo", "en_mantenimiento", "finalizado"}
 
     total  = len(businesses)
     now    = datetime.now(timezone.utc)
@@ -557,7 +557,7 @@ def api_metrics_meta():
     # Funnel CRM
     funnel_order = ["sin_contactar", "interesado", "reunion_agendada", "reunion_hecha",
                     "presupuesto_enviado", "negociacion", "cliente_cerrado",
-                    "en_desarrollo", "finalizado"]
+                    "en_desarrollo", "en_mantenimiento", "finalizado"]
     crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
     funnel = [{"status": s, "count": crm_counts.get(s, 0)} for s in funnel_order]
 

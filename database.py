@@ -126,8 +126,10 @@ ETAPA_DEMO_AGENDADA = "demo_agendada"
 ETAPA_DEMO_DADA = "demo_1"
 
 # Estados de un CLIENTE ACTIVO. 'cerrado' es la puerta de entrada: el acuerdo se
-# concreto y el lead deja el pipeline de pre-clientes.
-ETAPAS_CLIENTE = ("cerrado", "en_desarrollo", "finalizado")
+# concreto y el lead deja el pipeline de pre-clientes. De ahi se lo pasa a mano
+# a uno de los otros tres (Juan, 14/10: "en desarrollo, en mantenimiento o
+# finalizado"); 'cerrado' no se ofrece para elegir, solo es el de entrada.
+ETAPAS_CLIENTE = ("cerrado", "en_desarrollo", "en_mantenimiento", "finalizado")
 
 # Como se traduce cada estado viejo. Solo se migran los del pipeline: los de la
 # Cola y Seguimientos (sin_contactar, interesado, contactado, llamar_despues,

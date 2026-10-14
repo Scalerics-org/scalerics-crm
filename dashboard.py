@@ -2737,6 +2737,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .row-negociacion{border-left:3px solid #fbbf24;background:rgba(251,191,36,.06)}
 .row-cliente_cerrado{border-left:3px solid #10b981;background:rgba(16,185,129,.07)}
 .row-en_desarrollo{border-left:3px solid #0088cc;background:rgba(0,136,204,.06)}
+.row-en_mantenimiento{border-left:3px solid #14b8a6;background:rgba(20,184,166,.06)}
 .row-finalizado{border-left:3px solid #6ee7b7;background:rgba(110,231,183,.06)}
 /* light mode row colors */
 body.light .row-no_interesa{background:rgba(239,68,68,.07)}
@@ -2749,6 +2750,7 @@ body.light .row-presupuesto_enviado{background:rgba(249,115,22,.08)}
 body.light .row-negociacion{background:rgba(251,191,36,.08)}
 body.light .row-cliente_cerrado{background:rgba(16,185,129,.1)}
 body.light .row-en_desarrollo{background:rgba(0,136,204,.08)}
+body.light .row-en_mantenimiento{background:rgba(20,184,166,.08)}
 body.light .row-finalizado{background:rgba(110,231,183,.1)}
 /* ── Calendar light mode ──────────────────────────────────────────────────── */
 body.light .cal-header h1{color:#0f172a !important}
@@ -7217,7 +7219,7 @@ function _fillMetaEstados(leads) {
   const sel = document.getElementById('meta-estado-filter');
   if (!sel) return;
   const base = leads || _metaLeads;
-  const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const cuenta = {};
   base.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
   // El filtro elegido se mantiene al cambiar de mes aunque ese mes no tenga
@@ -7283,8 +7285,8 @@ function renderMetaTable() {
       : `<div class="empty-state">No hay leads en ${esc(mmEtiquetaMes(mes))}</div>`;
     return;
   }
-  const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
-  const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',en_mantenimiento:'#14b8a6',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
     const fa = String(mmFechaDeFila(a, mes, todos)), fb = String(mmFechaDeFila(b, mes, todos));
     const orden = fa < fb ? -1 : (fa > fb ? 1 : 0);
@@ -8116,7 +8118,10 @@ async function cliNuevoAbrir() {
     const r = await fetch('/api/preclientes/etapas');
     etapas = r.ok ? ((await r.json()).clientes || []) : [];
   } catch (e) { etapas = []; }
-  if (!etapas.length) etapas = [{key: 'cerrado', label: 'Cerrado'}];
+  // Al dar de alta se elige entre los mismos tres que en la tabla; 'cerrado'
+  // queda para lo que entra solo (planilla, Notion).
+  etapas = etapas.filter(e => e.key !== 'cerrado');
+  if (!etapas.length) etapas = [{key: 'en_desarrollo', label: 'En desarrollo'}];
   const opciones = etapas.map(e => `<option value="${esc(e.key)}">${esc(e.label)}</option>`).join('');
   const m = document.createElement('div');
   m.className = 'modal-overlay open';
@@ -8284,8 +8289,12 @@ async function loadClientesPanel() {
       _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado};
       _cliMants[b.id] = {monto: b.mantenimiento_monto, moneda: b.mantenimiento_moneda};
     });
-    const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
-    const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
+    const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', en_mantenimiento:'En mantenimiento', finalizado:'Finalizado'};
+    const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', en_mantenimiento:'#14b8a6', finalizado:'#a78bfa'};
+    // Lo que se puede elegir a mano (pedido de Juan, 14/10). 'cerrado' no: es
+    // el estado con el que ENTRA un cliente (planilla, Notion), y queda como
+    // "elegí estado" hasta que alguien lo clasifique.
+    const CLI_ESTADOS_ELEGIBLES = ['en_desarrollo', 'en_mantenimiento', 'finalizado'];
     cliPintarContador(clientes, crmLabels, crmColor);
     if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
 
@@ -8313,7 +8322,8 @@ async function loadClientesPanel() {
         </div>
         <div data-rol="Estado"><select class="cli-estado-sel" style="--cli-estado:${color}" data-previo="${esc(crm)}"
           aria-label="Estado de ${esc(b.name||'')}" onchange="cliCambiarEstado(${b.id}, this)">
-          ${Object.keys(crmLabels).map(k => `<option value="${k}"${k === crm ? ' selected' : ''}>${crmLabels[k]}</option>`).join('')}
+          ${CLI_ESTADOS_ELEGIBLES.includes(crm) ? '' : `<option value="${esc(crm)}" selected disabled>${esc(crmLabels[crm] || crm)} — elegí estado</option>`}
+          ${CLI_ESTADOS_ELEGIBLES.map(k => `<option value="${k}"${k === crm ? ' selected' : ''}>${crmLabels[k]}</option>`).join('')}
         </select></div>
         <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
         <div data-rol="Mantenimiento por mes" id="cli-mant-${b.id}">${_cliMontoCelda(b.id, 'mant')}</div>
@@ -8406,7 +8416,7 @@ async function loadLeads() {
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   const body = body2;
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads con estos filtros</div>'; return; }
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     return `
@@ -12416,8 +12426,8 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {demo_agendada:'Demo agendada',no_se_conecto:'No se conectó',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
-  const crmDot = {demo_agendada:'#3b82f6',no_se_conecto:'#ff9900',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
+  const crmLabels = {demo_agendada:'Demo agendada',no_se_conecto:'No se conectó',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmDot = {demo_agendada:'#3b82f6',no_se_conecto:'#ff9900',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',en_mantenimiento:'#14b8a6',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const dot = crmDot[e.new_status] || '#0088cc';
@@ -14772,8 +14782,8 @@ async function borrarFijoUI(id) {
 }
 
 async function loadMetrics() {
-  const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
-  const stateColors = {sin_contactar:'#334155',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#f59e0b',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
+  const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado'};
+  const stateColors = {sin_contactar:'#334155',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#f59e0b',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',en_mantenimiento:'#14b8a6',finalizado:'#4ade80'};
   const el = id => document.getElementById(id);
 
   try {
@@ -21125,7 +21135,7 @@ const _actActionLabels = {
   notion_client_assigned: (i) => i.detail ? `asignó a <b>${esc(i.detail)}</b> como programador de <b>${esc(i.entity_name)}</b>` : `sacó al programador de <b>${esc(i.entity_name)}</b>`,
   notion_client_created: (i) => `creó la ficha <b>${esc(i.entity_name)}</b> en <b>${esc(i.detail)}</b> (Proceso de venta)`,
 };
-const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',en_mantenimiento:'En mantenimiento',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
 const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',asunto_agendado:'📅',asunto_movido:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀',notion_client_created:'➕'};
@@ -21410,7 +21420,7 @@ async function loadActivity() {
         <option value="presupuesto_enviado">Presupuesto enviado</option>
         <option value="negociacion">Negociación</option>
         <option value="cliente_cerrado">Cliente cerrado</option>
-        <option value="en_desarrollo">En desarrollo</option>
+        <option value="en_desarrollo">En desarrollo</option><option value="en_mantenimiento">En mantenimiento</option>
         <option value="finalizado">Finalizado</option>
       </select>
     </div>
@@ -21442,7 +21452,7 @@ async function loadActivity() {
     <option value="presupuesto_enviado">Presupuesto enviado</option>
     <option value="negociacion">Negociación</option>
     <option value="cliente_cerrado">Cliente cerrado</option>
-    <option value="en_desarrollo">En desarrollo</option>
+    <option value="en_desarrollo">En desarrollo</option><option value="en_mantenimiento">En mantenimiento</option>
     <option value="finalizado">Finalizado</option>
   </select>
   <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
