@@ -190,3 +190,52 @@ def test_ver_lead_inexistente_es_error_de_herramienta(sembrada, ana):
     conn = sqlite3.connect(sembrada)
     assert conn.execute("SELECT ok, error FROM mcp_llamadas ORDER BY id DESC LIMIT 1").fetchone() == (0, "No existe el lead 999")
     conn.close()
+
+
+# ── pipeline ─────────────────────────────────────────────────────────────────
+
+def test_pipeline_agrupa_en_orden_y_excluye_archivados_y_clientes(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {}))
+    assert [e["etapa"] for e in r["etapas"]] == ["demo_1", "presupuesto_enviado"]
+    assert r["etapas"][0]["total"] == 1
+    lead = r["etapas"][0]["leads"][0]
+    assert lead["id"] == 1 and lead["encargado"] == "Ana" and lead["nombre"] == "Panadería La Espiga"
+    assert isinstance(lead["dias_sin_movimiento"], int)
+    assert r["total"] == 2 and r["truncado"] is False
+
+
+def test_pipeline_filtra_por_etapa(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"etapa": "presupuesto_enviado"}))
+    assert [e["etapa"] for e in r["etapas"]] == ["presupuesto_enviado"]
+    assert r["etapas"][0]["leads"][0]["id"] == 2
+
+
+def test_pipeline_filtra_por_responsable(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"responsable": "jua"}))
+    assert r["total"] == 1 and r["etapas"][0]["leads"][0]["encargado"] == "Juan"
+
+
+def test_pipeline_incluye_clientes(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"incluir_clientes": True}))
+    assert [e["etapa"] for e in r["etapas"]] == ["demo_1", "presupuesto_enviado", "cerrado"]
+
+
+def test_pipeline_etapa_de_cliente_sin_incluir_clientes_igual_la_trae(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"etapa": "cerrado"}))
+    assert r["total"] == 1
+
+
+def test_pipeline_vacio(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"etapa": "rechazo"}))
+    assert r == {"etapas": [], "total": 0, "truncado": False}
+
+
+def test_pipeline_trunca_a_200(sembrada, ana):
+    conn = sqlite3.connect(sembrada)
+    conn.executemany("INSERT INTO businesses (name, phone, crm_status) VALUES (?,?,?)",
+                     [(f"L{i}", f"09{i:07d}", "follow_up_1") for i in range(205)])
+    conn.commit()
+    conn.close()
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"etapa": "follow_up_1"}))
+    assert r["truncado"] is True and r["total"] == 200
+    assert "Filtr" in r["aviso"]

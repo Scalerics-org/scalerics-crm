@@ -214,8 +214,59 @@ def _ver_lead(db: str, lead_id: int) -> dict:
     return ficha
 
 
+def _dias_desde(valor) -> Optional[int]:
+    """`last_event_at` viene como 'YYYY-MM-DD HH:MM:SS' (CURRENT_TIMESTAMP de
+    SQLite, en UTC). None si no hay fecha o no se puede leer."""
+    if not valor:
+        return None
+    try:
+        momento = datetime.fromisoformat(str(valor).replace("T", " ")[:19]).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return max(0, (datetime.now(timezone.utc) - momento).days)
+
+
 def _pipeline(db: str, etapa: Optional[str], responsable: Optional[str], incluir_clientes: bool) -> dict:
-    return {}
+    if etapa:
+        etapas = [etapa]
+    else:
+        etapas = list(ETAPAS_PRECLIENTE) + (list(ETAPAS_CLIENTE) if incluir_clientes else [])
+    marcas = ",".join("?" * len(etapas))
+    sql = (
+        "SELECT b.id, b.name, b.crm_status, b.phone, b.email, b.last_event_at, u.name AS encargado "
+        "FROM businesses b LEFT JOIN users u ON u.id = b.encargado_id "
+        f"WHERE b.archivado_en IS NULL AND b.crm_status IN ({marcas}) "
+    )
+    params: list = list(etapas)
+    if responsable:
+        sql += "AND lower(u.name) LIKE ? "
+        params.append(f"%{responsable.strip().lower()}%")
+    # Los que hace más tiempo no se mueven, primero: son los que hay que empujar.
+    sql += ("ORDER BY CASE WHEN b.last_event_at IS NULL THEN 0 ELSE 1 END, b.last_event_at ASC "
+            "LIMIT ?")
+    params.append(TOPE_LEADS + 1)
+    conn = _connect(db)
+    try:
+        filas = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    truncado = len(filas) > TOPE_LEADS
+    filas = filas[:TOPE_LEADS]
+    grupos = {e: [] for e in etapas}
+    for f in filas:
+        grupos[f["crm_status"]].append({
+            "id": f["id"], "nombre": f["name"], "telefono": f["phone"], "email": f["email"],
+            "encargado": f["encargado"], "ultimo_evento_at": f["last_event_at"],
+            "dias_sin_movimiento": _dias_desde(f["last_event_at"]),
+        })
+    salida = {
+        "etapas": [{"etapa": e, "total": len(grupos[e]), "leads": grupos[e]} for e in etapas if grupos[e]],
+        "total": len(filas),
+        "truncado": truncado,
+    }
+    if truncado:
+        salida["aviso"] = f"Hay más de {TOPE_LEADS} leads; se muestran {TOPE_LEADS}. Filtrá por etapa o responsable."
+    return salida
 
 
 HERRAMIENTAS: list[dict] = [
