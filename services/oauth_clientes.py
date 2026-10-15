@@ -10,8 +10,13 @@ Dos caminos, en este orden:
 
 2. **DCR** (registro dinámico, RFC 7591): si la metadata no anunciara CIMD, o
    un cliente no lo usara, Claude se registra en `/oauth/register` y queda en
-   `oauth_clientes`. Hay un tope porque cada conexión nueva registra un cliente
-   nuevo y la tabla crecería sin fin.
+   `oauth_clientes`. Solo se registran los callbacks conocidos de Claude
+   (claude.ai / claude.com) y los loopback de Claude Code: aceptar cualquier
+   `https://` dejaba a un atacante registrar su propio callback y mandarle a un
+   empleado el link de autorización (phishing de consentimiento). Cualquier otro
+   cliente tiene que usar CIMD, que solo claude.ai / claude.com pueden publicar.
+   Hay un tope porque cada conexión nueva registra un cliente nuevo y la tabla
+   crecería sin fin.
 
 La comparación de `redirect_uri` es exacta. Única excepción: las loopback de
 Claude Code (`http://localhost/callback`, `http://127.0.0.1/callback`), que
@@ -20,6 +25,7 @@ llegan con un puerto distinto cada vez y se comparan sin él (RFC 8252 §7.3).
 
 import json
 import logging
+import re
 import secrets
 import sqlite3
 import time
@@ -33,8 +39,12 @@ from database import _connect
 
 logger = logging.getLogger(__name__)
 
-HOSTS_CIMD = ("claude.ai", "claude.com")
 REDIRECTS_LOOPBACK = ("http://localhost/callback", "http://127.0.0.1/callback")
+# Los únicos callbacks que el DCR registra: los que Claude usa de verdad.
+REDIRECTS_PERMITIDOS = (
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+) + REDIRECTS_LOOPBACK
 HOSTS_LOOPBACK = ("localhost", "127.0.0.1")
 CACHE_SEGUNDOS = 24 * 3600
 # Un CIMD que falla se recuerda poco: lo justo para que un flood de client_id
@@ -56,12 +66,21 @@ def limpiar_cache() -> None:
     _cache_cimd.clear()
 
 
+# El parser de Python (urlsplit) y el de requests no leen igual una URL con `\`
+# o `@`: `https://evil.com\@claude.ai/x` da hostname claude.ai en uno y se
+# conecta a evil.com con el otro. Una regex estricta sobre el string entero cierra
+# la diferencia (no se aceptan userinfo, puerto, query ni fragmento).
+CIMD_RE = re.compile(r"^https://(claude\.ai|claude\.com)(/[A-Za-z0-9._~\-/]*)?$")
+
+
 def es_cimd(client_id: str) -> bool:
-    partes = urlsplit(client_id or "")
-    return partes.scheme == "https" and partes.hostname in HOSTS_CIMD
+    return bool(CIMD_RE.fullmatch(client_id or ""))
 
 
 def _descargar_cimd(client_id: str) -> Optional[list[str]]:
+    # Defensa en profundidad: quien llame, nunca se descarga algo que no pase la regex.
+    if not CIMD_RE.fullmatch(client_id):
+        return None
     try:
         # Sin redirects: el CIMD real se sirve directo, y seguir un 30x podría
         # llevarnos a un host fuera de la lista de claude.ai / claude.com.
@@ -69,13 +88,13 @@ def _descargar_cimd(client_id: str) -> Optional[list[str]]:
         resp.raise_for_status()
         doc = resp.json()
     except Exception as exc:
-        logger.warning("CIMD %s: no se pudo descargar: %s", client_id, exc)
+        logger.warning("CIMD %r: no se pudo descargar: %s", client_id, exc)
         return None
     uris = doc.get("redirect_uris") if isinstance(doc, dict) else None
     if (not isinstance(doc, dict) or doc.get("client_id") != client_id
             or not isinstance(uris, list) or not uris
             or not all(isinstance(u, str) and _redirect_valida(u) for u in uris)):
-        logger.warning("CIMD %s: documento inválido", client_id)
+        logger.warning("CIMD %r: documento inválido", client_id)
         return None
     return uris
 
@@ -145,6 +164,11 @@ def registrar_cliente(db: str, datos: dict) -> Optional[dict]:
     if not isinstance(uris, list) or not uris or len(uris) > TOPE_REDIRECTS:
         return None
     if not all(isinstance(u, str) and _redirect_valida(u) for u in uris):
+        return None
+    # Phishing de consentimiento: si el DCR aceptara cualquier https, un atacante
+    # registraría su callback y le mandaría a un empleado logueado el link de
+    # autorización; un clic le da un código que puede canjear (tiene el verifier).
+    if not all(u in REDIRECTS_PERMITIDOS for u in uris):
         return None
     nombre = datos.get("client_name")
     nombre = nombre[:120] if isinstance(nombre, str) else None

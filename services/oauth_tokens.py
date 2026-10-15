@@ -313,3 +313,17 @@ def revocar(db: str, token: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def revocar_todos_de_usuario(db: str, user_id: int) -> None:
+    """Corta todo acceso de Claude a nombre de esa persona: tokens vivos y códigos
+    pendientes. Se llama al cambiar la contraseña; si no, quien la robó y ya
+    conectó a Claude seguiría leyendo el CRM hasta 30 días después del cambio (lo que dura el refresh)."""
+    conn = _connect(db)
+    try:
+        conn.execute("UPDATE oauth_tokens SET revocado_en = ? "
+                     "WHERE user_id = ? AND revocado_en IS NULL", (_iso(_ahora()), user_id))
+        conn.execute("DELETE FROM oauth_codigos WHERE user_id = ?", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()

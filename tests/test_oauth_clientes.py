@@ -88,9 +88,19 @@ def test_registrar_cliente_dcr(db):
     {"redirect_uris": ["ftp://x/cb"]},
     {"redirect_uris": ["http://evil.test/cb"]},
     {"redirect_uris": "https://x/cb"},
+    {"redirect_uris": ["https://claude.ai/api/mcp/auth_callback#frag"]},
 ])
 def test_registrar_rechaza_redirects_invalidos(db, datos):
     assert oc.registrar_cliente(db, datos) is None
+
+
+def test_registrar_solo_acepta_los_callbacks_de_claude(db):
+    # Un https cualquiera permitiría phishing de consentimiento.
+    assert oc.registrar_cliente(db, {"redirect_uris": ["https://evil.test/cb"]}) is None
+    assert oc.registrar_cliente(db, {"redirect_uris": [CALLBACK_CLAUDE, "https://evil.test/cb"]}) is None
+    assert oc.registrar_cliente(db, {"redirect_uris": ["https://claude.ai/api/mcp/otro"]}) is None
+    assert oc.registrar_cliente(
+        db, {"redirect_uris": ["https://claude.com/api/mcp/auth_callback"]}) is not None
 
 
 def test_registrar_acepta_loopback_http(db):
@@ -185,18 +195,32 @@ def test_cimd_con_redirect_invalida_se_rechaza(db, monkeypatch, uris):
 
 
 def test_registrar_rechaza_mas_de_diez_redirects(db):
-    uris = [f"https://x.test/cb{i}" for i in range(oc.TOPE_REDIRECTS + 1)]
+    uris = [CALLBACK_CLAUDE] * (oc.TOPE_REDIRECTS + 1)
     assert oc.registrar_cliente(db, {"redirect_uris": uris}) is None
     assert oc.registrar_cliente(db, {"redirect_uris": uris[:oc.TOPE_REDIRECTS]}) is not None
 
 
-def test_registrar_rechaza_redirect_demasiado_larga(db):
-    larga = "https://x.test/" + "a" * oc.LARGO_MAX_REDIRECT
-    assert oc.registrar_cliente(db, {"redirect_uris": [larga]}) is None
+def test_redirect_valida_rechaza_demasiado_larga_y_fragmento():
+    # Estas reglas siguen valiendo para las redirects de un CIMD.
+    assert not oc._redirect_valida("https://x.test/" + "a" * oc.LARGO_MAX_REDIRECT)
+    assert not oc._redirect_valida("https://x.test/cb#frag")
+    assert oc._redirect_valida("https://x.test/cb")
 
 
-def test_registrar_rechaza_redirect_con_fragmento(db):
-    assert oc.registrar_cliente(db, {"redirect_uris": ["https://x.test/cb#frag"]}) is None
+@pytest.mark.parametrize("client_id", [
+    "https://evil.com\\@claude.ai/x",
+    "https://claude.ai:8443/x",
+    "https://claude.ai/x?y=1",
+    "https://claude.ai/x#f",
+    "https://claude.ai/\nX",
+])
+def test_cimd_con_url_ambigua_se_rechaza_sin_descargar(db, monkeypatch, client_id):
+    # urlsplit y requests no leen igual `\`, `@`, puerto, query ni fragmento.
+    llamadas = []
+    _mock_get(monkeypatch, {"client_id": client_id, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
+    assert not oc.es_cimd(client_id)
+    assert oc.redirect_uris_de(db, client_id) is None
+    assert llamadas == []
 
 
 def _pkce():

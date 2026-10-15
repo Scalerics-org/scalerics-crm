@@ -16,7 +16,7 @@ import threading
 import time
 from urllib.parse import urlencode, urlsplit
 
-from flask import (Blueprint, current_app, jsonify, redirect, render_template_string,
+from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template_string,
                    request, session, url_for)
 
 from services import oauth_clientes, oauth_tokens
@@ -55,6 +55,24 @@ def _cabeceras_oauth(resp):
         resp.headers["Cache-Control"] = "no-store"
         resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+@oauth_bp.before_request
+def _tope_de_cuerpo():
+    """Los chequeos explícitos de abajo solo ven `content_length`, y un pedido
+    chunked no lo trae: el cuerpo entero entraba en memoria. Werkzeug corta la
+    lectura al llegar a `max_content_length`, pero lo hace en silencio (devuelve
+    el cuerpo truncado, sin error), así que se deja un byte de margen y se lee
+    el cuerpo acá: si trae más que el tope, 413 y no un JSON roto que da 400."""
+    request.max_content_length = TOPE_CUERPO_REGISTRO + 1
+    if request.method == "POST" and request.content_length is None:
+        if len(request.get_data()) > TOPE_CUERPO_REGISTRO:
+            abort(413)
+
+
+@oauth_bp.errorhandler(413)
+def _cuerpo_demasiado_grande(_e):
+    return _error_json("invalid_request", "Cuerpo demasiado grande", 413)
 
 
 def _json_publico(datos: dict):
@@ -211,6 +229,14 @@ def _volver(redirect_uri: str, **campos):
 
 @oauth_bp.route("/oauth/authorize", methods=["GET", "POST"])
 def autorizar():
+    sin_sesion = not session.get("logged_in") or not session.get("user_id")
+    if sin_sesion and request.method == "GET":
+        # Antes de validar: validar un client_id CIMD descarga un documento de
+        # claude.ai, y un anónimo no tiene que poder hacer que el CRM salga a
+        # internet. La validación corre igual al volver del login.
+        # /login solo honra next si empieza con /oauth/authorize, así que no sirve
+        # para mandar a nadie a otro lado.
+        return redirect(url_for("login", next=request.full_path))
     params = request.form if request.method == "POST" else request.args
     try:
         pedido = _validar_pedido(params)
@@ -220,11 +246,9 @@ def autorizar():
         return _volver(e.redirect_uri, error=e.codigo, error_description=e.descripcion,
                        state=e.state)
 
-    if not session.get("logged_in") or not session.get("user_id"):
-        # Volver acá después de entrar. /login solo honra next si empieza con
-        # /oauth/authorize, así que no sirve para mandar a nadie a otro lado.
-        vuelta = request.full_path if request.method == "GET" else url_for("oauth.autorizar")
-        return redirect(url_for("login", next=vuelta))
+    if sin_sesion:
+        # POST: se valida primero (como antes) y recién ahí se pide la sesión.
+        return redirect(url_for("login", next=url_for("oauth.autorizar")))
 
     if request.method == "GET":
         nonce = secrets.token_urlsafe(16)

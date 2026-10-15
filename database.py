@@ -3973,6 +3973,11 @@ def update_user_password(db_path: str, user_id: int, password_hash: str) -> None
         conn.commit()
     finally:
         conn.close()
+    # Cambiar la contraseña tiene que cortar también a Claude: los tokens del
+    # conector MCP viven semanas y no dependen de la sesión web. Import local
+    # para no crear un ciclo (oauth_tokens importa _connect de acá).
+    from services.oauth_tokens import revocar_todos_de_usuario
+    revocar_todos_de_usuario(db_path, user_id)
 
 def update_user_profile(db_path: str, user_id: int, name: str, email: str, phone: str) -> None:
     conn = _connect(db_path)

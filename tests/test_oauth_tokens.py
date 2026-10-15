@@ -261,3 +261,19 @@ def test_dos_refresh_simultaneos_emiten_un_solo_par(db, uid, monkeypatch):
     vivos = conn.execute("SELECT COUNT(*) FROM oauth_tokens WHERE revocado_en IS NULL").fetchone()[0]
     conn.close()
     assert vivos == 1
+
+
+def test_cambiar_la_contrasena_revoca_los_tokens_y_borra_los_codigos(db, uid):
+    import database
+    tokens = _tokens(db, uid)
+    _, challenge = _pkce()
+    ot.emitir_codigo(db, uid, "cli", "https://r/cb", challenge, "crm:leer", None)
+    database.update_user_password(db, uid, "otro-hash")
+    assert ot.validar_access(db, tokens["access_token"]) is None
+    assert ot.refrescar(db, tokens["refresh_token"], "cli") is None
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM oauth_codigos WHERE user_id = ?",
+                            (uid,)).fetchone()[0] == 0
+    finally:
+        conn.close()

@@ -214,6 +214,11 @@ Un `client_id` se resuelve así, en `services/oauth_clientes.py`:
    recibe JSON (RFC 7591), exige `redirect_uris` no vacío con URLs `https://`
    o loopback, genera `client_id` aleatorio, guarda `client_name` y
    `redirect_uris`, y responde `201` con `token_endpoint_auth_method: "none"`.
+   El DCR solo registra los callbacks conocidos de Claude
+   (`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback`)
+   y los loopback de Claude Code; cualquier otro cliente tiene que usar CIMD,
+   que solo claude.ai/claude.com pueden publicar (si no, un atacante registraría
+   su callback y haría phishing de consentimiento contra un empleado logueado).
    Tope: 200 clientes registrados; pasado eso se borran los que no tienen
    tokens vivos, del más viejo al más nuevo.
 

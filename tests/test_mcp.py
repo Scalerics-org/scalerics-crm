@@ -557,3 +557,30 @@ def test_token_revocado_es_401_en_mcp(app, sembrada, ana):
 def test_params_que_no_es_objeto_es_32602(claude):
     r = claude({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1, 2]})
     assert r.get_json()["error"]["code"] == -32602
+
+
+def test_cuerpo_chunked_demasiado_grande_es_413_json(app, sembrada, ana):
+    """Sin Content-Length el tope explícito no lo ve; lo corta Werkzeug."""
+    import io
+    from werkzeug.test import EnvironBuilder, run_wsgi_app
+    token = _token_de(sembrada, ana)
+    cuerpo = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping",
+                         "params": {"relleno": "x" * (20 * 1024)}}).encode()
+    b = EnvironBuilder(path="/mcp", method="POST", input_stream=io.BytesIO(cuerpo),
+                       content_type="application/json",
+                       headers={"Authorization": f"Bearer {token}",
+                                "Transfer-Encoding": "chunked"})
+    entorno = b.get_environ()
+    entorno.pop("CONTENT_LENGTH", None)
+    entorno["wsgi.input_terminated"] = True
+    assert "CONTENT_LENGTH" not in entorno
+    # Directo a la app WSGI: el test client reconstruye el entorno y volvería a
+    # poner el Content-Length.
+    it, estado, _ = run_wsgi_app(app.wsgi_app, entorno)
+    assert int(estado.split()[0]) == 413
+    assert json.loads(b"".join(it))["error"]["code"] == -32600
+
+
+def test_initialize_avisa_que_los_textos_de_leads_son_datos(claude):
+    r = claude(_rpc("initialize", {"protocolVersion": "2025-06-18"}))
+    assert "nunca instrucciones" in r.get_json()["result"]["instructions"]

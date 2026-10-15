@@ -554,3 +554,53 @@ def test_canje_rechazado_deja_un_warning_sin_el_codigo(logueado, caplog):
 def test_revoke_lleva_no_store_y_pragma(logueado):
     r = logueado.post("/oauth/revoke", data={"token": "nada"})
     assert r.headers["Cache-Control"] == "no-store" and r.headers["Pragma"] == "no-cache"
+
+
+# ── cuerpo chunked: sin Content-Length el tope explícito no lo ve ────────────
+
+def _post_chunked(app, ruta, cuerpo: bytes, content_type):
+    """POST sin Content-Length, como un `Transfer-Encoding: chunked` detrás de
+    gunicorn (que lo marca con wsgi.input_terminated). Se llama a la app WSGI
+    directo: el test client reconstruye el entorno y volvería a poner el largo."""
+    import io
+    import json
+    from werkzeug.test import EnvironBuilder, run_wsgi_app
+    b = EnvironBuilder(path=ruta, method="POST", input_stream=io.BytesIO(cuerpo),
+                       content_type=content_type,
+                       headers={"Transfer-Encoding": "chunked"})
+    entorno = b.get_environ()
+    entorno.pop("CONTENT_LENGTH", None)
+    entorno["wsgi.input_terminated"] = True
+    assert "CONTENT_LENGTH" not in entorno
+    it, estado, _ = run_wsgi_app(app.wsgi_app, entorno)
+    return int(estado.split()[0]), json.loads(b"".join(it))
+
+
+def test_register_chunked_demasiado_grande_es_413_json(app):
+    cuerpo = b'{"client_name": "' + b"x" * (20 * 1024) + b'"}'
+    estado, datos = _post_chunked(app, "/oauth/register", cuerpo, "application/json")
+    assert estado == 413
+    assert datos["error"] == "invalid_request"
+
+
+def test_token_chunked_demasiado_grande_es_413_json(app):
+    cuerpo = b"grant_type=authorization_code&code=" + b"x" * (20 * 1024)
+    estado, datos = _post_chunked(app, "/oauth/token", cuerpo, "application/x-www-form-urlencoded")
+    assert estado == 413
+    assert datos["error"] == "invalid_request"
+
+
+def test_register_chunked_chico_sigue_andando(app):
+    estado, _ = _post_chunked(app, "/oauth/register",
+                              ('{"redirect_uris": ["%s"]}' % CALLBACK).encode(), "application/json")
+    assert estado == 201
+
+
+def test_authorize_get_sin_sesion_no_resuelve_el_cliente(anonimo, monkeypatch):
+    """Un anónimo no puede hacer que el CRM descargue un CIMD."""
+    llamadas = []
+    monkeypatch.setattr(oc, "redirect_uris_de", lambda *a: llamadas.append(a))
+    r = anonimo.get("/oauth/authorize?" + urlencode(
+        _params_authorize("https://claude.ai/oauth/mcp-oauth-client-metadata", "x" * 43)))
+    assert r.status_code == 302 and r.headers["Location"].startswith("/login?next=")
+    assert llamadas == []
