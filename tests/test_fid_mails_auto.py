@@ -366,6 +366,22 @@ def test_webs_sin_buscar_y_guardar_lo_encontrado(db):
     assert [p["id"] for p in auto.a_contactar(db, 10)] == [con_web]
 
 
+def test_una_web_que_nunca_abre_se_deja_de_reintentar(db):
+    caido = _local(db, 1, email="", web="https://p1.uy")
+    for _ in range(auto.INTENTOS_WEB - 1):
+        auto.guardar_mails_encontrados(db, [{"id": caido, "email": None, "abrio": False}])
+        assert [w["id"] for w in auto.webs_sin_buscar(db, 10)] == [caido]
+    auto.guardar_mails_encontrados(db, [{"id": caido, "email": None, "abrio": False}])
+    assert auto.webs_sin_buscar(db, 10) == []
+
+
+def test_las_partes_se_reparten_las_webs_sin_repetir(db):
+    ids = [_local(db, i, email="", web=f"https://p{i}.uy") for i in range(1, 8)]
+    partes = [{w["id"] for w in auto.webs_sin_buscar(db, 100, p, 3)} for p in range(3)]
+    assert set().union(*partes) == set(ids)
+    assert sum(len(p) for p in partes) == len(ids)
+
+
 def test_no_pisa_un_mail_cargado_a_mano(db):
     pid = _local(db, 1, email="dueno@p1.uy", web="https://p1.uy")
     auto.guardar_mails_encontrados(db, [{"id": pid, "email": "info@p1.uy", "abrio": True}])

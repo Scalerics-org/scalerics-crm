@@ -128,7 +128,11 @@ _BARRIOS_MVD_AUTO = ["Cordón", "Parque Rodó", "Centro", "Ciudad Vieja", "Paler
                      "Punta Gorda", "Unión", "La Comercial", "Jacinto Vera", "Brazo Oriental",
                      "Atahualpa", "Prado", "Aguada", "Colón", "Sayago", "Villa Española", "Maroñas"]
 _TIPOS_AUTO = ["restaurante", "parrillada", "sushi", "bar", "cervecería", "pizzería",
-               "hamburguesería", "cafetería", "heladería", "empanadas", "rotisería"]
+               "hamburguesería", "cafetería", "heladería", "empanadas", "rotisería",
+               # 15/10: con los de arriba la lista daba la vuelta en 10 días y la
+               # cola de mails se vaciaba; estos suman locales que antes no salían.
+               "chivitería", "milanesas", "pastas", "comida mexicana", "restobar", "pub",
+               "comida vegetariana", "brunch"]
 
 
 def busquedas_automaticas() -> list[dict]:
@@ -451,7 +455,8 @@ def init_fidelidad(conn: sqlite3.Connection) -> None:
     for col, tipo in (("reunion_minutos", "INTEGER"), ("reunion_lugar", "TEXT"),
                       ("ciudad", "TEXT"), ("rubro", "TEXT"), ("contacto_tel", "TEXT"),
                       ("email", "TEXT"), ("web", "TEXT"), ("instagram", "TEXT"),
-                      ("mail_buscado_en", "TEXT"), ("notion_page_id", "TEXT")):
+                      ("mail_buscado_en", "TEXT"), ("notion_page_id", "TEXT"),
+                      ("mail_intentos", "INTEGER DEFAULT 0")):
         try:
             conn.execute(f"ALTER TABLE fid_prospectos ADD COLUMN {col} {tipo}")
         except sqlite3.OperationalError:

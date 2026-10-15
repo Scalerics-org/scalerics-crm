@@ -6,6 +6,9 @@ name: "Fidelidad: captación"
 # menos de dos semanas de envíos, trae restaurantes nuevos de Google Maps.
 # Ver scripts/fid_captacion.py.
 #
+# 15/10: la cola se vaciaba igual. Ahora corre dos veces por día y en tres
+# máquinas a la vez (matrix), cada una con sus búsquedas y su parte de webs.
+#
 # Corre acá y no en Fly porque hace falta un navegador, y nunca en la notebook
 # de Juan. El repo es público: los minutos de Actions no cuestan nada.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -15,6 +18,7 @@ on:
     # 07:30 UTC = 04:30 en Montevideo: los mails nuevos quedan en la cola antes
     # de la tanda del día.
     - cron: "30 7 * * *"
+    - cron: "30 19 * * *"
   workflow_dispatch:
     inputs:
       forzar:
@@ -29,7 +33,11 @@ concurrency:
 jobs:
   captacion:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +68,7 @@ jobs:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           if [ "${{ github.event.inputs.forzar }}" = "true" ]; then
-            python scripts/fid_captacion.py --forzar-busqueda
+            python scripts/fid_captacion.py --forzar-busqueda --parte ${{ matrix.parte }} --partes 3
           else
-            python scripts/fid_captacion.py
+            python scripts/fid_captacion.py --parte ${{ matrix.parte }} --partes 3
           fi
