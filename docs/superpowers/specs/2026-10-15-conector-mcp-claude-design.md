@@ -137,7 +137,9 @@ La ficha de un lead.
 
 Los leads en seguimiento, agrupados por etapa.
 
-- Entrada: `etapa` (string opcional, una de `ETAPAS_PRECLIENTE`), `responsable`
+- Entrada: `etapa` (string opcional, `enum` del schema con todas las etapas,
+  pre-clientes y clientes: así Claude ve los valores válidos y una etapa
+  inventada es un error de argumentos `-32602`, no `isError`), `responsable`
   (string opcional, se busca por nombre de usuario con `LIKE`, sobre
   `encargado_id`), `incluir_clientes` (bool, por defecto false, agrega
   `ETAPAS_CLIENTE`).
@@ -382,8 +384,11 @@ con un único JSON.
 - Todas las respuestas de error de OAuth y de `/mcp` son JSON; nunca una
   página HTML del CRM, salvo las dos pantallas pensadas para una persona
   (consentimiento y error de autorización).
-- Un lead inexistente en `ver_lead` o una etapa inválida en `pipeline` es
-  `isError: true`, no `-32602`: Claude lo lee y lo explica.
+- Un lead inexistente en `ver_lead` es `isError: true`, no `-32602`: Claude
+  lo lee y lo explica. Una etapa inválida en `pipeline`, en cambio, es
+  `-32602`, porque la lista válida ya está en el schema de la herramienta.
+- `texto` y `responsable` tienen `maxLength` 100 y se les escapan los
+  comodines de `LIKE`; los argumentos se recortan al registrarlos.
 - Toda respuesta JSON de `/mcp` se recorta a 200 leads o 20 eventos y lo dice.
 - No hay límite de tasa en v1. Los tokens están atados a usuarios del CRM y
   el worker ya tiene tope de hilos. Queda anotado como posible seguimiento.
