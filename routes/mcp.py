@@ -14,7 +14,8 @@ que la API web: el usuario existe y no es vendedor de Fidelidad.
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 from database import get_user_by_id
 from services import mcp_tools, oauth_tokens
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 mcp_bp = Blueprint("mcp", __name__)
 
 VERSIONES = ("2025-11-25", "2025-06-18", "2025-03-26")
+# Una llamada legítima pesa menos de 2 KB (los argumentos tienen maxLength 100).
+# Mismo tope que /oauth/token y /oauth/register.
+TOPE_CUERPO = 8 * 1024
 VERSION_DEFECTO = "2025-06-18"
 INSTRUCCIONES = (
     "CRM de Scalerics, una agencia de Montevideo que vende sitios web y sistemas a comercios. "
@@ -44,6 +48,23 @@ def _db() -> str:
     return current_app.config["DB_PATH"]
 
 
+def _ip_cliente() -> str:
+    """Fly pone Fly-Client-IP y pisa lo que mande el cliente; fuera de Fly
+    queda remote_addr. Mismo criterio que routes/oauth.py."""
+    return request.headers.get("Fly-Client-IP") or request.remote_addr or "?"
+
+
+@mcp_bp.errorhandler(Exception)
+def _error_inesperado(e):
+    """Lo que no es un error HTTP de Flask (404, 405) vuelve como JSON-RPC
+    -32603: Claude lee JSON, no la página HTML de error de Flask. El detalle
+    queda en el log, no en la respuesta."""
+    if isinstance(e, HTTPException):
+        return e
+    logger.exception("mcp: error inesperado")
+    return _respuesta_error(None, -32603, "Error interno del CRM. Quedó registrado.", 500)
+
+
 def _rechazo_401():
     resp = jsonify({"error": "invalid_token"})
     resp.status_code = 401
@@ -56,13 +77,18 @@ def _rechazo_401():
 def _autenticar():
     """(usuario, None) o (None, respuesta de error)."""
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    # RFC 7235: el nombre del esquema no distingue mayúsculas.
+    if auth[:7].lower() != "bearer ":
+        logger.warning("mcp: sin Bearer ip=%s", _ip_cliente())
         return None, _rechazo_401()
-    info = oauth_tokens.validar_access(_db(), auth[len("Bearer "):].strip())
+    info = oauth_tokens.validar_access(_db(), auth[7:].strip())
     if not info:
+        # Nunca el token: solo que hubo un rechazo y desde dónde.
+        logger.warning("mcp: token inválido o vencido ip=%s", _ip_cliente())
         return None, _rechazo_401()
     usuario = get_user_by_id(_db(), info["user_id"])
     if not usuario or es_vendedor(_db(), usuario["id"]):
+        logger.warning("mcp: usuario %s sin permiso ip=%s", info["user_id"], _ip_cliente())
         return None, (jsonify({"error": "forbidden"}), 403)
     return usuario, None
 
@@ -78,6 +104,8 @@ def mcp():
     usuario, err = _autenticar()
     if err is not None:
         return err
+    if (request.content_length or 0) > TOPE_CUERPO:
+        return _respuesta_error(None, -32600, "Cuerpo demasiado grande", 413)
     cuerpo = request.get_json(silent=True, force=True)
     if cuerpo is None:
         return _respuesta_error(None, -32700, "El cuerpo no es JSON", 400)
@@ -86,10 +114,14 @@ def mcp():
     if not isinstance(cuerpo, dict) or cuerpo.get("jsonrpc") != "2.0" or not isinstance(cuerpo.get("method"), str):
         return _respuesta_error(cuerpo.get("id") if isinstance(cuerpo, dict) else None,
                                 -32600, "No es un pedido JSON-RPC 2.0", 400)
-    if cuerpo.get("id") is None:
+    id_ = cuerpo.get("id")
+    # JSON-RPC: id es string o número; MCP además prohíbe null. Un bool es
+    # int en Python y no cuenta.
+    if id_ is not None and (isinstance(id_, bool) or not isinstance(id_, (str, int, float))):
+        return _respuesta_error(None, -32600, "id tiene que ser string o número", 400)
+    if id_ is None:
         # Notificación: no se responde. Claude manda notifications/initialized.
-        return "", 202
-    id_ = cuerpo["id"]
+        return Response(status=202)
     try:
         resultado = _despachar(cuerpo["method"], cuerpo.get("params") or {}, usuario)
     except _ErrorRpc as e:

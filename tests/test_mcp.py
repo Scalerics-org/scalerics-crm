@@ -495,3 +495,65 @@ def test_cada_call_queda_registrada_con_el_usuario(claude, sembrada, ana):
     fila = conn.execute("SELECT user_id, user_name, herramienta FROM mcp_llamadas ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
     assert fila == (ana, "Ana", "buscar_leads")
+
+
+# ── endurecimiento de /mcp tras la revisión ──────────────────────────────────
+
+def test_excepcion_inesperada_vuelve_como_json_rpc_32603(claude, monkeypatch, caplog):
+    import logging
+    from routes import mcp as ruta
+    def revienta():
+        raise RuntimeError("se rompió adentro")
+    monkeypatch.setattr(ruta.mcp_tools, "listar_herramientas", revienta)
+    caplog.set_level(logging.ERROR)
+    r = claude(_rpc("tools/list"))
+    assert r.status_code == 500 and r.is_json
+    assert r.get_json()["error"]["code"] == -32603
+    assert "se rompió adentro" not in r.get_data(as_text=True)
+    assert any("error inesperado" in m for m in caplog.messages)
+
+
+def test_cuerpo_demasiado_grande_es_413_json(claude):
+    grande = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"x": "a" * 9000}})
+    r = claude(None, raw=grande)
+    assert r.status_code == 413 and r.get_json()["error"]["code"] == -32600
+
+
+@pytest.mark.parametrize("id_", [{"a": 1}, [1], True, 1.5])
+def test_id_que_no_es_string_ni_entero(claude, id_):
+    r = claude({"jsonrpc": "2.0", "id": id_, "method": "ping"})
+    if id_ == 1.5:
+        assert r.status_code == 200          # número: JSON-RPC lo permite
+    else:
+        assert r.status_code == 400 and r.get_json()["error"]["code"] == -32600
+
+
+def test_id_cero_no_es_notificacion(claude):
+    r = claude(_rpc("ping", id_=0))
+    assert r.status_code == 200 and r.get_json()["id"] == 0
+
+
+def test_bearer_en_minuscula_tambien_vale(app, sembrada, ana):
+    token = _token_de(sembrada, ana)
+    r = app.test_client().post("/mcp", json=_rpc("ping"), headers={"Authorization": f"bearer {token}"})
+    assert r.status_code == 200
+
+
+def test_rechazos_de_auth_dejan_log_sin_el_token(app, caplog):
+    import logging
+    caplog.set_level(logging.WARNING)
+    app.test_client().post("/mcp", json=_rpc("ping"), headers={"Authorization": "Bearer secreto-xyz"})
+    assert any("token inválido" in m for m in caplog.messages)
+    assert all("secreto-xyz" not in m for m in caplog.messages)
+
+
+def test_token_revocado_es_401_en_mcp(app, sembrada, ana):
+    token = _token_de(sembrada, ana)
+    ot.revocar(sembrada, token)
+    r = app.test_client().post("/mcp", json=_rpc("ping"), headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
+
+
+def test_params_que_no_es_objeto_es_32602(claude):
+    r = claude({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1, 2]})
+    assert r.get_json()["error"]["code"] == -32602
