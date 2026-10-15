@@ -63,6 +63,8 @@ CUOTA_MES = 3000
 MARGEN_DIA = 8
 MARGEN_MES = 150
 RAMPA_INICIAL = 25
+# Veces que una web puede no abrir antes de dejar de buscarle el mail.
+INTENTOS_WEB = 3
 RAMPA_POR_DIA = 5
 # Lo que cada campaña manda en un día normal, para reservárselo aunque todavía
 # no haya salido. Discovery solo si está prendida.
@@ -611,16 +613,21 @@ def tanda_diaria(db_path: str, base_url: str):
 # Fly no tiene navegador: buscar mails en las webs y restaurantes en Maps corre
 # en GitHub Actions (scripts/fid_captacion.py), que habla con el CRM por la API.
 
-def webs_sin_buscar(db_path: str, limite: int) -> list[dict]:
+def webs_sin_buscar(db_path: str, limite: int, parte: int = 0, partes: int = 1) -> list[dict]:
     """Restaurantes con web y sin mail a los que nunca se les buscó. Los de más
-    reseñas primero, que son a los que más conviene escribirles."""
+    reseñas primero, que son a los que más conviene escribirles. Con `partes`
+    el buscador de GitHub se reparte la lista en varias máquinas a la vez
+    (15/10) sin abrir dos veces la misma web."""
+    partes = max(1, int(partes))
     conn = _conn(db_path)
     try:
         filas = conn.execute(f"""
             SELECT id, web FROM fid_prospectos
              WHERE archivado = 0 AND rubro = 'restaurante' AND ciudad IN ({", ".join("?" * len(CIUDADES))})
                AND COALESCE(web, '') <> '' AND COALESCE(email, '') = '' AND mail_buscado_en IS NULL
-          ORDER BY COALESCE(resenas, 0) DESC, id ASC LIMIT ?""", (*CIUDADES, int(limite))).fetchall()
+               AND id % ? = ?
+          ORDER BY COALESCE(resenas, 0) DESC, id ASC LIMIT ?""",
+            (*CIUDADES, partes, int(parte) % partes, int(limite))).fetchall()
     finally:
         conn.close()
     return [{"id": f["id"], "web": f["web"]} for f in filas]
@@ -629,7 +636,10 @@ def webs_sin_buscar(db_path: str, limite: int) -> list[dict]:
 def guardar_mails_encontrados(db_path: str, resultados: list) -> dict:
     """Lo que trae el buscador: [{"id", "email" o null, "abrio"}]. Igual que
     `fidelidad.buscar_mails`: un sitio que no abrió no se marca, así se
-    reintenta; uno que abrió y no tenía mail se marca para no volver."""
+    reintenta; uno que abrió y no tenía mail se marca para no volver. Pero un
+    sitio que no abre `INTENTOS_WEB` veces se da por perdido: al 15/10 eran
+    unas 44 webs caídas que se reabrían todos los días y se comían media hora
+    de cada corrida."""
     from services import fidelidad as fid
     from services.email_finder import es_mail_basura
     cuenta = {"encontrados": 0, "sin_mail": 0, "no_abrio": 0, "ignorados": 0}
@@ -654,6 +664,10 @@ def guardar_mails_encontrados(db_path: str, resultados: list) -> dict:
                              (fid.fmt(fid.ahora()), pid))
                 cuenta["sin_mail"] += 1
             else:
+                conn.execute("UPDATE fid_prospectos SET mail_intentos = COALESCE(mail_intentos, 0) + 1, "
+                             "mail_buscado_en = CASE WHEN COALESCE(mail_intentos, 0) + 1 >= ? "
+                             "THEN ? ELSE mail_buscado_en END WHERE id = ?",
+                             (INTENTOS_WEB, fid.fmt(fid.ahora()), pid))
                 cuenta["no_abrio"] += 1
         conn.commit()
     finally:

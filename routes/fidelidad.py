@@ -61,9 +61,11 @@ def api_mails_auto_webs():
     from services import fid_mails_auto
     try:
         limite = max(1, min(500, int(request.args.get("limite", 100))))
+        parte = max(0, int(request.args.get("parte", 0)))
+        partes = max(1, min(20, int(request.args.get("partes", 1))))
     except ValueError:
-        limite = 100
-    return jsonify(fid_mails_auto.webs_sin_buscar(_db(), limite))
+        limite, parte, partes = 100, 0, 1
+    return jsonify(fid_mails_auto.webs_sin_buscar(_db(), limite, parte, partes))
 
 
 @fidelidad_bp.route("/api/fidelidad/mails-auto/encontrados", methods=["POST"])
