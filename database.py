@@ -2196,6 +2196,10 @@ def init_db(db_path: str) -> None:
         # Cobro automático con tarjeta (services/plexo.py, 24/9).
         from services.plexo import init_plexo
         init_plexo(conn)
+        # Conector MCP para Claude (15/10): tokens OAuth del equipo y registro
+        # de lo que Claude llama. Ver docs/superpowers/specs/2026-10-15-conector-mcp-claude-design.md.
+        from services.oauth_tokens import init_oauth
+        init_oauth(conn)
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
