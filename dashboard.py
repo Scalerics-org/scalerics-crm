@@ -45,6 +45,7 @@ from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from routes.backups import backups_bp
+from routes.oauth import oauth_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -21847,12 +21848,17 @@ def create_app(db_path: str) -> Flask:
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
-                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp):
+                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp):
         app.register_blueprint(bp)
 
     @app.before_request
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad", "baja_recordatorios"):
+            return
+        # Conector MCP para Claude: metadata pública, OAuth y el endpoint MCP.
+        # Ninguna usa la sesión del CRM salvo /oauth/authorize, que la pide
+        # adentro; /mcp valida su propio Bearer (routes/mcp.py).
+        if request.path.startswith(("/mcp", "/oauth/", "/.well-known/")):
             return
         if request.path.startswith("/api/meta/webhook"):
             return
