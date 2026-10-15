@@ -312,6 +312,10 @@ ERROR_HTML = """<!DOCTYPE html>
 
 @oauth_bp.route("/oauth/token", methods=["POST"])
 def token():
+    # Mismo tope que el registro: un cuerpo enorme recibe JSON, no el HTML del 413
+    # de Werkzeug.
+    if (request.content_length or 0) > TOPE_CUERPO_REGISTRO:
+        return _error_json("invalid_request", "Cuerpo demasiado grande", 413)
     # RFC 6749 §4.1.3: form-urlencoded. Claude manda eso; un JSON acá es un
     # cliente mal armado, y la respuesta correcta es 400, no 415.
     if request.mimetype != "application/x-www-form-urlencoded":
@@ -326,6 +330,11 @@ def token():
     else:
         return _error_json("unsupported_grant_type", "Solo authorization_code y refresh_token")
     if tokens is None:
+        # Un código o refresh reusado revoca la familia en el servicio y vuelve como
+        # el mismo 400; este log es la única señal de un posible robo. Nunca lleva
+        # el código ni el token.
+        current_app.logger.warning("oauth token: %s rechazado client_id=%r ip=%s",
+                                   grant, form.get("client_id", ""), _ip_cliente())
         return _error_json("invalid_grant", "Código o refresh inválido, vencido o ya usado")
     resp = jsonify({**tokens, "token_type": "Bearer"})
     resp.headers["Cache-Control"] = "no-store"
@@ -336,6 +345,5 @@ def token():
 @oauth_bp.route("/oauth/revoke", methods=["POST"])
 def revocar():
     oauth_tokens.revocar(_db(), request.form.get("token", ""))
-    resp = jsonify({})
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
+    # Cache-Control y Pragma los pone el after_request del blueprint.
+    return jsonify({})

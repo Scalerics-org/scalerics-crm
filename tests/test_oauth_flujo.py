@@ -6,6 +6,7 @@ fijan en https://crm.test.
 
 import base64
 import hashlib
+import logging
 import secrets
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -510,3 +511,46 @@ def test_revoke_invalida(logueado):
                                             "refresh_token": t["refresh_token"], "client_id": cid})
     assert r.get_json()["error"] == "invalid_grant"
     assert logueado.post("/oauth/revoke", data={"token": "nada"}).status_code == 200
+
+
+@pytest.mark.parametrize("cambio", [{"client_id": "otro-cliente"},
+                                    {"redirect_uri": "https://claude.ai/otra"}])
+def test_canje_con_client_id_o_redirect_ajenos_es_invalid_grant(logueado, cambio):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    code = _code(logueado, cid, challenge)
+    r = _canjear(logueado, cid, code, verifier, **cambio)
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_grant"
+
+
+def test_refresh_con_client_id_ajeno_es_invalid_grant(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    t = _canjear(logueado, cid, _code(logueado, cid, challenge), verifier).get_json()
+    r = logueado.post("/oauth/token", data={"grant_type": "refresh_token",
+                                            "refresh_token": t["refresh_token"],
+                                            "client_id": "otro-cliente"})
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_grant"
+
+
+def test_token_rechaza_cuerpo_demasiado_grande_con_json(logueado):
+    r = logueado.post("/oauth/token", data={"grant_type": "authorization_code",
+                                            "code": "x" * (oauth_ruta.TOPE_CUERPO_REGISTRO + 1)})
+    assert r.status_code == 413 and r.get_json()["error"] == "invalid_request"
+
+
+def test_canje_rechazado_deja_un_warning_sin_el_codigo(logueado, caplog):
+    cid = _registrar(logueado)
+    _, challenge = _pkce()
+    code = _code(logueado, cid, challenge)
+    caplog.set_level(logging.WARNING)
+    assert _canjear(logueado, cid, code, "verifier-malo").status_code == 400
+    avisos = [r.getMessage() for r in caplog.records if "rechazado" in r.getMessage()]
+    assert avisos, "falta el warning del canje rechazado"
+    assert cid in avisos[0]
+    assert all(code not in a for a in avisos)
+
+
+def test_revoke_lleva_no_store_y_pragma(logueado):
+    r = logueado.post("/oauth/revoke", data={"token": "nada"})
+    assert r.headers["Cache-Control"] == "no-store" and r.headers["Pragma"] == "no-cache"
