@@ -101,3 +101,57 @@ def test_codigo_vencido_no_se_canjea(db, uid, monkeypatch):
     futuro = datetime.now(timezone.utc) + timedelta(minutes=11)
     monkeypatch.setattr(ot, "_ahora", lambda: futuro)
     assert ot.canjear_codigo(db, code, "cli", "https://r/cb", verifier) is None
+
+
+def _tokens(db, uid, client_id="cli"):
+    verifier, challenge = _pkce()
+    code = ot.emitir_codigo(db, uid, client_id, "https://r/cb", challenge, "crm:leer", None)
+    return ot.canjear_codigo(db, code, client_id, "https://r/cb", verifier)
+
+
+def test_validar_access_devuelve_usuario_y_cliente(db, uid):
+    tokens = _tokens(db, uid)
+    info = ot.validar_access(db, tokens["access_token"])
+    assert info["user_id"] == uid and info["client_id"] == "cli" and info["scope"] == "crm:leer"
+    assert ot.validar_access(db, "no-existe") is None
+
+
+def test_access_vencido_no_vale(db, uid, monkeypatch):
+    tokens = _tokens(db, uid)
+    futuro = datetime.now(timezone.utc) + timedelta(hours=2)
+    monkeypatch.setattr(ot, "_ahora", lambda: futuro)
+    assert ot.validar_access(db, tokens["access_token"]) is None
+
+
+def test_refrescar_rota_y_el_viejo_deja_de_servir(db, uid):
+    viejo = _tokens(db, uid)
+    nuevo = ot.refrescar(db, viejo["refresh_token"], "cli")
+    assert nuevo["access_token"] != viejo["access_token"]
+    assert nuevo["refresh_token"] != viejo["refresh_token"]
+    assert ot.validar_access(db, nuevo["access_token"]) is not None
+    assert ot.validar_access(db, viejo["access_token"]) is None
+    assert ot.refrescar(db, viejo["refresh_token"], "cli") is None
+
+
+def test_refrescar_exige_el_mismo_cliente(db, uid):
+    tokens = _tokens(db, uid)
+    assert ot.refrescar(db, tokens["refresh_token"], "otro") is None
+
+
+def test_revocar_mata_access_y_refresh(db, uid):
+    tokens = _tokens(db, uid)
+    ot.revocar(db, tokens["access_token"])
+    assert ot.validar_access(db, tokens["access_token"]) is None
+    assert ot.refrescar(db, tokens["refresh_token"], "cli") is None
+    # Revocar algo que no existe no rompe.
+    ot.revocar(db, "nada")
+
+
+def test_borrar_usuario_borra_sus_tokens(db, uid):
+    _tokens(db, uid)
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("DELETE FROM users WHERE id = ?", (uid,))
+    conn.commit()
+    assert conn.execute("SELECT COUNT(*) FROM oauth_tokens").fetchone()[0] == 0
+    conn.close()

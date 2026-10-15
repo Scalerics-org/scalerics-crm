@@ -199,3 +199,72 @@ def _barrer(conn: sqlite3.Connection, ahora: datetime) -> None:
     conn.execute("DELETE FROM oauth_codigos WHERE expires_at < ?", (_iso(ahora),))
     conn.execute("DELETE FROM oauth_tokens WHERE refresh_expira < ?",
                  (_iso(ahora - BASURA_DESPUES_DE),))
+
+
+# ── access / refresh ─────────────────────────────────────────────────────────
+
+def validar_access(db: str, token: str) -> Optional[dict]:
+    """El usuario y cliente detrás de un access token vivo, o None.
+
+    Actualiza `ultimo_uso` como mucho una vez por minuto: sirve para el panel
+    de tokens que vendrá, y no vale la pena una escritura por llamada."""
+    if not token:
+        return None
+    ahora = _ahora()
+    conn = _connect(db)
+    try:
+        fila = conn.execute(
+            "SELECT id, user_id, client_id, scope, access_expira, ultimo_uso FROM oauth_tokens "
+            "WHERE access_hash = ? AND revocado_en IS NULL", (_hash(token),)).fetchone()
+        if not fila or fila["access_expira"] < _iso(ahora):
+            return None
+        if not fila["ultimo_uso"] or fila["ultimo_uso"] < _iso(ahora - ULTIMO_USO_CADA):
+            conn.execute("UPDATE oauth_tokens SET ultimo_uso = ? WHERE id = ?",
+                         (_iso(ahora), fila["id"]))
+            conn.commit()
+        return {"token_id": fila["id"], "user_id": fila["user_id"],
+                "client_id": fila["client_id"], "scope": fila["scope"]}
+    finally:
+        conn.close()
+
+
+def refrescar(db: str, refresh_token: str, client_id: str) -> Optional[dict]:
+    """Nuevo par access + refresh; el refresh usado queda revocado en la misma
+    transacción. None es `invalid_grant`."""
+    if not refresh_token:
+        return None
+    ahora = _ahora()
+    conn = _connect(db)
+    try:
+        fila = conn.execute(
+            "SELECT * FROM oauth_tokens WHERE refresh_hash = ? AND revocado_en IS NULL",
+            (_hash(refresh_token),)).fetchone()
+        if not fila or fila["refresh_expira"] < _iso(ahora):
+            return None
+        if not hmac.compare_digest(fila["client_id"], client_id or ""):
+            return None
+        conn.execute("UPDATE oauth_tokens SET revocado_en = ? WHERE id = ?",
+                     (_iso(ahora), fila["id"]))
+        tokens = _emitir_tokens(conn, fila["user_id"], fila["client_id"], fila["scope"],
+                                fila["resource"], fila["codigo_hash"], ahora)
+        _barrer(conn, ahora)
+        conn.commit()
+        return tokens
+    finally:
+        conn.close()
+
+
+def revocar(db: str, token: str) -> None:
+    """RFC 7009: revoca el access o refresh que coincida, y con él su pareja.
+    No dice si existía: la respuesta es 200 siempre."""
+    if not token:
+        return
+    h = _hash(token)
+    conn = _connect(db)
+    try:
+        conn.execute(
+            "UPDATE oauth_tokens SET revocado_en = ? WHERE revocado_en IS NULL "
+            "AND (access_hash = ? OR refresh_hash = ?)", (_iso(_ahora()), h, h))
+        conn.commit()
+    finally:
+        conn.close()
