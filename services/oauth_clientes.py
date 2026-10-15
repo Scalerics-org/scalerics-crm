@@ -44,6 +44,7 @@ CACHE_FALLO_SEGUNDOS = 60
 TIMEOUT_CIMD = 5
 TOPE_CLIENTES = 200
 TOPE_REDIRECTS = 10
+TOPE_CACHE = 1000
 LARGO_MAX_REDIRECT = 2048
 
 # client_id -> (vence, redirect_uris o None si el documento no sirvió).
@@ -95,6 +96,20 @@ def _cliente_dcr(db: str, client_id: str) -> Optional[list[str]]:
     return uris if isinstance(uris, list) else None
 
 
+def _guardar_en_cache(client_id: str, uris: Optional[list[str]], duracion: float) -> None:
+    """El cache negativo hace que cada client_id inventado bajo claude.ai deje una
+    entrada; sin tope crecería hasta agotar la memoria del worker. Al llenarse se
+    purgan las vencidas y, si sigue lleno, no se guarda: el costo es volver a
+    descargar, no perder el servicio."""
+    ahora = time.monotonic()
+    if len(_cache_cimd) >= TOPE_CACHE:
+        for clave in [c for c, (vence, _) in _cache_cimd.items() if vence <= ahora]:
+            del _cache_cimd[clave]
+        if len(_cache_cimd) >= TOPE_CACHE:
+            return
+    _cache_cimd[client_id] = (ahora + duracion, uris)
+
+
 def redirect_uris_de(db: str, client_id: str) -> Optional[list[str]]:
     """Las `redirect_uris` registradas para ese cliente, o None si no es un
     cliente que aceptemos."""
@@ -106,7 +121,7 @@ def redirect_uris_de(db: str, client_id: str) -> Optional[list[str]]:
             return entrada[1]
         uris = _descargar_cimd(client_id)
         duracion = CACHE_SEGUNDOS if uris is not None else CACHE_FALLO_SEGUNDOS
-        _cache_cimd[client_id] = (time.monotonic() + duracion, uris)
+        _guardar_en_cache(client_id, uris, duracion)
         return uris
     return _cliente_dcr(db, client_id)
 

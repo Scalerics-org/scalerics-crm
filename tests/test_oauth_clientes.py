@@ -255,3 +255,23 @@ def test_cliente_con_token_vivo_sobrevive_a_la_poda(db, monkeypatch):
     ids = _ids_por_antiguedad(db)
     assert len(ids) == 5
     assert primero in ids and segundo not in ids
+
+
+def test_cache_de_cimd_tiene_tope_y_purga_las_vencidas(db, monkeypatch):
+    monkeypatch.setattr(oc, "TOPE_CACHE", 3)
+    reloj = _reloj(monkeypatch)
+
+    def fake(url, timeout, allow_redirects):
+        raise oc.requests.ConnectionError("sin red")
+    monkeypatch.setattr(oc.requests, "get", fake)
+
+    # Lleno y sin nada vencido: no guarda más, pero igual responde None.
+    for i in range(oc.TOPE_CACHE + 5):
+        assert oc.redirect_uris_de(db, f"https://claude.ai/falso{i}") is None
+        assert len(oc._cache_cimd) <= oc.TOPE_CACHE
+    assert len(oc._cache_cimd) == oc.TOPE_CACHE
+
+    # Vencidas las entradas, la purga deja lugar para las nuevas.
+    reloj["t"] += oc.CACHE_FALLO_SEGUNDOS + 1
+    assert oc.redirect_uris_de(db, "https://claude.ai/nuevo") is None
+    assert list(oc._cache_cimd) == ["https://claude.ai/nuevo"]
