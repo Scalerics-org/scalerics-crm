@@ -431,3 +431,82 @@ def test_429_de_registro_trae_retry_after(anonimo):
     r = anonimo.post("/oauth/register", json={"redirect_uris": [CALLBACK]})
     assert r.status_code == 429
     assert r.headers["Retry-After"] == "3600"
+
+
+# ── token ────────────────────────────────────────────────────────────────────
+
+def _code(c, cid, challenge):
+    r = _autorizar(c, cid, challenge)
+    return _query(r.headers["Location"])["code"]
+
+
+def _canjear(c, cid, code, verifier, **extra):
+    form = {"grant_type": "authorization_code", "code": code, "client_id": cid,
+            "redirect_uri": CALLBACK, "code_verifier": verifier}
+    form.update(extra)
+    return c.post("/oauth/token", data=form)
+
+
+def test_flujo_completo_hasta_el_token(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    code = _code(logueado, cid, challenge)
+    r = _canjear(logueado, cid, code, verifier)
+    assert r.status_code == 200, r.get_json()
+    t = r.get_json()
+    assert t["token_type"] == "Bearer" and t["expires_in"] == 3600
+    assert t["access_token"] and t["refresh_token"] and t["scope"] == "crm:leer"
+    assert r.headers["Cache-Control"] == "no-store"
+
+
+def test_token_con_verifier_incorrecto_es_invalid_grant(logueado):
+    cid = _registrar(logueado)
+    _, challenge = _pkce()
+    code = _code(logueado, cid, challenge)
+    r = _canjear(logueado, cid, code, "otro")
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_grant"
+
+
+def test_reusar_el_codigo_es_invalid_grant(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    code = _code(logueado, cid, challenge)
+    assert _canjear(logueado, cid, code, verifier).status_code == 200
+    r = _canjear(logueado, cid, code, verifier)
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_grant"
+
+
+def test_refresh_rota(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    t = _canjear(logueado, cid, _code(logueado, cid, challenge), verifier).get_json()
+    r = logueado.post("/oauth/token", data={"grant_type": "refresh_token",
+                                            "refresh_token": t["refresh_token"], "client_id": cid})
+    assert r.status_code == 200
+    t2 = r.get_json()
+    assert t2["refresh_token"] != t["refresh_token"]
+    r = logueado.post("/oauth/token", data={"grant_type": "refresh_token",
+                                            "refresh_token": t["refresh_token"], "client_id": cid})
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_grant"
+
+
+def test_token_con_json_es_invalid_request(logueado):
+    r = logueado.post("/oauth/token", json={"grant_type": "authorization_code"})
+    assert r.status_code == 400 and r.get_json()["error"] == "invalid_request"
+
+
+def test_grant_desconocido(logueado):
+    r = logueado.post("/oauth/token", data={"grant_type": "client_credentials"})
+    assert r.status_code == 400 and r.get_json()["error"] == "unsupported_grant_type"
+
+
+def test_revoke_invalida(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    t = _canjear(logueado, cid, _code(logueado, cid, challenge), verifier).get_json()
+    r = logueado.post("/oauth/revoke", data={"token": t["access_token"]})
+    assert r.status_code == 200
+    r = logueado.post("/oauth/token", data={"grant_type": "refresh_token",
+                                            "refresh_token": t["refresh_token"], "client_id": cid})
+    assert r.get_json()["error"] == "invalid_grant"
+    assert logueado.post("/oauth/revoke", data={"token": "nada"}).status_code == 200

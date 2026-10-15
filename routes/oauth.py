@@ -306,3 +306,36 @@ ERROR_HTML = """<!DOCTYPE html>
   <h1>No se pudo autorizar a Claude</h1>
   <p>{{ mensaje }}</p>
 </div></body></html>"""
+
+
+# ── token ────────────────────────────────────────────────────────────────────
+
+@oauth_bp.route("/oauth/token", methods=["POST"])
+def token():
+    # RFC 6749 §4.1.3: form-urlencoded. Claude manda eso; un JSON acá es un
+    # cliente mal armado, y la respuesta correcta es 400, no 415.
+    if request.mimetype != "application/x-www-form-urlencoded":
+        return _error_json("invalid_request", "El cuerpo tiene que ser application/x-www-form-urlencoded")
+    form = request.form
+    grant = form.get("grant_type", "")
+    if grant == "authorization_code":
+        tokens = oauth_tokens.canjear_codigo(_db(), form.get("code", ""), form.get("client_id", ""),
+                                             form.get("redirect_uri", ""), form.get("code_verifier", ""))
+    elif grant == "refresh_token":
+        tokens = oauth_tokens.refrescar(_db(), form.get("refresh_token", ""), form.get("client_id", ""))
+    else:
+        return _error_json("unsupported_grant_type", "Solo authorization_code y refresh_token")
+    if tokens is None:
+        return _error_json("invalid_grant", "Código o refresh inválido, vencido o ya usado")
+    resp = jsonify({**tokens, "token_type": "Bearer"})
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@oauth_bp.route("/oauth/revoke", methods=["POST"])
+def revocar():
+    oauth_tokens.revocar(_db(), request.form.get("token", ""))
+    resp = jsonify({})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
