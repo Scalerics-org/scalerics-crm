@@ -7,6 +7,7 @@ fijan en https://crm.test.
 import base64
 import hashlib
 import secrets
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
@@ -14,6 +15,7 @@ from werkzeug.security import generate_password_hash
 
 import dashboard
 from database import create_user, init_db
+from routes import oauth as oauth_ruta
 from services import oauth_clientes as oc
 
 BASE = "https://crm.test"
@@ -24,6 +26,15 @@ def _pkce():
     verifier = secrets.token_urlsafe(40)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _sin_registros_previos():
+    """El tope de registros por IP vive en memoria del proceso: que un test no
+    herede las altas de otro."""
+    oauth_ruta._REGISTROS_POR_IP.clear()
+    yield
+    oauth_ruta._REGISTROS_POR_IP.clear()
 
 
 @pytest.fixture
@@ -128,3 +139,59 @@ def test_register_sin_json_es_400(anonimo):
     r = anonimo.post("/oauth/register", data="no es json", content_type="text/plain")
     assert r.status_code == 400
     assert r.get_json()["error"] == "invalid_client_metadata"
+
+
+def test_register_omite_client_name_si_no_vino(anonimo):
+    r = anonimo.post("/oauth/register", json={"redirect_uris": [CALLBACK]})
+    assert r.status_code == 201
+    assert "client_name" not in r.get_json()
+    assert r.headers["Pragma"] == "no-cache" and r.headers["Cache-Control"] == "no-store"
+
+
+def test_register_rechaza_cuerpo_demasiado_grande(anonimo):
+    grande = {"client_name": "x" * (oauth_ruta.TOPE_CUERPO_REGISTRO + 1),
+              "redirect_uris": [CALLBACK]}
+    r = anonimo.post("/oauth/register", json=grande)
+    assert r.status_code == 413
+    assert r.get_json()["error"] == "invalid_client_metadata"
+
+
+def test_register_tope_por_ip_y_se_libera_con_la_ventana(anonimo, monkeypatch):
+    ahora = [1_000_000.0]
+    monkeypatch.setattr(oauth_ruta, "time", SimpleNamespace(time=lambda: ahora[0]))
+    cuerpo = {"client_name": "Claude", "redirect_uris": [CALLBACK]}
+    for _ in range(oauth_ruta.TOPE_REGISTROS_POR_IP):
+        assert anonimo.post("/oauth/register", json=cuerpo).status_code == 201
+    r = anonimo.post("/oauth/register", json=cuerpo)
+    assert r.status_code == 429
+    assert r.get_json()["error"] == "invalid_client_metadata"
+    # Otra IP no se ve afectada.
+    otra = anonimo.post("/oauth/register", json=cuerpo, headers={"Fly-Client-IP": "203.0.113.9"})
+    assert otra.status_code == 201
+    # Pasada la ventana, la primera IP vuelve a poder registrar.
+    ahora[0] += oauth_ruta.VENTANA_REGISTROS_SEG + 1
+    assert anonimo.post("/oauth/register", json=cuerpo).status_code == 201
+
+
+def test_register_el_mapa_de_ips_no_crece_sin_limite(anonimo):
+    cuerpo = {"client_name": "Claude", "redirect_uris": [CALLBACK]}
+    for i in range(oauth_ruta.MAX_IPS_REGISTRO + 5):
+        r = anonimo.post("/oauth/register", json=cuerpo,
+                         headers={"Fly-Client-IP": f"10.{i // 250}.{i % 250}.1"})
+        assert r.status_code == 201
+    assert len(oauth_ruta._REGISTROS_POR_IP) <= oauth_ruta.MAX_IPS_REGISTRO
+
+
+# ── el candado de sesión sigue en pie fuera de lo nuestro ────────────────────
+
+def test_oauth_gmail_de_fidelidad_sigue_pidiendo_sesion(anonimo):
+    r = anonimo.get("/oauth/gmail/conectar")
+    assert r.status_code in (302, 403)
+    assert "google" not in r.headers.get("Location", "")
+
+
+def test_issuer_sin_barra_final_aunque_crm_url_la_tenga(anonimo, monkeypatch):
+    monkeypatch.setenv("CRM_URL", BASE + "/")
+    m = anonimo.get("/.well-known/oauth-authorization-server").get_json()
+    assert m["issuer"] == BASE
+    assert m["token_endpoint"] == BASE + "/oauth/token"

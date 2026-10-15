@@ -21855,10 +21855,13 @@ def create_app(db_path: str) -> Flask:
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad", "baja_recordatorios"):
             return
-        # Conector MCP para Claude: metadata pública, OAuth y el endpoint MCP.
-        # Ninguna usa la sesión del CRM salvo /oauth/authorize, que la pide
-        # adentro; /mcp valida su propio Bearer (routes/mcp.py).
-        if request.path.startswith(("/mcp", "/oauth/", "/.well-known/")):
+        # Conector MCP para Claude: metadata pública, OAuth del conector y el
+        # endpoint MCP. Solo las rutas exactas de routes/oauth.py y routes/mcp.py:
+        # /oauth/gmail/* de Fidelidad NO entra acá y sigue pidiendo sesión.
+        # /oauth/authorize pide la sesión adentro; /mcp valida su propio Bearer.
+        if (request.path == "/mcp" or request.path.startswith("/.well-known/")
+                or request.path in ("/oauth/authorize", "/oauth/token",
+                                    "/oauth/register", "/oauth/revoke")):
             return
         if request.path.startswith("/api/meta/webhook"):
             return

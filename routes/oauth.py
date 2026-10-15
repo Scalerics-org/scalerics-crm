@@ -12,6 +12,7 @@ pide la sesión del CRM, porque ahí la persona autoriza a Claude.
 
 import hmac
 import secrets
+import time
 from urllib.parse import urlencode
 
 from flask import (Blueprint, current_app, jsonify, redirect, render_template_string,
@@ -24,6 +25,15 @@ oauth_bp = Blueprint("oauth", __name__)
 
 CACHE_METADATA = "public, max-age=3600"
 
+# `/oauth/register` es público y cada alta es una fila: sin tope, una ráfaga
+# desde una sola dirección podría desalojar (por la poda) a los clientes
+# legítimos que Claude registró.
+TOPE_CUERPO_REGISTRO = 8 * 1024
+TOPE_REGISTROS_POR_IP = 20
+VENTANA_REGISTROS_SEG = 3600
+MAX_IPS_REGISTRO = 1000
+_REGISTROS_POR_IP: dict[str, list[float]] = {}
+
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
@@ -33,7 +43,6 @@ def _json_publico(datos: dict):
     resp = jsonify(datos)
     resp.headers["Cache-Control"] = CACHE_METADATA
     resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     return resp
 
 
@@ -43,6 +52,30 @@ def _error_json(codigo: str, descripcion: str, estado: int = 400):
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def _ip_cliente() -> str:
+    """La IP real de quien llama. Detrás del proxy de Fly, `remote_addr` es el
+    proxy; `Fly-Client-IP` lo pone Fly y pisa lo que mande el cliente, a
+    diferencia de `X-Forwarded-For`, cuyo primer valor controla quien llama."""
+    return (request.headers.get("Fly-Client-IP") or request.remote_addr or "desconocida").strip()
+
+
+def _paso_el_tope_de_registros(ip: str) -> bool:
+    """True si esa IP todavía puede registrar un cliente en la última hora."""
+    ahora = time.time()
+    # Si crece más allá del máximo se vacía todo: es un tope contra abuso, no un
+    # registro de auditoría, y así la memoria del proceso nunca crece sin límite.
+    if len(_REGISTROS_POR_IP) >= MAX_IPS_REGISTRO and ip not in _REGISTROS_POR_IP:
+        _REGISTROS_POR_IP.clear()
+    recientes = [t for t in _REGISTROS_POR_IP.get(ip, [])
+                 if ahora - t < VENTANA_REGISTROS_SEG]
+    if len(recientes) >= TOPE_REGISTROS_POR_IP:
+        _REGISTROS_POR_IP[ip] = recientes
+        return False
+    recientes.append(ahora)
+    _REGISTROS_POR_IP[ip] = recientes
+    return True
 
 
 # ── metadata ─────────────────────────────────────────────────────────────────
@@ -81,6 +114,11 @@ def metadata_recurso():
 
 @oauth_bp.route("/oauth/register", methods=["POST"])
 def registrar():
+    if (request.content_length or 0) > TOPE_CUERPO_REGISTRO:
+        return _error_json("invalid_client_metadata", "Cuerpo demasiado grande", 413)
+    if not _paso_el_tope_de_registros(_ip_cliente()):
+        return _error_json("invalid_client_metadata",
+                           "Demasiados registros desde esta dirección", 429)
     datos = request.get_json(silent=True)
     if not isinstance(datos, dict):
         return _error_json("invalid_client_metadata", "El cuerpo tiene que ser JSON")
@@ -88,7 +126,10 @@ def registrar():
     if cliente is None:
         return _error_json("invalid_redirect_uri",
                            "redirect_uris tiene que ser una lista de URLs https (o loopback)")
-    resp = jsonify(cliente)
+    # RFC 7591: un campo sin valor se omite, no se manda como null.
+    resp = jsonify({k: v for k, v in cliente.items()
+                    if not (k == "client_name" and v is None)})
     resp.status_code = 201
     resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Pragma"] = "no-cache"
     return resp
