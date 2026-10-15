@@ -21833,6 +21833,13 @@ def _maybe_sync_notion(db_path: str) -> None:
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
+    # Cookie de sesión: SameSite=Lax (nunca Strict: el GET de claude.ai a
+    # /oauth/authorize necesita la cookie) y Secure solo cuando el CRM se sirve
+    # por HTTPS, para no romper el login en local por http.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+        "CRM_URL", "https://scalerics-crm.fly.dev").startswith("https://")
     app.config["DB_PATH"] = db_path
     # Los envios que salen fuera de un request (los hilos de las campanas) se
     # registran en esta base para el panel Email marketing.
@@ -22053,7 +22060,7 @@ def create_app(db_path: str) -> Flask:
         # a algún lado después de entrar. Cualquier otro `next` se ignora: así
         # el login no sirve para mandar a nadie a un sitio ajeno.
         destino = request.args.get("next") or request.form.get("next") or ""
-        if not destino.startswith("/oauth/authorize"):
+        if destino != "/oauth/authorize" and not destino.startswith("/oauth/authorize?"):
             destino = ""
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()

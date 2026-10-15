@@ -331,3 +331,103 @@ def test_login_ignora_next_que_no_sea_authorize(anonimo, uid):
         r = anonimo.post("/login?next=" + malo, data={"email": "ana@scalerics.com", "password": "x" * 10})
         assert r.status_code == 302
         assert r.headers["Location"] in ("/", "http://localhost/")
+
+
+# ── endurecimiento: cabeceras, redirect saneada, cookie, nonce, XSS ──────────
+
+def test_consentimiento_no_se_puede_embeber_ni_cachear(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch)))
+    assert r.status_code == 200
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["Cache-Control"] == "no-store"
+
+
+def test_redirect_con_codigo_no_se_cachea(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = _autorizar(logueado, cid, ch)
+    assert r.status_code == 302
+    assert r.headers["Cache-Control"] == "no-store"
+
+
+def test_metadata_sigue_cacheable(anonimo):
+    r = anonimo.get("/.well-known/oauth-authorization-server")
+    assert "max-age=3600" in r.headers["Cache-Control"]
+    assert r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_error_con_redirect_uri_con_espacio_vuelve_a_la_registrada(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(
+        _params_authorize(cid, ch, redirect_uri=" " + CALLBACK, response_type="token")))
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith(CALLBACK + "?")
+    assert _query(r.headers["Location"])["state"] == "abc123"
+
+
+def test_cookie_de_sesion_lax_y_secure_con_crm_https(anonimo, uid):
+    r = anonimo.post("/login", data={"email": "ana@scalerics.com", "password": "x" * 10})
+    cookie = r.headers["Set-Cookie"]
+    assert "SameSite=Lax" in cookie and "Secure" in cookie and "HttpOnly" in cookie
+
+
+def test_nonce_no_se_puede_reusar(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    html = logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+                        ).get_data(as_text=True)
+    nonce = html.split('name="nonce" value="')[1].split('"')[0]
+    form = _params_authorize(cid, ch)
+    form.update({"nonce": nonce, "accion": "autorizar"})
+    assert logueado.post("/oauth/authorize", data=form).status_code == 302
+    assert logueado.post("/oauth/authorize", data=form).status_code == 403
+
+
+def test_post_con_redirect_uri_adulterada_es_400_sin_location(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    html = logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+                        ).get_data(as_text=True)
+    nonce = html.split('name="nonce" value="')[1].split('"')[0]
+    form = _params_authorize(cid, ch, redirect_uri="https://evil.test/cb")
+    form.update({"nonce": nonce, "accion": "autorizar"})
+    r = logueado.post("/oauth/authorize", data=form)
+    assert r.status_code == 400
+    assert "Location" not in r.headers
+
+
+def test_nombre_de_usuario_se_escapa_en_el_consentimiento(app, ruta):
+    uid_xss = create_user(ruta, name="<script>x</script>", email="xss@scalerics.com",
+                          phone="098", password_hash=generate_password_hash("x" * 10))
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s["logged_in"] = True
+        s["user_id"] = uid_xss
+        s["user_name"] = "<script>x</script>"
+    cid = _registrar(c)
+    _, ch = _pkce()
+    html = c.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+                 ).get_data(as_text=True)
+    assert "&lt;script&gt;" in html
+    assert "<script>x" not in html
+
+
+def test_login_ignora_next_con_barra_invertida_o_prefijo_parecido(anonimo, uid):
+    for malo in (r"\evil.test","/oauth/authorizeXYZ", "/oauth/authorize/../admin"):
+        r = anonimo.post("/login", query_string={"next": malo},
+                         data={"email": "ana@scalerics.com", "password": "x" * 10})
+        assert r.status_code == 302
+        assert r.headers["Location"] in ("/", "http://localhost/")
+
+
+def test_429_de_registro_trae_retry_after(anonimo):
+    for _ in range(oauth_ruta.TOPE_REGISTROS_POR_IP):
+        assert anonimo.post("/oauth/register", json={"redirect_uris": [CALLBACK]}).status_code == 201
+    r = anonimo.post("/oauth/register", json={"redirect_uris": [CALLBACK]})
+    assert r.status_code == 429
+    assert r.headers["Retry-After"] == "3600"

@@ -12,6 +12,7 @@ pide la sesión del CRM, porque ahí la persona autoriza a Claude.
 
 import hmac
 import secrets
+import threading
 import time
 from urllib.parse import urlencode, urlsplit
 
@@ -33,10 +34,27 @@ TOPE_REGISTROS_POR_IP = 20
 VENTANA_REGISTROS_SEG = 3600
 MAX_IPS_REGISTRO = 1000
 _REGISTROS_POR_IP: dict[str, list[float]] = {}
+# Cuatro hilos de gunicorn comparten el dict: leer, filtrar y anotar tiene que
+# ser un solo paso.
+_CERROJO_REGISTROS = threading.Lock()
 
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+@oauth_bp.after_request
+def _cabeceras_oauth(resp):
+    """Nada de este blueprint se embebe ni se cachea: la pantalla de
+    consentimiento en un iframe ajeno es clickjacking, y las respuestas
+    llevan nonce, código o token."""
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    if "Cache-Control" not in resp.headers:
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 def _json_publico(datos: dict):
@@ -64,18 +82,20 @@ def _ip_cliente() -> str:
 def _paso_el_tope_de_registros(ip: str) -> bool:
     """True si esa IP todavía puede registrar un cliente en la última hora."""
     ahora = time.time()
-    # Si crece más allá del máximo se vacía todo: es un tope contra abuso, no un
-    # registro de auditoría, y así la memoria del proceso nunca crece sin límite.
-    if len(_REGISTROS_POR_IP) >= MAX_IPS_REGISTRO and ip not in _REGISTROS_POR_IP:
-        _REGISTROS_POR_IP.clear()
-    recientes = [t for t in _REGISTROS_POR_IP.get(ip, [])
-                 if ahora - t < VENTANA_REGISTROS_SEG]
-    if len(recientes) >= TOPE_REGISTROS_POR_IP:
+    with _CERROJO_REGISTROS:
+        # Si crece más allá del máximo se vacía todo: es un tope contra abuso, no
+        # un registro de auditoría, y así la memoria del proceso nunca crece sin
+        # límite.
+        if len(_REGISTROS_POR_IP) >= MAX_IPS_REGISTRO and ip not in _REGISTROS_POR_IP:
+            _REGISTROS_POR_IP.clear()
+        recientes = [t for t in _REGISTROS_POR_IP.get(ip, [])
+                     if ahora - t < VENTANA_REGISTROS_SEG]
+        if len(recientes) >= TOPE_REGISTROS_POR_IP:
+            _REGISTROS_POR_IP[ip] = recientes
+            return False
+        recientes.append(ahora)
         _REGISTROS_POR_IP[ip] = recientes
-        return False
-    recientes.append(ahora)
-    _REGISTROS_POR_IP[ip] = recientes
-    return True
+        return True
 
 
 # ── metadata ─────────────────────────────────────────────────────────────────
@@ -117,8 +137,10 @@ def registrar():
     if (request.content_length or 0) > TOPE_CUERPO_REGISTRO:
         return _error_json("invalid_client_metadata", "Cuerpo demasiado grande", 413)
     if not _paso_el_tope_de_registros(_ip_cliente()):
-        return _error_json("invalid_client_metadata",
+        resp = _error_json("invalid_client_metadata",
                            "Demasiados registros desde esta dirección", 429)
+        resp.headers["Retry-After"] = str(VENTANA_REGISTROS_SEG)
+        return resp
     datos = request.get_json(silent=True)
     if not isinstance(datos, dict):
         return _error_json("invalid_client_metadata", "El cuerpo tiene que ser JSON")
@@ -142,9 +164,13 @@ class _ErrorPagina(Exception):
 
 
 class _ErrorRedirect(Exception):
-    def __init__(self, codigo: str, descripcion: str):
+    """Error OAuth que vuelve al cliente. Lleva la redirect_uri y el state ya
+    validados (la misma cadena que pasó `redirect_permitido`, sin espacios)."""
+
+    def __init__(self, codigo: str, descripcion: str, redirect_uri: str, state: str):
         super().__init__(descripcion)
         self.codigo, self.descripcion = codigo, descripcion
+        self.redirect_uri, self.state = redirect_uri, state
 
 
 def _validar_pedido(params) -> dict:
@@ -158,20 +184,24 @@ def _validar_pedido(params) -> dict:
         raise _ErrorPagina("Cliente desconocido. Volvé a agregar el conector en Claude.")
     if not oauth_clientes.redirect_permitido(redirect_uri, registradas):
         raise _ErrorPagina("La dirección de vuelta no es una de las registradas por el cliente.")
+    state = params.get("state") or ""
     if params.get("response_type") != "code":
-        raise _ErrorRedirect("unsupported_response_type", "Solo response_type=code")
+        raise _ErrorRedirect("unsupported_response_type", "Solo response_type=code",
+                             redirect_uri, state)
     challenge = (params.get("code_challenge") or "").strip()
     if (not challenge or params.get("code_challenge_method") != "S256"
             or not CHALLENGE_RE.fullmatch(challenge)):
-        raise _ErrorRedirect("invalid_request", "PKCE S256 es obligatorio")
+        raise _ErrorRedirect("invalid_request", "PKCE S256 es obligatorio", redirect_uri, state)
     scope = (params.get("scope") or SCOPE_LECTURA).strip()
     if set(scope.split()) != {SCOPE_LECTURA}:
-        raise _ErrorRedirect("invalid_scope", f"El único scope es {SCOPE_LECTURA}")
+        raise _ErrorRedirect("invalid_scope", f"El único scope es {SCOPE_LECTURA}",
+                             redirect_uri, state)
     resource = (params.get("resource") or recurso_mcp()).strip()
     if resource != recurso_mcp():
-        raise _ErrorRedirect("invalid_target", f"El recurso es {recurso_mcp()}")
+        raise _ErrorRedirect("invalid_target", f"El recurso es {recurso_mcp()}",
+                             redirect_uri, state)
     return {"client_id": client_id, "redirect_uri": redirect_uri, "challenge": challenge,
-            "scope": SCOPE_LECTURA, "resource": resource, "state": params.get("state") or ""}
+            "scope": SCOPE_LECTURA, "resource": resource, "state": state}
 
 
 def _volver(redirect_uri: str, **campos):
@@ -187,9 +217,8 @@ def autorizar():
     except _ErrorPagina as e:
         return render_template_string(ERROR_HTML, mensaje=str(e)), 400
     except _ErrorRedirect as e:
-        redirect_uri = params.get("redirect_uri")
-        return _volver(redirect_uri, error=e.codigo, error_description=e.descripcion,
-                       state=params.get("state"))
+        return _volver(e.redirect_uri, error=e.codigo, error_description=e.descripcion,
+                       state=e.state)
 
     if not session.get("logged_in") or not session.get("user_id"):
         # Volver acá después de entrar. /login solo honra next si empieza con
@@ -252,9 +281,14 @@ CONSENTIMIENTO_HTML = """<!DOCTYPE html>
   <p>No va a poder modificar nada. Cada consulta queda registrada con tu usuario.</p>
   <p>Después de autorizar vas a volver a <span class="host">{{ host_destino }}</span>.</p>
   <form method="POST" action="/oauth/authorize">
-    {% for k in ("response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope", "resource") %}
-    <input type="hidden" name="{{ k }}" value="{{ request.values.get(k, '') }}">
-    {% endfor %}
+    <input type="hidden" name="response_type" value="code">
+    <input type="hidden" name="client_id" value="{{ pedido.client_id }}">
+    <input type="hidden" name="redirect_uri" value="{{ pedido.redirect_uri }}">
+    <input type="hidden" name="code_challenge" value="{{ pedido.challenge }}">
+    <input type="hidden" name="code_challenge_method" value="S256">
+    <input type="hidden" name="state" value="{{ pedido.state }}">
+    <input type="hidden" name="scope" value="{{ pedido.scope }}">
+    <input type="hidden" name="resource" value="{{ pedido.resource }}">
     <input type="hidden" name="nonce" value="{{ nonce }}">
     <div class="botones">
       <button class="no" type="submit" name="accion" value="cancelar">Cancelar</button>
