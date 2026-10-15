@@ -239,3 +239,113 @@ def test_pipeline_trunca_a_200(sembrada, ana):
     r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"etapa": "follow_up_1"}))
     assert r["truncado"] is True and r["total"] == 200
     assert "Filtr" in r["aviso"]
+
+
+# ── acotar argumentos y escapar comodines ────────────────────────────────────
+
+def _schema(nombre):
+    return {h["name"]: h for h in mt.listar_herramientas()}[nombre]["inputSchema"]
+
+
+def _ids(db, usuario, texto, **extra):
+    r = mt.ejecutar(db, usuario, "buscar_leads", {"texto": texto, **extra})
+    return [l["id"] for l in _texto(r)["leads"]]
+
+
+def test_buscar_porcentaje_no_es_comodin(sembrada, ana):
+    assert _ids(sembrada, {"id": ana, "name": "Ana"}, "%%") == []
+
+
+def test_buscar_solo_espacios_es_argumento_invalido(sembrada, ana):
+    with pytest.raises(mt.ArgumentosInvalidos):
+        mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "  "})
+
+
+def test_buscar_guion_bajo_no_es_comodin(sembrada, ana):
+    conn = sqlite3.connect(sembrada)
+    conn.executemany("INSERT INTO businesses (id, name, email, crm_status) VALUES (?,?,?,?)",
+                     [(6, "Zeta Uno", "xzy@mail.com", "sin_contactar"),
+                      (7, "Zeta Dos", "x_y@mail.com", "sin_contactar")])
+    conn.commit()
+    conn.close()
+    assert _ids(sembrada, {"id": ana, "name": "Ana"}, "x_y") == [7]
+
+
+def test_buscar_telefono_con_parentesis_y_puntos(sembrada, ana):
+    conn = sqlite3.connect(sembrada)
+    conn.execute("UPDATE businesses SET phone = '(099) 333.444' WHERE id = 2")
+    conn.commit()
+    conn.close()
+    assert _ids(sembrada, {"id": ana, "name": "Ana"}, "099333444") == [2]
+
+
+def test_buscar_texto_de_mas_de_100_caracteres_es_invalido(sembrada, ana):
+    with pytest.raises(mt.ArgumentosInvalidos) as e:
+        mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "a" * 101})
+    assert "como mucho 100" in str(e.value)
+
+
+def test_buscar_hay_mas_es_false_con_exactamente_limite_resultados(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads",
+                           {"texto": "espiga", "limite": 2}))
+    assert len(r["leads"]) == 2 and r["hay_mas"] is False
+
+
+def test_pipeline_responsable_con_comodines_no_matchea_todo(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "pipeline", {"responsable": "%%"}))
+    assert r["total"] == 0
+
+
+def test_toda_etapa_tiene_descripcion():
+    assert set(mt.ETAPAS_DESCRIPCION) == set(mt._ETAPAS_TODAS)
+
+
+def test_ejecutar_excepcion_generica_es_error_de_herramienta_y_no_loguea_valores(
+        sembrada, ana, monkeypatch, caplog):
+    def explota(db, a):
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(mt._POR_NOMBRE["ver_lead"], "fn", explota)
+    r = mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "ver_lead", {"lead_id": 4242})
+    assert r["isError"] is True
+    assert r["content"][0]["text"] == "La herramienta falló por un error interno del CRM. Quedó registrado."
+    conn = sqlite3.connect(sembrada)
+    assert conn.execute("SELECT ok, error FROM mcp_llamadas ORDER BY id DESC LIMIT 1").fetchone() == (0, "excepción")
+    conn.close()
+    # Se loguean los nombres de los argumentos, no sus valores.
+    assert "lead_id" in caplog.text and "4242" not in caplog.text
+
+
+def test_si_registrar_falla_la_llamada_sale_igual(sembrada, ana, monkeypatch):
+    conexion_real = mt._connect
+    llamadas = []
+
+    def connect_que_falla_al_registrar(db):
+        # La primera conexión es la de la herramienta; la segunda, la del registro.
+        llamadas.append(db)
+        if len(llamadas) > 1:
+            raise sqlite3.OperationalError("disco lleno")
+        return conexion_real(db)
+
+    monkeypatch.setattr(mt, "_connect", connect_que_falla_al_registrar)
+    r = mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "espiga"})
+    assert r["isError"] is False and len(llamadas) == 2
+    assert [l["id"] for l in _texto(r)["leads"]] == [1, 3]
+
+
+def test_validar_rechaza_bool_como_integer_e_integer_como_boolean():
+    with pytest.raises(mt.ArgumentosInvalidos):
+        mt.validar_argumentos(_schema("ver_lead"), {"lead_id": True})
+    with pytest.raises(mt.ArgumentosInvalidos):
+        mt.validar_argumentos(_schema("pipeline"), {"incluir_clientes": 1})
+
+
+def test_validar_null_explicito():
+    with pytest.raises(mt.ArgumentosInvalidos):
+        mt.validar_argumentos(_schema("ver_lead"), {"lead_id": None})
+    assert mt.validar_argumentos(_schema("buscar_leads"), {"texto": "espiga", "limite": None}) == {
+        "texto": "espiga", "limite": 10}
+
+
+def test_validar_guarda_el_texto_sin_espacios_de_los_bordes():
+    assert mt.validar_argumentos(_schema("buscar_leads"), {"texto": "  espiga "})["texto"] == "espiga"

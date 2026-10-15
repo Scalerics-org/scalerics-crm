@@ -22,7 +22,7 @@ import logging
 import sqlite3
 import time
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import Optional
 
 from database import (ETAPAS_CLIENTE, ETAPAS_PRECLIENTE, _connect, get_business,
                       get_client_info, get_lead_events)
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 TOPE_LEADS = 200
 TOPE_HISTORIAL = 20
+TOPE_ARGUMENTOS_LOG = 2000
 
 
 class ArgumentosInvalidos(Exception):
@@ -96,8 +97,14 @@ def validar_argumentos(schema: dict, args) -> dict:
         # bool es subclase de int en Python: un True no es un integer válido.
         if not isinstance(valor, tipo) or (tipo is int and isinstance(valor, bool)):
             raise ArgumentosInvalidos(f"'{nombre}' tiene que ser {prop['type']}")
-        if tipo is str and len(valor) < prop.get("minLength", 0):
-            raise ArgumentosInvalidos(f"'{nombre}' tiene que tener al menos {prop['minLength']} caracteres")
+        if tipo is str:
+            # Se strippea antes de medir: dos espacios pasaban minLength y
+            # después el strip de la herramienta los vaciaba.
+            valor = valor.strip()
+            if len(valor) < prop.get("minLength", 0):
+                raise ArgumentosInvalidos(f"'{nombre}' tiene que tener al menos {prop['minLength']} caracteres")
+            if "maxLength" in prop and len(valor) > prop["maxLength"]:
+                raise ArgumentosInvalidos(f"'{nombre}' tiene que tener como mucho {prop['maxLength']} caracteres")
         if tipo is int and ("minimum" in prop and valor < prop["minimum"]
                             or "maximum" in prop and valor > prop["maximum"]):
             raise ArgumentosInvalidos(f"'{nombre}' tiene que estar entre {prop.get('minimum')} y {prop.get('maximum')}")
@@ -141,11 +148,20 @@ _SQL_BUSCAR = (
     "SELECT id, name, crm_status, phone, email, city, category, source, last_event_at "
     "FROM businesses "
     "WHERE archivado_en IS NULL AND ("
-    "  lower(name) LIKE ? OR lower(email) LIKE ? "
-    "  OR replace(replace(replace(coalesce(phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?) "
+    "  lower(name) LIKE ? ESCAPE '\\' OR lower(email) LIKE ? ESCAPE '\\' "
+    "  OR replace(replace(replace(replace(replace(replace(coalesce(phone, ''), "
+    "' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), '.', '') LIKE ? ESCAPE '\\') "
     "ORDER BY CASE WHEN score IS NULL THEN 1 ELSE 0 END, score DESC, scraped_at DESC, id "
     "LIMIT ?"
 )
+
+
+def _patron_like(valor: str) -> str:
+    """Escapa la barra invertida, % y _ (el SQL usa ESCAPE con la barra) y
+    envuelve en %...%, para que el texto del usuario se busque literal y no
+    como comodín."""
+    escapado = valor.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escapado}%"
 
 
 def _fila_lead(f) -> dict:
@@ -158,9 +174,11 @@ def _buscar_leads(db: str, texto: str, limite: int) -> dict:
     """LIKE sobre nombre, mail y teléfono, con LIMIT en SQL. No se usa
     `get_all_businesses` porque trae la tabla entera a memoria (incidente del
     28-8-2026). Se pide uno de más para saber si hay más."""
-    patron = f"%{texto.strip().lower()}%"
+    patron = _patron_like(texto.strip().lower())
     solo_digitos = "".join(c for c in texto if c.isdigit())
-    patron_tel = f"%{solo_digitos}%" if solo_digitos else "\x00"  # nunca matchea
+    # Sin dígitos, None: `LIKE NULL` nunca matchea. (Un NUL embebido se corta en
+    # SQLite y queda como patrón vacío, que matchea a los leads sin teléfono.)
+    patron_tel = _patron_like(solo_digitos) if solo_digitos else None
     conn = _connect(db)
     try:
         filas = conn.execute(_SQL_BUSCAR, (patron, patron, patron_tel, limite + 1)).fetchall()
@@ -239,8 +257,8 @@ def _pipeline(db: str, etapa: Optional[str], responsable: Optional[str], incluir
     )
     params: list = list(etapas)
     if responsable:
-        sql += "AND lower(u.name) LIKE ? "
-        params.append(f"%{responsable.strip().lower()}%")
+        sql += "AND lower(u.name) LIKE ? ESCAPE '\\' "
+        params.append(_patron_like(responsable.strip().lower()))
     # Los que hace más tiempo no se mueven, primero: son los que hay que empujar.
     sql += ("ORDER BY CASE WHEN b.last_event_at IS NULL THEN 0 ELSE 1 END, b.last_event_at ASC "
             "LIMIT ?")
@@ -278,7 +296,7 @@ HERRAMIENTAS: list[dict] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "texto": {"type": "string", "minLength": 2,
+                "texto": {"type": "string", "minLength": 2, "maxLength": 100,
                           "description": "Nombre, parte del nombre, email o teléfono"},
                 "limite": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
             },
@@ -308,7 +326,7 @@ HERRAMIENTAS: list[dict] = [
             "properties": {
                 "etapa": {"type": "string", "enum": list(_ETAPAS_TODAS),
                           "description": "Una sola etapa; sin este argumento trae todas"},
-                "responsable": {"type": "string", "minLength": 2,
+                "responsable": {"type": "string", "minLength": 2, "maxLength": 100,
                                 "description": "Nombre (o parte) del responsable del lead"},
                 "incluir_clientes": {"type": "boolean", "default": False},
             },
@@ -342,7 +360,9 @@ def ejecutar(db: str, usuario: dict, nombre: str, argumentos) -> dict:
     except ErrorHerramienta as e:
         ok, error, texto = False, str(e), str(e)
     except Exception:
-        logger.exception("Falló la herramienta MCP %s con %s", nombre, args)
+        # Solo los nombres de los argumentos: un valor enorme o sensible no
+        # tiene que terminar en el log del servidor.
+        logger.exception("Falló la herramienta MCP %s (argumentos: %s)", nombre, sorted(args))
         ok, error = False, "excepción"
         texto = "La herramienta falló por un error interno del CRM. Quedó registrado."
     ms = int((time.monotonic() - inicio) * 1000)
@@ -358,7 +378,9 @@ def _registrar(db, usuario, nombre, args, ok, error, ms) -> None:
                 "INSERT INTO mcp_llamadas (user_id, user_name, herramienta, argumentos, ok, error, ms) "
                 "VALUES (?,?,?,?,?,?,?)",
                 (usuario.get("id"), usuario.get("name") or "sistema", nombre,
-                 json.dumps(args, ensure_ascii=False), 1 if ok else 0, error, ms))
+                 # Tope de respaldo: la validación ya acota los argumentos, pero
+                 # esta tabla no tiene que crecer por un valor inesperado.
+                 json.dumps(args, ensure_ascii=False)[:TOPE_ARGUMENTOS_LOG], 1 if ok else 0, error, ms))
             conn.commit()
         finally:
             conn.close()
