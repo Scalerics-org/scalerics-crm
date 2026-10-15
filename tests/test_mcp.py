@@ -160,3 +160,33 @@ def test_buscar_respeta_limite_y_lo_dice(sembrada, ana):
 def test_buscar_sin_resultados(sembrada, ana):
     r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "zzz"}))
     assert r == {"leads": [], "hay_mas": False}
+
+
+# ── ver_lead ─────────────────────────────────────────────────────────────────
+
+def test_ver_lead_trae_ficha_completa(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "ver_lead", {"lead_id": 1}))
+    assert r["id"] == 1 and r["nombre"] == "Panadería La Espiga" and r["etapa"] == "demo_1"
+    assert r["notas"] == "Quiere web con pedidos" and r["origen"] == "meta"
+    assert r["responsables"] == {"encargado": "Ana", "mantenimiento": None, "cobros": None}
+    assert r["relevamiento"]["lead_name"] == "Lucía" and r["relevamiento"]["needs"] == "pedidos online"
+    assert [e["new_status"] for e in r["eventos"]] == ["demo_1", "demo_agendada"]
+    assert r["llamadas"][0]["outcome"] == "contestó"
+    # Nada interno.
+    for interno in ("form_data", "meta_lead_id", "semaforo_origen", "demo_html_path", "encargado_id"):
+        assert interno not in r
+
+
+def test_ver_lead_sin_relevamiento(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "ver_lead", {"lead_id": 2}))
+    assert r["relevamiento"] == {} and r["eventos"] == [] and r["llamadas"] == []
+    assert r["responsables"]["encargado"] == "Juan"
+
+
+def test_ver_lead_inexistente_es_error_de_herramienta(sembrada, ana):
+    r = mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "ver_lead", {"lead_id": 999})
+    assert r["isError"] is True
+    assert "999" in r["content"][0]["text"]
+    conn = sqlite3.connect(sembrada)
+    assert conn.execute("SELECT ok, error FROM mcp_llamadas ORDER BY id DESC LIMIT 1").fetchone() == (0, "No existe el lead 999")
+    conn.close()

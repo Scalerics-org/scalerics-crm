@@ -169,8 +169,49 @@ def _buscar_leads(db: str, texto: str, limite: int) -> dict:
     return {"leads": [_fila_lead(f) for f in filas[:limite]], "hay_mas": len(filas) > limite}
 
 
+# Qué columnas de `businesses` ve Claude, y con qué nombre. Lo que no está acá
+# no sale: ids de Meta, form_data crudo, semáforo, rutas de archivos.
+_CAMPOS_LEAD = (
+    ("id", "id"), ("name", "nombre"), ("crm_status", "etapa"), ("category", "rubro"),
+    ("city", "ciudad"), ("address", "direccion"), ("phone", "telefono"), ("email", "email"),
+    ("website", "web"), ("instagram_url", "instagram"), ("facebook_url", "facebook"),
+    ("source", "origen"), ("meta_campaign_name", "campania_meta"), ("interest", "interes"),
+    ("notes", "notas"), ("pitch_text", "pitch"), ("callback_date", "volver_a_llamar"),
+    ("score", "score"), ("last_event_at", "ultimo_evento_at"), ("scraped_at", "creado_at"),
+    ("monto_pagado", "monto_pagado"), ("moneda_pagado", "moneda_pagado"),
+)
+_RESPONSABLES = (("encargado_id", "encargado"), ("mantenimiento_id", "mantenimiento"),
+                 ("cobros_id", "cobros"))
+
+
+def _nombres_usuarios(conn, ids) -> dict:
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    marcas = ",".join("?" * len(ids))
+    return {f["id"]: f["name"] for f in
+            conn.execute(f"SELECT id, name FROM users WHERE id IN ({marcas})", ids).fetchall()}
+
+
 def _ver_lead(db: str, lead_id: int) -> dict:
-    return {}
+    biz = get_business(db, lead_id)
+    if not biz:
+        raise ErrorHerramienta(f"No existe el lead {lead_id}")
+    ficha = {salida: biz.get(col) for col, salida in _CAMPOS_LEAD}
+    conn = _connect(db)
+    try:
+        nombres = _nombres_usuarios(conn, [biz.get(col) for col, _ in _RESPONSABLES])
+        llamadas = conn.execute(
+            "SELECT called_at, outcome, notes, created_by FROM call_logs "
+            "WHERE lead_id = ? ORDER BY called_at DESC LIMIT ?", (lead_id, TOPE_HISTORIAL)).fetchall()
+    finally:
+        conn.close()
+    ficha["responsables"] = {salida: nombres.get(biz.get(col)) for col, salida in _RESPONSABLES}
+    relev = get_client_info(db, lead_id) or {}
+    ficha["relevamiento"] = {k: v for k, v in relev.items() if k not in ("id", "client_id")}
+    ficha["eventos"] = get_lead_events(db, lead_id)[:TOPE_HISTORIAL]
+    ficha["llamadas"] = [dict(f) for f in llamadas]
+    return ficha
 
 
 def _pipeline(db: str, etapa: Optional[str], responsable: Optional[str], incluir_clientes: bool) -> dict:
