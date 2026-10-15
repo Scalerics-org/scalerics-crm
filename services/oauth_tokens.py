@@ -10,12 +10,19 @@ exige para clientes públicos, y Claude se registra como público).
 
 Un código reusado no solo falla: revoca lo que se emitió con él. Es la defensa
 de OAuth 2.1 §4.1.3 contra un código robado que llega segundo.
+
+Usuarios borrados: las tablas declaran `ON DELETE CASCADE`, pero `database._connect`
+no activa `PRAGMA foreign_keys`, así que hoy la cascada no corre. Queda declarada
+por si algún día se activa el pragma; lo que protege hoy es el JOIN con `users`
+en `canjear_codigo`, `validar_access` y `refrescar`: un token o código de un
+usuario que ya no existe devuelve None.
 """
 
 import base64
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -32,6 +39,16 @@ BASURA_DESPUES_DE = timedelta(days=30)
 # `ultimo_uso` se escribe como mucho una vez por minuto, para no escribir en
 # SQLite en cada llamada de Claude.
 ULTIMO_USO_CADA = timedelta(minutes=1)
+
+# RFC 7636 §4.1: el verifier son 43 a 128 caracteres del alfabeto "unreserved";
+# el challenge S256 es un SHA-256 en base64url sin relleno, siempre de 43.
+_VERIFIER_RE = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
+_CHALLENGE_RE = re.compile(r"[A-Za-z0-9\-_]{43}")
+
+
+def _antes_de_revocar() -> None:
+    """Gancho vacío que `refrescar` llama entre leer el refresh y revocarlo.
+    Existe para que un test pueda forzar la carrera entre dos hilos."""
 
 
 def base_url() -> str:
@@ -108,13 +125,23 @@ def _secreto() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _mismo_cliente(esperado: str, recibido: Optional[str]) -> bool:
+    """`client_id` viene del request y puede traer cualquier carácter:
+    `compare_digest` sobre `str` revienta con no-ASCII, sobre bytes no."""
+    return hmac.compare_digest(esperado.encode(), (recibido or "").encode())
+
+
 def verificar_pkce(code_verifier: str, code_challenge: str) -> bool:
     """S256: BASE64URL(SHA256(verifier)) sin relleno tiene que ser el challenge."""
-    if not code_verifier or not code_challenge:
+    # Se valida el alfabeto antes de codificar: así no se descarta nada en
+    # silencio y `compare_digest` nunca recibe texto que no sea ASCII.
+    if not _VERIFIER_RE.fullmatch(code_verifier or ""):
         return False
-    digest = hashlib.sha256(code_verifier.encode("ascii", "ignore")).digest()
-    calculado = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return hmac.compare_digest(calculado, code_challenge)
+    if not _CHALLENGE_RE.fullmatch(code_challenge or ""):
+        return False
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    calculado = base64.urlsafe_b64encode(digest).rstrip(b"=")
+    return hmac.compare_digest(calculado, code_challenge.encode("ascii"))
 
 
 # ── códigos ──────────────────────────────────────────────────────────────────
@@ -145,8 +172,9 @@ def canjear_codigo(db: str, code: str, client_id: str, redirect_uri: str,
     ahora = _ahora()
     conn = _connect(db)
     try:
-        fila = conn.execute("SELECT * FROM oauth_codigos WHERE code_hash = ?",
-                            (code_hash,)).fetchone()
+        fila = conn.execute(
+            "SELECT c.* FROM oauth_codigos c JOIN users u ON u.id = c.user_id "
+            "WHERE c.code_hash = ?", (code_hash,)).fetchone()
         if not fila:
             return None
         if fila["used_at"]:
@@ -158,7 +186,7 @@ def canjear_codigo(db: str, code: str, client_id: str, redirect_uri: str,
             return None
         if fila["expires_at"] < _iso(ahora):
             return None
-        if not hmac.compare_digest(fila["client_id"], client_id or ""):
+        if not _mismo_cliente(fila["client_id"], client_id):
             return None
         if fila["redirect_uri"] != (redirect_uri or ""):
             return None
@@ -214,8 +242,9 @@ def validar_access(db: str, token: str) -> Optional[dict]:
     conn = _connect(db)
     try:
         fila = conn.execute(
-            "SELECT id, user_id, client_id, scope, access_expira, ultimo_uso FROM oauth_tokens "
-            "WHERE access_hash = ? AND revocado_en IS NULL", (_hash(token),)).fetchone()
+            "SELECT t.id, t.user_id, t.client_id, t.scope, t.access_expira, t.ultimo_uso "
+            "FROM oauth_tokens t JOIN users u ON u.id = t.user_id "
+            "WHERE t.access_hash = ? AND t.revocado_en IS NULL", (_hash(token),)).fetchone()
         if not fila or fila["access_expira"] < _iso(ahora):
             return None
         if not fila["ultimo_uso"] or fila["ultimo_uso"] < _iso(ahora - ULTIMO_USO_CADA):
@@ -237,14 +266,30 @@ def refrescar(db: str, refresh_token: str, client_id: str) -> Optional[dict]:
     conn = _connect(db)
     try:
         fila = conn.execute(
-            "SELECT * FROM oauth_tokens WHERE refresh_hash = ? AND revocado_en IS NULL",
-            (_hash(refresh_token),)).fetchone()
-        if not fila or fila["refresh_expira"] < _iso(ahora):
+            "SELECT t.* FROM oauth_tokens t JOIN users u ON u.id = t.user_id "
+            "WHERE t.refresh_hash = ?", (_hash(refresh_token),)).fetchone()
+        if not fila:
             return None
-        if not hmac.compare_digest(fila["client_id"], client_id or ""):
+        if fila["revocado_en"]:
+            # OAuth 2.1 §4.3.1: un refresh ya rotado que vuelve a aparecer es
+            # robo o reintento, y en los dos casos la familia muere.
+            if fila["codigo_hash"] is not None:
+                conn.execute("UPDATE oauth_tokens SET revocado_en = ? WHERE codigo_hash = ? "
+                             "AND revocado_en IS NULL", (_iso(ahora), fila["codigo_hash"]))
+                conn.commit()
             return None
-        conn.execute("UPDATE oauth_tokens SET revocado_en = ? WHERE id = ?",
-                     (_iso(ahora), fila["id"]))
+        if fila["refresh_expira"] < _iso(ahora):
+            return None
+        if not _mismo_cliente(fila["client_id"], client_id):
+            return None
+        _antes_de_revocar()
+        # Revocado condicional y con rowcount, igual que `canjear_codigo`:
+        # gunicorn corre 4 hilos, y un reintento de Claude o un refresh robado
+        # presentado a la vez no pueden emitir dos pares con el mismo refresh.
+        rev = conn.execute("UPDATE oauth_tokens SET revocado_en = ? "
+                           "WHERE id = ? AND revocado_en IS NULL", (_iso(ahora), fila["id"]))
+        if rev.rowcount != 1:
+            return None
         tokens = _emitir_tokens(conn, fila["user_id"], fila["client_id"], fila["scope"],
                                 fila["resource"], fila["codigo_hash"], ahora)
         _barrer(conn, ahora)
