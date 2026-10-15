@@ -1,13 +1,18 @@
 """Quién puede pedir un token: el CIMD publicado de Claude o un cliente
 registrado por DCR. Y contra qué `redirect_uri` se compara."""
 
-import json
+import base64
+import hashlib
+import secrets
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
+from werkzeug.security import generate_password_hash
 
-from database import init_db
+from database import create_user, init_db
 from services import oauth_clientes as oc
+from services import oauth_tokens as ot
 
 CIMD_CLAUDE = "https://claude.ai/oauth/mcp-oauth-client-metadata"
 CALLBACK_CLAUDE = "https://claude.ai/api/mcp/auth_callback"
@@ -34,10 +39,11 @@ class _Resp:
 
 
 def _mock_get(monkeypatch, datos, llamadas=None):
-    def fake(url, timeout):
+    def fake(url, timeout, allow_redirects):
         if llamadas is not None:
             llamadas.append(url)
         assert timeout == 5
+        assert allow_redirects is False
         return _Resp(datos)
     monkeypatch.setattr(oc.requests, "get", fake)
 
@@ -63,7 +69,7 @@ def test_cimd_cuyo_client_id_no_coincide_se_rechaza(db, monkeypatch):
 
 
 def test_cimd_que_no_responde_se_rechaza(db, monkeypatch):
-    def fake(url, timeout):
+    def fake(url, timeout, allow_redirects):
         raise oc.requests.ConnectionError("sin red")
     monkeypatch.setattr(oc.requests, "get", fake)
     assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
@@ -97,7 +103,8 @@ def test_cliente_desconocido_es_none(db):
     assert oc.redirect_uris_de(db, "") is None
 
 
-def test_tope_de_clientes_poda_los_viejos_sin_tokens(db):
+def test_tope_de_clientes_poda_los_viejos_sin_tokens(db, monkeypatch):
+    monkeypatch.setattr(oc, "TOPE_CLIENTES", 5)
     for i in range(oc.TOPE_CLIENTES):
         oc.registrar_cliente(db, {"client_name": f"c{i}", "redirect_uris": [CALLBACK_CLAUDE]})
     oc.registrar_cliente(db, {"client_name": "nuevo", "redirect_uris": [CALLBACK_CLAUDE]})
@@ -116,3 +123,135 @@ def test_redirect_exacto_salvo_loopback_sin_puerto():
     assert oc.redirect_permitido("http://127.0.0.1:52000/callback", reg)
     assert not oc.redirect_permitido("http://localhost:3118/otro", reg)
     assert not oc.redirect_permitido("http://localhost:3118/callback", [CALLBACK_CLAUDE])
+
+
+def _reloj(monkeypatch, inicio=1000.0):
+    """Reloj controlable para `oc.time.monotonic`, sin tocar el `time` global."""
+    ahora = {"t": inicio}
+    monkeypatch.setattr(oc, "time", SimpleNamespace(monotonic=lambda: ahora["t"]))
+    return ahora
+
+
+def test_cache_del_cimd_vence_y_se_vuelve_a_descargar(db, monkeypatch):
+    reloj = _reloj(monkeypatch)
+    llamadas = []
+    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
+    oc.redirect_uris_de(db, CIMD_CLAUDE)
+    reloj["t"] += oc.CACHE_SEGUNDOS - 1
+    oc.redirect_uris_de(db, CIMD_CLAUDE)
+    assert len(llamadas) == 1
+    reloj["t"] += 2
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
+    assert len(llamadas) == 2
+
+
+def test_cimd_que_falla_no_se_reintenta_dentro_de_60_segundos(db, monkeypatch):
+    reloj = _reloj(monkeypatch)
+    llamadas = []
+
+    def fake(url, timeout, allow_redirects):
+        llamadas.append(url)
+        raise oc.requests.ConnectionError("sin red")
+    monkeypatch.setattr(oc.requests, "get", fake)
+
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    reloj["t"] += 59
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert len(llamadas) == 1
+    reloj["t"] += 2  # 61 s desde el fallo
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert len(llamadas) == 2
+
+
+@pytest.mark.parametrize("client_id", [
+    "https://claude.ai@evil.test/x",
+    "https://claude.ai.evil.test/x",
+])
+def test_cimd_con_userinfo_o_subdominio_falso_se_rechaza_sin_descargar(db, monkeypatch, client_id):
+    llamadas = []
+    _mock_get(monkeypatch, {"client_id": client_id, "redirect_uris": ["https://evil.test/cb"]}, llamadas)
+    assert oc.redirect_uris_de(db, client_id) is None
+    assert llamadas == []
+
+
+@pytest.mark.parametrize("uris", [
+    [CALLBACK_CLAUDE, 5],
+    [CALLBACK_CLAUDE, "http://evil.test/cb"],
+    [CALLBACK_CLAUDE + "#frag"],
+])
+def test_cimd_con_redirect_invalida_se_rechaza(db, monkeypatch, uris):
+    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": uris})
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+
+
+def test_registrar_rechaza_mas_de_diez_redirects(db):
+    uris = [f"https://x.test/cb{i}" for i in range(oc.TOPE_REDIRECTS + 1)]
+    assert oc.registrar_cliente(db, {"redirect_uris": uris}) is None
+    assert oc.registrar_cliente(db, {"redirect_uris": uris[:oc.TOPE_REDIRECTS]}) is not None
+
+
+def test_registrar_rechaza_redirect_demasiado_larga(db):
+    larga = "https://x.test/" + "a" * oc.LARGO_MAX_REDIRECT
+    assert oc.registrar_cliente(db, {"redirect_uris": [larga]}) is None
+
+
+def test_registrar_rechaza_redirect_con_fragmento(db):
+    assert oc.registrar_cliente(db, {"redirect_uris": ["https://x.test/cb#frag"]}) is None
+
+
+def _pkce():
+    verifier = secrets.token_urlsafe(40)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _ids_por_antiguedad(db):
+    conn = sqlite3.connect(db)
+    try:
+        return [f[0] for f in conn.execute(
+            "SELECT client_id FROM oauth_clientes ORDER BY created_at, rowid")]
+    finally:
+        conn.close()
+
+
+def _espaciar_created_at(db):
+    """Los registros del test caen en el mismo segundo: se les da un orden fijo."""
+    conn = sqlite3.connect(db)
+    try:
+        filas = conn.execute("SELECT client_id FROM oauth_clientes ORDER BY rowid").fetchall()
+        for i, (cid,) in enumerate(filas):
+            conn.execute("UPDATE oauth_clientes SET created_at = ? WHERE client_id = ?",
+                         (f"2026-01-01T00:00:{i:02d}+00:00", cid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_poda_borra_el_mas_viejo_cuando_no_tiene_tokens(db, monkeypatch):
+    monkeypatch.setattr(oc, "TOPE_CLIENTES", 5)
+    for i in range(5):
+        oc.registrar_cliente(db, {"client_name": f"c{i}", "redirect_uris": [CALLBACK_CLAUDE]})
+    _espaciar_created_at(db)
+    viejo, segundo = _ids_por_antiguedad(db)[:2]
+    oc.registrar_cliente(db, {"client_name": "nuevo", "redirect_uris": [CALLBACK_CLAUDE]})
+    ids = _ids_por_antiguedad(db)
+    assert len(ids) == 5
+    assert viejo not in ids and segundo in ids
+
+
+def test_cliente_con_token_vivo_sobrevive_a_la_poda(db, monkeypatch):
+    monkeypatch.setattr(oc, "TOPE_CLIENTES", 5)
+    for i in range(5):
+        oc.registrar_cliente(db, {"client_name": f"c{i}", "redirect_uris": [CALLBACK_CLAUDE]})
+    _espaciar_created_at(db)
+    primero, segundo = _ids_por_antiguedad(db)[:2]
+    uid = create_user(db, name="Ana", email="ana@scalerics.com", phone="099",
+                      password_hash=generate_password_hash("x" * 10))
+    verifier, challenge = _pkce()
+    code = ot.emitir_codigo(db, uid, primero, CALLBACK_CLAUDE, challenge, "crm:leer", None)
+    assert ot.canjear_codigo(db, code, primero, CALLBACK_CLAUDE, verifier) is not None
+
+    oc.registrar_cliente(db, {"client_name": "nuevo", "redirect_uris": [CALLBACK_CLAUDE]})
+    ids = _ids_por_antiguedad(db)
+    assert len(ids) == 5
+    assert primero in ids and segundo not in ids

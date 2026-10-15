@@ -19,6 +19,7 @@ llegan con un puerto distinto cada vez y se comparan sin él (RFC 8252 §7.3).
 """
 
 import json
+import logging
 import secrets
 import sqlite3
 import time
@@ -30,14 +31,23 @@ import requests
 
 from database import _connect
 
+logger = logging.getLogger(__name__)
+
 HOSTS_CIMD = ("claude.ai", "claude.com")
 REDIRECTS_LOOPBACK = ("http://localhost/callback", "http://127.0.0.1/callback")
 HOSTS_LOOPBACK = ("localhost", "127.0.0.1")
 CACHE_SEGUNDOS = 24 * 3600
+# Un CIMD que falla se recuerda poco: lo justo para que un flood de client_id
+# inventados bajo claude.ai no dispare un pedido saliente de hasta 5 s cada uno,
+# pero sin dejar a Claude afuera si su documento tuvo un hipo.
+CACHE_FALLO_SEGUNDOS = 60
 TIMEOUT_CIMD = 5
 TOPE_CLIENTES = 200
+TOPE_REDIRECTS = 10
+LARGO_MAX_REDIRECT = 2048
 
-_cache_cimd: dict[str, tuple[float, list[str]]] = {}
+# client_id -> (vence, redirect_uris o None si el documento no sirvió).
+_cache_cimd: dict[str, tuple[float, Optional[list[str]]]] = {}
 
 
 def limpiar_cache() -> None:
@@ -52,15 +62,19 @@ def es_cimd(client_id: str) -> bool:
 
 def _descargar_cimd(client_id: str) -> Optional[list[str]]:
     try:
-        resp = requests.get(client_id, timeout=TIMEOUT_CIMD)
+        # Sin redirects: el CIMD real se sirve directo, y seguir un 30x podría
+        # llevarnos a un host fuera de la lista de claude.ai / claude.com.
+        resp = requests.get(client_id, timeout=TIMEOUT_CIMD, allow_redirects=False)
         resp.raise_for_status()
         doc = resp.json()
-    except Exception:
+    except Exception as exc:
+        logger.warning("CIMD %s: no se pudo descargar: %s", client_id, exc)
         return None
-    if not isinstance(doc, dict) or doc.get("client_id") != client_id:
-        return None
-    uris = doc.get("redirect_uris")
-    if not isinstance(uris, list) or not all(isinstance(u, str) for u in uris) or not uris:
+    uris = doc.get("redirect_uris") if isinstance(doc, dict) else None
+    if (not isinstance(doc, dict) or doc.get("client_id") != client_id
+            or not isinstance(uris, list) or not uris
+            or not all(isinstance(u, str) and _redirect_valida(u) for u in uris)):
+        logger.warning("CIMD %s: documento inválido", client_id)
         return None
     return uris
 
@@ -91,14 +105,18 @@ def redirect_uris_de(db: str, client_id: str) -> Optional[list[str]]:
         if entrada and entrada[0] > time.monotonic():
             return entrada[1]
         uris = _descargar_cimd(client_id)
-        if uris is not None:
-            _cache_cimd[client_id] = (time.monotonic() + CACHE_SEGUNDOS, uris)
+        duracion = CACHE_SEGUNDOS if uris is not None else CACHE_FALLO_SEGUNDOS
+        _cache_cimd[client_id] = (time.monotonic() + duracion, uris)
         return uris
     return _cliente_dcr(db, client_id)
 
 
 def _redirect_valida(uri: str) -> bool:
+    if len(uri) > LARGO_MAX_REDIRECT:
+        return False
     partes = urlsplit(uri)
+    if partes.fragment:  # RFC 6749 §3.1.2: la redirect_uri no lleva fragmento.
+        return False
     if partes.scheme == "https" and partes.netloc:
         return True
     return partes.scheme == "http" and partes.hostname in HOSTS_LOOPBACK
@@ -109,7 +127,7 @@ def registrar_cliente(db: str, datos: dict) -> Optional[dict]:
     if not isinstance(datos, dict):
         return None
     uris = datos.get("redirect_uris")
-    if not isinstance(uris, list) or not uris:
+    if not isinstance(uris, list) or not uris or len(uris) > TOPE_REDIRECTS:
         return None
     if not all(isinstance(u, str) and _redirect_valida(u) for u in uris):
         return None
@@ -132,7 +150,8 @@ def registrar_cliente(db: str, datos: dict) -> Optional[dict]:
 
 def _podar(conn: sqlite3.Connection, ahora: str) -> None:
     """Si ya hay TOPE_CLIENTES, borra los más viejos que no tengan tokens vivos,
-    los justos para que entre uno más."""
+    los justos para que entre uno más. Si los TOPE_CLIENTES tienen tokens vivos no
+    se poda nada y el tope se excede a propósito: es mejor que rechazar un registro."""
     total = conn.execute("SELECT COUNT(*) FROM oauth_clientes").fetchone()[0]
     sobran = total - TOPE_CLIENTES + 1
     if sobran <= 0:
