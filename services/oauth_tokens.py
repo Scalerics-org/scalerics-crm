@@ -43,7 +43,7 @@ ULTIMO_USO_CADA = timedelta(minutes=1)
 # RFC 7636 §4.1: el verifier son 43 a 128 caracteres del alfabeto "unreserved";
 # el challenge S256 es un SHA-256 en base64url sin relleno, siempre de 43.
 _VERIFIER_RE = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
-_CHALLENGE_RE = re.compile(r"[A-Za-z0-9\-_]{43}")
+CHALLENGE_RE = re.compile(r"[A-Za-z0-9\-_]{43}")
 
 
 def _antes_de_revocar() -> None:
@@ -137,7 +137,7 @@ def verificar_pkce(code_verifier: str, code_challenge: str) -> bool:
     # silencio y `compare_digest` nunca recibe texto que no sea ASCII.
     if not _VERIFIER_RE.fullmatch(code_verifier or ""):
         return False
-    if not _CHALLENGE_RE.fullmatch(code_challenge or ""):
+    if not CHALLENGE_RE.fullmatch(code_challenge or ""):
         return False
     digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
     calculado = base64.urlsafe_b64encode(digest).rstrip(b"=")

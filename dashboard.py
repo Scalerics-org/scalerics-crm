@@ -97,6 +97,7 @@ button:hover{opacity:.9}
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="POST">
+    <input type="hidden" name="next" value="{{ next or '' }}">
     <label>Email</label>
     <input type="email" name="email" autocomplete="email" required autofocus>
     <label>Contraseña</label>
@@ -22048,6 +22049,12 @@ def create_app(db_path: str) -> Flask:
         from werkzeug.security import check_password_hash
         from database import get_user_by_email
         error = None
+        # Solo la pantalla de autorización del conector MCP puede pedir volver
+        # a algún lado después de entrar. Cualquier otro `next` se ignora: así
+        # el login no sirve para mandar a nadie a un sitio ajeno.
+        destino = request.args.get("next") or request.form.get("next") or ""
+        if not destino.startswith("/oauth/authorize"):
+            destino = ""
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
@@ -22056,9 +22063,9 @@ def create_app(db_path: str) -> Flask:
                 session["logged_in"] = True
                 session["user_id"] = user["id"]
                 session["user_name"] = user["name"]
-                return redirect(url_for("index"))
+                return redirect(destino or url_for("index"))
             error = "Email o contraseña incorrectos"
-        return render_template_string(LOGIN_HTML, error=error)
+        return render_template_string(LOGIN_HTML, error=error, next=destino)
 
     @app.route("/register", methods=["GET", "POST"])
     def register():

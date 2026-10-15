@@ -13,13 +13,13 @@ pide la sesión del CRM, porque ahí la persona autoriza a Claude.
 import hmac
 import secrets
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from flask import (Blueprint, current_app, jsonify, redirect, render_template_string,
                    request, session, url_for)
 
 from services import oauth_clientes, oauth_tokens
-from services.oauth_tokens import SCOPE_LECTURA, base_url, recurso_mcp
+from services.oauth_tokens import CHALLENGE_RE, SCOPE_LECTURA, base_url, recurso_mcp
 
 oauth_bp = Blueprint("oauth", __name__)
 
@@ -133,3 +133,142 @@ def registrar():
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+# ── autorización ─────────────────────────────────────────────────────────────
+
+class _ErrorPagina(Exception):
+    """No se puede confiar en la redirect_uri: se muestra la página, no se redirige."""
+
+
+class _ErrorRedirect(Exception):
+    def __init__(self, codigo: str, descripcion: str):
+        super().__init__(descripcion)
+        self.codigo, self.descripcion = codigo, descripcion
+
+
+def _validar_pedido(params) -> dict:
+    """Valida un pedido de autorización (GET o el form del POST, que repite los
+    mismos campos). Primero cliente y redirect, que deciden si se puede
+    redirigir; después el resto, que vuelve al cliente como error OAuth."""
+    client_id = (params.get("client_id") or "").strip()
+    redirect_uri = (params.get("redirect_uri") or "").strip()
+    registradas = oauth_clientes.redirect_uris_de(_db(), client_id)
+    if registradas is None:
+        raise _ErrorPagina("Cliente desconocido. Volvé a agregar el conector en Claude.")
+    if not oauth_clientes.redirect_permitido(redirect_uri, registradas):
+        raise _ErrorPagina("La dirección de vuelta no es una de las registradas por el cliente.")
+    if params.get("response_type") != "code":
+        raise _ErrorRedirect("unsupported_response_type", "Solo response_type=code")
+    challenge = (params.get("code_challenge") or "").strip()
+    if (not challenge or params.get("code_challenge_method") != "S256"
+            or not CHALLENGE_RE.fullmatch(challenge)):
+        raise _ErrorRedirect("invalid_request", "PKCE S256 es obligatorio")
+    scope = (params.get("scope") or SCOPE_LECTURA).strip()
+    if set(scope.split()) != {SCOPE_LECTURA}:
+        raise _ErrorRedirect("invalid_scope", f"El único scope es {SCOPE_LECTURA}")
+    resource = (params.get("resource") or recurso_mcp()).strip()
+    if resource != recurso_mcp():
+        raise _ErrorRedirect("invalid_target", f"El recurso es {recurso_mcp()}")
+    return {"client_id": client_id, "redirect_uri": redirect_uri, "challenge": challenge,
+            "scope": SCOPE_LECTURA, "resource": resource, "state": params.get("state") or ""}
+
+
+def _volver(redirect_uri: str, **campos):
+    sep = "&" if "?" in redirect_uri else "?"
+    return redirect(redirect_uri + sep + urlencode({k: v for k, v in campos.items() if v}))
+
+
+@oauth_bp.route("/oauth/authorize", methods=["GET", "POST"])
+def autorizar():
+    params = request.form if request.method == "POST" else request.args
+    try:
+        pedido = _validar_pedido(params)
+    except _ErrorPagina as e:
+        return render_template_string(ERROR_HTML, mensaje=str(e)), 400
+    except _ErrorRedirect as e:
+        redirect_uri = params.get("redirect_uri")
+        return _volver(redirect_uri, error=e.codigo, error_description=e.descripcion,
+                       state=params.get("state"))
+
+    if not session.get("logged_in") or not session.get("user_id"):
+        # Volver acá después de entrar. /login solo honra next si empieza con
+        # /oauth/authorize, así que no sirve para mandar a nadie a otro lado.
+        vuelta = request.full_path if request.method == "GET" else url_for("oauth.autorizar")
+        return redirect(url_for("login", next=vuelta))
+
+    if request.method == "GET":
+        nonce = secrets.token_urlsafe(16)
+        session["oauth_nonce"] = nonce
+        return render_template_string(
+            CONSENTIMIENTO_HTML, pedido=pedido, nonce=nonce,
+            usuario=session.get("user_name") or "",
+            host_destino=urlsplit(pedido["redirect_uri"]).netloc)
+
+    esperado = session.pop("oauth_nonce", None)
+    if not esperado or not hmac.compare_digest(esperado, request.form.get("nonce", "")):
+        return render_template_string(ERROR_HTML, mensaje="El formulario venció. Volvé a intentar desde Claude."), 403
+    if request.form.get("accion") != "autorizar":
+        return _volver(pedido["redirect_uri"], error="access_denied",
+                       error_description="La persona canceló", state=pedido["state"])
+    code = oauth_tokens.emitir_codigo(_db(), session["user_id"], pedido["client_id"],
+                                      pedido["redirect_uri"], pedido["challenge"],
+                                      pedido["scope"], pedido["resource"])
+    return _volver(pedido["redirect_uri"], code=code, state=pedido["state"])
+
+
+_ESTILO = """
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:40px 36px;width:420px;max-width:92vw}
+.logo-wrap{margin-bottom:24px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.logo-wrap img{height:44px;object-fit:contain}
+.logo-sub{font-size:.75rem;color:#475569}
+h1{font-size:1.1rem;margin-bottom:12px}
+p{font-size:.9rem;color:#94a3b8;line-height:1.5;margin-bottom:12px}
+ul{margin:0 0 18px 18px;font-size:.9rem;color:#cbd5e1}
+.host{font-family:monospace;color:#e2e8f0}
+.botones{display:flex;gap:10px;margin-top:8px}
+button{flex:1;font-size:.88rem;font-weight:700;padding:12px;border-radius:8px;border:none;cursor:pointer;font-family:'Inter',sans-serif}
+.ok{background:linear-gradient(135deg,#0088cc,#3db648);color:#fff}
+.no{background:#1e293b;color:#cbd5e1}
+"""
+
+CONSENTIMIENTO_HTML = """<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Scalerics — Autorizar a Claude</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>""" + _ESTILO + """</style></head>
+<body><div class="card">
+  <div class="logo-wrap">
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <span class="logo-sub">CRM interno</span>
+  </div>
+  <h1>Claude quiere entrar al CRM como {{ usuario }}</h1>
+  <p>Si autorizás, Claude va a poder, en tu nombre:</p>
+  <ul>
+    <li>Leer leads y el pipeline (buscar, ver fichas, historial)</li>
+  </ul>
+  <p>No va a poder modificar nada. Cada consulta queda registrada con tu usuario.</p>
+  <p>Después de autorizar vas a volver a <span class="host">{{ host_destino }}</span>.</p>
+  <form method="POST" action="/oauth/authorize">
+    {% for k in ("response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope", "resource") %}
+    <input type="hidden" name="{{ k }}" value="{{ request.values.get(k, '') }}">
+    {% endfor %}
+    <input type="hidden" name="nonce" value="{{ nonce }}">
+    <div class="botones">
+      <button class="no" type="submit" name="accion" value="cancelar">Cancelar</button>
+      <button class="ok" type="submit" name="accion" value="autorizar">Autorizar</button>
+    </div>
+  </form>
+</div></body></html>"""
+
+ERROR_HTML = """<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Scalerics — No se pudo autorizar</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>""" + _ESTILO + """</style></head>
+<body><div class="card">
+  <h1>No se pudo autorizar a Claude</h1>
+  <p>{{ mensaje }}</p>
+</div></body></html>"""

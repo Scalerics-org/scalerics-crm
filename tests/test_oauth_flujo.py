@@ -195,3 +195,139 @@ def test_issuer_sin_barra_final_aunque_crm_url_la_tenga(anonimo, monkeypatch):
     m = anonimo.get("/.well-known/oauth-authorization-server").get_json()
     assert m["issuer"] == BASE
     assert m["token_endpoint"] == BASE + "/oauth/token"
+
+
+# ── autorización ─────────────────────────────────────────────────────────────
+
+def _params_authorize(client_id, challenge, **extra):
+    p = {"response_type": "code", "client_id": client_id, "redirect_uri": CALLBACK,
+         "code_challenge": challenge, "code_challenge_method": "S256",
+         "state": "abc123", "scope": "crm:leer", "resource": BASE + "/mcp"}
+    p.update(extra)
+    return p
+
+
+def _query(url):
+    return {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}
+
+
+def test_authorize_sin_sesion_manda_al_login_con_next(anonimo):
+    cid = _registrar(anonimo)
+    _, ch = _pkce()
+    r = anonimo.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch)))
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith("/login?next=")
+    # Werkzeug deja "/" y "?" sin escapar en el valor; lo que importa es que
+    # al decodificar vuelva el pedido completo.
+    siguiente = _query(r.headers["Location"])["next"]
+    assert siguiente.startswith("/oauth/authorize?")
+    assert f"client_id={cid}" in siguiente and "state=abc123" in siguiente
+
+
+def test_authorize_con_sesion_muestra_consentimiento(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch)))
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Ana" in html
+    assert "claude.ai" in html          # el host de destino, visible
+    assert 'name="nonce"' in html
+    assert "leer leads" in html.lower()
+
+
+def test_cliente_desconocido_no_redirige(logueado):
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(_params_authorize("no-existe", ch)))
+    assert r.status_code == 400
+    assert "Location" not in r.headers
+
+
+def test_redirect_ajena_no_redirige(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(
+        _params_authorize(cid, ch, redirect_uri="https://evil.test/cb")))
+    assert r.status_code == 400
+    assert "Location" not in r.headers
+
+
+@pytest.mark.parametrize("cambio, error", [
+    ({"response_type": "token"}, "unsupported_response_type"),
+    ({"code_challenge": ""}, "invalid_request"),
+    ({"code_challenge": "corto"}, "invalid_request"),
+    ({"code_challenge_method": "plain"}, "invalid_request"),
+    ({"scope": "crm:escribir"}, "invalid_scope"),
+    ({"resource": "https://otro.test/mcp"}, "invalid_target"),
+])
+def test_errores_de_parametros_vuelven_al_redirect_con_state(logueado, cambio, error):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch, **cambio)))
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith(CALLBACK + "?")
+    q = _query(r.headers["Location"])
+    assert q["error"] == error and q["state"] == "abc123"
+
+
+def _autorizar(c, cid, challenge, accion="autorizar"):
+    r = c.get("/oauth/authorize?" + urlencode(_params_authorize(cid, challenge)))
+    html = r.get_data(as_text=True)
+    nonce = html.split('name="nonce" value="')[1].split('"')[0]
+    form = _params_authorize(cid, challenge)
+    form.update({"nonce": nonce, "accion": accion})
+    return c.post("/oauth/authorize", data=form)
+
+
+def test_autorizar_devuelve_code_y_state(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = _autorizar(logueado, cid, ch)
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith(CALLBACK + "?")
+    q = _query(r.headers["Location"])
+    assert q["code"] and q["state"] == "abc123"
+
+
+def test_cancelar_devuelve_access_denied(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    r = _autorizar(logueado, cid, ch, accion="cancelar")
+    q = _query(r.headers["Location"])
+    assert q["error"] == "access_denied" and q["state"] == "abc123"
+
+
+def test_post_sin_nonce_valido_es_403(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    logueado.get("/oauth/authorize?" + urlencode(_params_authorize(cid, ch)))
+    form = _params_authorize(cid, ch)
+    form.update({"nonce": "inventado", "accion": "autorizar"})
+    r = logueado.post("/oauth/authorize", data=form)
+    assert r.status_code == 403
+
+
+def test_post_sin_sesion_es_302_al_login(anonimo):
+    cid = _registrar(anonimo)
+    _, ch = _pkce()
+    form = _params_authorize(cid, ch)
+    form.update({"nonce": "x", "accion": "autorizar"})
+    r = anonimo.post("/oauth/authorize", data=form)
+    assert r.status_code == 302 and r.headers["Location"].startswith("/login")
+
+
+# ── next en /login ───────────────────────────────────────────────────────────
+
+def test_login_vuelve_a_authorize_despues_de_entrar(anonimo, uid):
+    destino = "/oauth/authorize?client_id=x&state=1"
+    r = anonimo.post("/login?next=" + destino.replace("?", "%3F").replace("&", "%26"),
+                     data={"email": "ana@scalerics.com", "password": "x" * 10})
+    assert r.status_code == 302
+    assert r.headers["Location"] == destino
+
+
+def test_login_ignora_next_que_no_sea_authorize(anonimo, uid):
+    for malo in ("https://evil.test/", "//evil.test/", "/admin/users"):
+        r = anonimo.post("/login?next=" + malo, data={"email": "ana@scalerics.com", "password": "x" * 10})
+        assert r.status_code == 302
+        assert r.headers["Location"] in ("/", "http://localhost/")
