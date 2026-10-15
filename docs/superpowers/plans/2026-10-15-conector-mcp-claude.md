@@ -2232,7 +2232,10 @@ def _buscar_leads(db: str, texto: str, limite: int) -> dict:
     28-8-2026). Se pide uno de más para saber si hay más."""
     patron = f"%{texto.strip().lower()}%"
     solo_digitos = "".join(c for c in texto if c.isdigit())
-    patron_tel = f"%{solo_digitos}%" if solo_digitos else "\x00"  # nunca matchea
+    # Sin dígitos no se busca por teléfono: LIKE NULL nunca matchea. (Un " "
+    # como patrón no sirve: SQLite lo corta ahí, queda vacío y matchea los
+    # teléfonos NULL.)
+    patron_tel = f"%{solo_digitos}%" if solo_digitos else None
     conn = _connect(db)
     try:
         filas = conn.execute(_SQL_BUSCAR, (patron, patron, patron_tel, limite + 1)).fetchall()
@@ -2573,7 +2576,8 @@ def test_get_y_delete_son_405(app):
 def test_vendedor_de_fidelidad_es_403(app, sembrada, juan):
     from services.fidelidad import ROL_VENDEDOR
     conn = sqlite3.connect(sembrada)
-    rid = conn.execute("INSERT INTO roles (name, panel_access) VALUES (?, '[]')", (ROL_VENDEDOR,)).lastrowid
+    # init_fidelidad ya crea el rol: se busca, no se inserta.
+    rid = conn.execute("SELECT id FROM roles WHERE name = ?", (ROL_VENDEDOR,)).fetchone()[0]
     conn.execute("UPDATE users SET role_id = ? WHERE id = ?", (rid, juan))
     conn.commit()
     conn.close()

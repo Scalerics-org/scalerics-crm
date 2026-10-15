@@ -349,3 +349,149 @@ def test_validar_null_explicito():
 
 def test_validar_guarda_el_texto_sin_espacios_de_los_bordes():
     assert mt.validar_argumentos(_schema("buscar_leads"), {"texto": "  espiga "})["texto"] == "espiga"
+
+
+# ── POST /mcp ────────────────────────────────────────────────────────────────
+
+WWW_AUTH = ('Bearer resource_metadata="https://crm.test/.well-known/oauth-protected-resource/mcp", '
+            'scope="crm:leer"')
+
+
+@pytest.fixture
+def app(sembrada):
+    a = dashboard.create_app(sembrada)
+    a.config["TESTING"] = True
+    return a
+
+
+def _token_de(db, uid):
+    import base64, hashlib, secrets
+    verifier = secrets.token_urlsafe(40)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    code = ot.emitir_codigo(db, uid, "cli", "https://r/cb", challenge, "crm:leer", "https://crm.test/mcp")
+    return ot.canjear_codigo(db, code, "cli", "https://r/cb", verifier)["access_token"]
+
+
+@pytest.fixture
+def claude(app, sembrada, ana):
+    """Un test_client que manda el Bearer de Ana en cada request."""
+    token = _token_de(sembrada, ana)
+    c = app.test_client()
+    def post(cuerpo, raw=None):
+        return c.post("/mcp", data=raw if raw is not None else json.dumps(cuerpo),
+                      content_type="application/json",
+                      headers={"Authorization": f"Bearer {token}",
+                               "Accept": "application/json, text/event-stream"})
+    return post
+
+
+def _rpc(metodo, params=None, id_=1):
+    cuerpo = {"jsonrpc": "2.0", "method": metodo, "id": id_}
+    if params is not None:
+        cuerpo["params"] = params
+    return cuerpo
+
+
+def test_sin_bearer_es_401_con_www_authenticate(app):
+    r = app.test_client().post("/mcp", json=_rpc("initialize"))
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == WWW_AUTH
+    assert r.get_json()["error"] == "invalid_token"
+
+
+def test_bearer_invalido_es_401(app):
+    r = app.test_client().post("/mcp", json=_rpc("ping"), headers={"Authorization": "Bearer nada"})
+    assert r.status_code == 401 and r.headers["WWW-Authenticate"] == WWW_AUTH
+
+
+def test_get_y_delete_son_405(app):
+    assert app.test_client().get("/mcp").status_code == 405
+    assert app.test_client().delete("/mcp").status_code == 405
+
+
+def test_vendedor_de_fidelidad_es_403(app, sembrada, juan):
+    from services.fidelidad import ROL_VENDEDOR
+    conn = sqlite3.connect(sembrada)
+    # init_fidelidad ya crea el rol: se busca, no se inserta.
+    rid = conn.execute("SELECT id FROM roles WHERE name = ?", (ROL_VENDEDOR,)).fetchone()[0]
+    conn.execute("UPDATE users SET role_id = ? WHERE id = ?", (rid, juan))
+    conn.commit()
+    conn.close()
+    token = _token_de(sembrada, juan)
+    r = app.test_client().post("/mcp", json=_rpc("ping"), headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403
+
+
+def test_initialize(claude):
+    r = claude(_rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                   "clientInfo": {"name": "claude", "version": "1"}}))
+    assert r.status_code == 200
+    res = r.get_json()["result"]
+    assert res["protocolVersion"] == "2025-06-18"
+    assert res["capabilities"] == {"tools": {}}
+    assert res["serverInfo"]["name"] == "scalerics-crm"
+    assert "instructions" in res
+
+
+def test_initialize_version_desconocida_cae_a_la_nuestra(claude):
+    r = claude(_rpc("initialize", {"protocolVersion": "2099-01-01", "capabilities": {},
+                                   "clientInfo": {"name": "x", "version": "1"}}))
+    assert r.get_json()["result"]["protocolVersion"] == "2025-06-18"
+
+
+def test_notificacion_es_202_sin_cuerpo(claude):
+    r = claude({"jsonrpc": "2.0", "method": "notifications/initialized"})
+    assert r.status_code == 202 and r.get_data() == b""
+
+
+def test_ping(claude):
+    r = claude(_rpc("ping", id_="p1"))
+    assert r.get_json() == {"jsonrpc": "2.0", "id": "p1", "result": {}}
+
+
+def test_tools_list(claude):
+    r = claude(_rpc("tools/list"))
+    nombres = [t["name"] for t in r.get_json()["result"]["tools"]]
+    assert nombres == ["buscar_leads", "ver_lead", "pipeline"]
+
+
+def test_tools_call(claude):
+    r = claude(_rpc("tools/call", {"name": "ver_lead", "arguments": {"lead_id": 1}}))
+    res = r.get_json()["result"]
+    assert res["isError"] is False
+    assert json.loads(res["content"][0]["text"])["nombre"] == "Panadería La Espiga"
+
+
+def test_tools_call_argumentos_invalidos_es_32602(claude):
+    r = claude(_rpc("tools/call", {"name": "ver_lead", "arguments": {"lead_id": "1"}}))
+    assert r.status_code == 200
+    err = r.get_json()["error"]
+    assert err["code"] == -32602 and "lead_id" in err["message"]
+
+
+def test_tools_call_herramienta_desconocida_es_32602(claude):
+    r = claude(_rpc("tools/call", {"name": "borrar", "arguments": {}}))
+    assert r.get_json()["error"]["code"] == -32602
+
+
+def test_metodo_desconocido_es_32601(claude):
+    r = claude(_rpc("resources/list"))
+    assert r.get_json()["error"]["code"] == -32601
+
+
+def test_batch_es_400(claude):
+    r = claude(None, raw=json.dumps([_rpc("ping")]))
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == -32600
+
+
+def test_cuerpo_no_json_es_400(claude):
+    r = claude(None, raw="{no es json")
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == -32700
+
+
+def test_cada_call_queda_registrada_con_el_usuario(claude, sembrada, ana):
+    claude(_rpc("tools/call", {"name": "buscar_leads", "arguments": {"texto": "norte"}}))
+    conn = sqlite3.connect(sembrada)
+    fila = conn.execute("SELECT user_id, user_name, herramienta FROM mcp_llamadas ORDER BY id DESC LIMIT 1").fetchone()
+    conn.close()
+    assert fila == (ana, "Ana", "buscar_leads")
