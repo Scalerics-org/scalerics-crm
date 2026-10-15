@@ -129,3 +129,34 @@ def test_ejecutar_registra_la_llamada(sembrada, ana):
     assert fila[0] == ana and fila[1] == "Ana" and fila[2] == "buscar_leads"
     assert json.loads(fila[3]) == {"texto": "espiga", "limite": 10}
     assert fila[4] == 1 and fila[5] >= 0
+
+
+# ── buscar_leads ─────────────────────────────────────────────────────────────
+
+def _texto(r):
+    return json.loads(r["content"][0]["text"])
+
+
+def test_buscar_por_nombre_sin_archivados(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "espiga"}))
+    assert [l["id"] for l in r["leads"]] == [1, 3]
+    assert r["leads"][0] == {"id": 1, "nombre": "Panadería La Espiga", "etapa": "demo_1",
+                             "telefono": "099111222", "email": "espiga@mail.com",
+                             "ciudad": "Montevideo", "rubro": "panaderia", "origen": "meta",
+                             "ultimo_evento_at": "2026-10-01 10:00:00"}
+
+
+def test_buscar_por_mail_y_telefono(sembrada, ana):
+    u = {"id": ana, "name": "Ana"}
+    assert [l["id"] for l in _texto(mt.ejecutar(sembrada, u, "buscar_leads", {"texto": "BAR@mail"}))["leads"]] == [3]
+    assert [l["id"] for l in _texto(mt.ejecutar(sembrada, u, "buscar_leads", {"texto": "099 333-444"}))["leads"]] == [2]
+
+
+def test_buscar_respeta_limite_y_lo_dice(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "espiga", "limite": 1}))
+    assert len(r["leads"]) == 1 and r["hay_mas"] is True
+
+
+def test_buscar_sin_resultados(sembrada, ana):
+    r = _texto(mt.ejecutar(sembrada, {"id": ana, "name": "Ana"}, "buscar_leads", {"texto": "zzz"}))
+    assert r == {"leads": [], "hay_mas": False}

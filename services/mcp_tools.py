@@ -137,8 +137,36 @@ def _descripcion_pipeline() -> str:
             f"Etapas válidas: {lineas}.")
 
 
+_SQL_BUSCAR = (
+    "SELECT id, name, crm_status, phone, email, city, category, source, last_event_at "
+    "FROM businesses "
+    "WHERE archivado_en IS NULL AND ("
+    "  lower(name) LIKE ? OR lower(email) LIKE ? "
+    "  OR replace(replace(replace(coalesce(phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?) "
+    "ORDER BY CASE WHEN score IS NULL THEN 1 ELSE 0 END, score DESC, scraped_at DESC, id "
+    "LIMIT ?"
+)
+
+
+def _fila_lead(f) -> dict:
+    return {"id": f["id"], "nombre": f["name"], "etapa": f["crm_status"], "telefono": f["phone"],
+            "email": f["email"], "ciudad": f["city"], "rubro": f["category"],
+            "origen": f["source"], "ultimo_evento_at": f["last_event_at"]}
+
+
 def _buscar_leads(db: str, texto: str, limite: int) -> dict:
-    return {}
+    """LIKE sobre nombre, mail y teléfono, con LIMIT en SQL. No se usa
+    `get_all_businesses` porque trae la tabla entera a memoria (incidente del
+    28-8-2026). Se pide uno de más para saber si hay más."""
+    patron = f"%{texto.strip().lower()}%"
+    solo_digitos = "".join(c for c in texto if c.isdigit())
+    patron_tel = f"%{solo_digitos}%" if solo_digitos else "\x00"  # nunca matchea
+    conn = _connect(db)
+    try:
+        filas = conn.execute(_SQL_BUSCAR, (patron, patron, patron_tel, limite + 1)).fetchall()
+    finally:
+        conn.close()
+    return {"leads": [_fila_lead(f) for f in filas[:limite]], "hay_mas": len(filas) > limite}
 
 
 def _ver_lead(db: str, lead_id: int) -> dict:
