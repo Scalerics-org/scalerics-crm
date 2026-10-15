@@ -299,6 +299,8 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     client_id        TEXT NOT NULL,
+    codigo_hash      TEXT,                -- de qué código nació: un código
+                                          -- reusado revoca toda su familia
     access_hash      TEXT NOT NULL UNIQUE,
     refresh_hash     TEXT NOT NULL UNIQUE,
     scope            TEXT NOT NULL,
@@ -322,6 +324,12 @@ CREATE TABLE IF NOT EXISTS mcp_llamadas (
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+`database._connect` no activa `PRAGMA foreign_keys`, así que el `ON DELETE
+CASCADE` no corre en producción. Lo que protege es que toda búsqueda de
+código o token hace `JOIN users`: un usuario borrado no valida, no refresca
+ni canjea. Un refresh ya rotado que vuelve a presentarse revoca su familia,
+igual que un código reusado.
 
 Fechas en ISO 8601 UTC, como `password_reset_tokens`. Los códigos vencidos y
 los tokens con refresh vencido hace más de 30 días se borran en un barrido al
