@@ -604,3 +604,14 @@ def test_authorize_get_sin_sesion_no_resuelve_el_cliente(anonimo, monkeypatch):
         _params_authorize("https://claude.ai/oauth/mcp-oauth-client-metadata", "x" * 43)))
     assert r.status_code == 302 and r.headers["Location"].startswith("/login?next=")
     assert llamadas == []
+
+
+def test_authorize_post_sin_sesion_tampoco_resuelve_el_cliente(anonimo, monkeypatch):
+    """Lo mismo por POST: la sesión se pide antes de mirar el client_id."""
+    llamadas = []
+    monkeypatch.setattr(oc, "redirect_uris_de", lambda *a: llamadas.append(a))
+    form = _params_authorize("https://claude.ai/oauth/mcp-oauth-client-metadata", "x" * 43)
+    form.update({"nonce": "x", "accion": "autorizar"})
+    r = anonimo.post("/oauth/authorize", data=form)
+    assert r.status_code == 302 and r.headers["Location"].startswith("/login")
+    assert llamadas == []
