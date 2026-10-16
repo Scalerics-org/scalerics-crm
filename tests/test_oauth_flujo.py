@@ -30,12 +30,12 @@ def _pkce():
 
 
 @pytest.fixture(autouse=True)
-def _sin_registros_previos():
-    """El tope de registros por IP vive en memoria del proceso: que un test no
-    herede las altas de otro."""
-    oauth_ruta._REGISTROS_POR_IP.clear()
+def _sin_contadores_previos():
+    """Los topes por IP viven en memoria del proceso: que un test no herede
+    los registros ni las autorizaciones de otro."""
+    oauth_ruta._CONTADORES.clear()
     yield
-    oauth_ruta._REGISTROS_POR_IP.clear()
+    oauth_ruta._CONTADORES.clear()
 
 
 @pytest.fixture
@@ -176,11 +176,46 @@ def test_register_tope_por_ip_y_se_libera_con_la_ventana(anonimo, monkeypatch):
 
 def test_register_el_mapa_de_ips_no_crece_sin_limite(anonimo):
     cuerpo = {"client_name": "Claude", "redirect_uris": [CALLBACK]}
-    for i in range(oauth_ruta.MAX_IPS_REGISTRO + 5):
+    for i in range(oauth_ruta.MAX_CLAVES_CONTADAS + 5):
         r = anonimo.post("/oauth/register", json=cuerpo,
                          headers={"Fly-Client-IP": f"10.{i // 250}.{i % 250}.1"})
         assert r.status_code == 201
-    assert len(oauth_ruta._REGISTROS_POR_IP) <= oauth_ruta.MAX_IPS_REGISTRO
+    assert len(oauth_ruta._CONTADORES) <= oauth_ruta.MAX_CLAVES_CONTADAS
+
+
+def test_tope_lleno_poda_vencidas_y_si_no_descarta_la_nueva_sin_contarla(monkeypatch):
+    """Antes se vaciaba todo el mapa al llenarse, y una ráfaga de IPs distintas
+    reseteaba el contador de la IP que estaba por pasarse. Ahora se podan solo
+    las vencidas; si sigue lleno, la clave nueva pasa pero no se anota."""
+    ahora = [1_000_000.0]
+    monkeypatch.setattr(oauth_ruta, "time", SimpleNamespace(time=lambda: ahora[0]))
+    tope, ventana = 2, 100
+    for i in range(oauth_ruta.MAX_CLAVES_CONTADAS):
+        assert oauth_ruta._dentro_del_tope(f"vieja-{i}", tope, ventana)
+    # La IP que ya consumió su tope sigue bloqueada aunque lleguen claves nuevas.
+    assert oauth_ruta._dentro_del_tope("vieja-0", tope, ventana)
+    assert not oauth_ruta._dentro_del_tope("vieja-0", tope, ventana)
+    assert oauth_ruta._dentro_del_tope("nueva", tope, ventana)
+    assert "nueva" not in oauth_ruta._CONTADORES
+    assert not oauth_ruta._dentro_del_tope("vieja-0", tope, ventana)
+    assert len(oauth_ruta._CONTADORES) == oauth_ruta.MAX_CLAVES_CONTADAS
+    # Pasada la ventana, las vencidas se van y la nueva entra y se cuenta.
+    ahora[0] += ventana + 1
+    assert oauth_ruta._dentro_del_tope("nueva", tope, ventana)
+    assert list(oauth_ruta._CONTADORES) == ["nueva"]
+
+
+@pytest.mark.parametrize("ip, clave", [
+    ("203.0.113.9", "203.0.113.9"),
+    ("2001:db8:abcd:12::1", "2001:db8:abcd:12::/64"),
+    ("2001:db8:abcd:12:ffff:ffff:ffff:ffff", "2001:db8:abcd:12::/64"),
+    ("::ffff:203.0.113.9", "203.0.113.9"),
+    ("desconocida", "desconocida"),
+])
+def test_clave_de_ip_agrupa_ipv6_por_64(ip, clave):
+    """Un /64 de IPv6 es lo que un proveedor le da a un solo abonado: contar
+    por dirección completa daría claves infinitas gratis."""
+    assert oauth_ruta._clave_de_ip(ip) == clave
 
 
 # ── el candado de sesión sigue en pie fuera de lo nuestro ────────────────────
@@ -223,6 +258,68 @@ def test_authorize_sin_sesion_manda_al_login_con_next(anonimo):
     siguiente = _query(r.headers["Location"])["next"]
     assert siguiente.startswith("/oauth/authorize?")
     assert f"client_id={cid}" in siguiente and "state=abc123" in siguiente
+
+
+def test_authorize_tope_por_ip_devuelve_429_con_pagina_y_retry_after(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    url = "/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+    for _ in range(oauth_ruta.TOPE_AUTORIZACIONES_POR_IP):
+        assert logueado.get(url).status_code == 200
+    r = logueado.get(url)
+    assert r.status_code == 429
+    assert r.headers["Retry-After"] == str(oauth_ruta.VENTANA_AUTORIZACIONES_SEG)
+    assert "Location" not in r.headers
+    assert "No se pudo autorizar" in r.get_data(as_text=True)
+    assert "Demasiados intentos" in r.get_data(as_text=True)
+
+
+def test_authorize_post_tambien_cuenta_para_el_tope(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    form = _params_authorize(cid, ch)
+    form.update({"nonce": "x", "accion": "autorizar"})
+    for _ in range(oauth_ruta.TOPE_AUTORIZACIONES_POR_IP):
+        # Sin nonce válido es 403, pero el intento igual se cuenta.
+        assert logueado.post("/oauth/authorize", data=form).status_code == 403
+    r = logueado.post("/oauth/authorize", data=form)
+    assert r.status_code == 429 and "Location" not in r.headers
+
+
+def test_authorize_tope_no_resuelve_el_cliente_una_vez_pasado(logueado, monkeypatch):
+    """El tope existe para que un usuario logueado no pueda hacer que el CRM
+    descargue CIMD sin parar: al pasarse, ni se mira el client_id."""
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    url = "/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+    for _ in range(oauth_ruta.TOPE_AUTORIZACIONES_POR_IP):
+        logueado.get(url)
+    llamadas = []
+    monkeypatch.setattr(oc, "redirect_uris_de", lambda *a: llamadas.append(a))
+    assert logueado.get(url).status_code == 429
+    assert llamadas == []
+
+
+def test_authorize_dos_ipv6_del_mismo_64_comparten_el_contador(logueado):
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    url = "/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+    for _ in range(oauth_ruta.TOPE_AUTORIZACIONES_POR_IP):
+        assert logueado.get(url, headers={"Fly-Client-IP": "2001:db8:1:2::1"}).status_code == 200
+    assert logueado.get(url, headers={"Fly-Client-IP": "2001:db8:1:2:dead:beef::7"}).status_code == 429
+    # Otro /64 no se ve afectado.
+    assert logueado.get(url, headers={"Fly-Client-IP": "2001:db8:1:3::1"}).status_code == 200
+
+
+def test_authorize_el_tope_no_se_mezcla_con_el_de_registro(logueado):
+    """Registrar y autorizar se cuentan aparte: agotar uno no bloquea el otro."""
+    cid = _registrar(logueado)
+    _, ch = _pkce()
+    url = "/oauth/authorize?" + urlencode(_params_authorize(cid, ch))
+    for _ in range(oauth_ruta.TOPE_AUTORIZACIONES_POR_IP):
+        logueado.get(url)
+    assert logueado.get(url).status_code == 429
+    assert logueado.post("/oauth/register", json={"redirect_uris": [CALLBACK]}).status_code == 201
 
 
 def test_authorize_con_sesion_muestra_consentimiento(logueado):
