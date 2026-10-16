@@ -270,6 +270,12 @@ como las demás páginas sueltas del CRM.
   transacción.
 - Respuesta: `{access_token, token_type: "Bearer", expires_in: 3600,
   refresh_token, scope}`. Access dura 1 hora, refresh 30 días.
+- Vida máxima de una familia: todo lo que nace de un mismo código vive como
+  mucho 90 días desde el canje (`familia_en`). Cada rotación hereda
+  `familia_en`, y el refresh nuevo vence en
+  `min(ahora + 30 días, familia_en + 90 días)`. Sin este tope el refresh era
+  deslizante: un refresh robado que se siguiera rotando no vencía nunca.
+  Pasados los 90 días la persona vuelve a autorizar a Claude.
 - Tokens opacos: 32 bytes aleatorios en urlsafe. En la base se guarda solo
   `SHA-256` del token; la búsqueda es por hash. Un volcado de la base no sirve
   para entrar.
@@ -316,6 +322,8 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     refresh_expira   TEXT NOT NULL,
     ultimo_uso       TEXT,
     revocado_en      TEXT,
+    familia_en       TEXT,                -- canje del código de la familia:
+                                          -- el refresh no pasa de +90 días
     created_at       TEXT NOT NULL
 );
 

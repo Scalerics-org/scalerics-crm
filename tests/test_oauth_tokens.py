@@ -277,3 +277,56 @@ def test_cambiar_la_contrasena_revoca_los_tokens_y_borra_los_codigos(db, uid):
                             (uid,)).fetchone()[0] == 0
     finally:
         conn.close()
+
+
+# ── vida máxima de una familia ───────────────────────────────────────────────
+
+def _familia_refrescada_hasta(db, uid, monkeypatch, inicio, dias):
+    """Canjea en `inicio` y refresca una vez por día hasta el día `dias`
+    inclusive. Devuelve el último par vivo."""
+    monkeypatch.setattr(ot, "_ahora", lambda: inicio)
+    tokens = _tokens(db, uid)
+    for dia in range(1, dias + 1):
+        monkeypatch.setattr(ot, "_ahora", lambda d=dia: inicio + timedelta(days=d))
+        tokens = ot.refrescar(db, tokens["refresh_token"], "cli")
+        assert tokens is not None, f"el refresh del día {dia} tendría que valer"
+    return tokens
+
+
+def test_familia_refrescada_todos_los_dias_sigue_valiendo_al_dia_89(db, uid, monkeypatch):
+    inicio = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    tokens = _familia_refrescada_hasta(db, uid, monkeypatch, inicio, 89)
+    assert ot.validar_access(db, tokens["access_token"]) is not None
+
+
+def test_familia_refrescada_todos_los_dias_no_vale_al_dia_91(db, uid, monkeypatch):
+    inicio = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    tokens = _familia_refrescada_hasta(db, uid, monkeypatch, inicio, 89)
+    monkeypatch.setattr(ot, "_ahora", lambda: inicio + timedelta(days=91))
+    assert ot.refrescar(db, tokens["refresh_token"], "cli") is None
+
+
+def test_el_refresh_nunca_vence_despues_de_los_90_dias_de_la_familia(db, uid, monkeypatch):
+    inicio = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    _familia_refrescada_hasta(db, uid, monkeypatch, inicio, 89)
+    conn = sqlite3.connect(db)
+    try:
+        familia_en, refresh_expira = conn.execute(
+            "SELECT familia_en, refresh_expira FROM oauth_tokens "
+            "WHERE revocado_en IS NULL").fetchone()
+    finally:
+        conn.close()
+    # La familia nació en el canje y cada rotación la hereda.
+    assert familia_en == ot._iso(inicio)
+    # Al día 89 quedan 30 días de refresh pero solo 1 de familia: manda la familia.
+    assert refresh_expira == ot._iso(inicio + ot.FAMILIA_DURA)
+
+
+def test_un_canje_nuevo_arranca_una_familia_nueva(db, uid, monkeypatch):
+    inicio = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    _familia_refrescada_hasta(db, uid, monkeypatch, inicio, 89)
+    # Volver a autorizar en Claude al día 89 arranca de cero: 30 días de refresh.
+    monkeypatch.setattr(ot, "_ahora", lambda: inicio + timedelta(days=89))
+    nuevos = _tokens(db, uid)
+    monkeypatch.setattr(ot, "_ahora", lambda: inicio + timedelta(days=100))
+    assert ot.refrescar(db, nuevos["refresh_token"], "cli") is not None
