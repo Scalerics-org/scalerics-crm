@@ -5129,6 +5129,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-tarjeta" onclick="finVista('tarjeta')">Cobro con tarjeta</button>
+        <button class="pill" id="fin-tab-cobros" onclick="finVista('cobros')">Cobros y pagos</button>
         <button class="pill" id="fin-tab-esenciales" onclick="finVista('esenciales')">Gastos esenciales</button>
         <button class="pill" id="fin-tab-aportes" onclick="finVista('aportes')">Aportes</button>
         <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
@@ -5165,6 +5166,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-kpis" id="fin-fijos-totales"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
+    </div>
+
+    <div id="fin-vista-cobros" style="display:none">
+      <div class="fin-kpis" id="fin-cobros-totales"></div>
+      <div class="fin-split">
+        <div class="fin-card"><div class="fin-card-title">Ingresos sin cobrar</div>
+          <div id="fin-cobros-ingresos"></div></div>
+        <div class="fin-card"><div class="fin-card-title">Egresos sin pagar</div>
+          <div id="fin-cobros-egresos"></div></div>
+      </div>
+      <div class="fin-card"><div class="fin-card-title">Ya cobrado y pagado</div>
+        <div id="fin-cobros-hechos"></div></div>
     </div>
 
     <div id="fin-vista-esenciales" style="display:none">
@@ -13185,7 +13198,7 @@ function _funnelBars(items, stateLabels, stateColors) {
 
 // ========== Finanzas panel ==========
 // Pauta salió de Finanzas el 1/10 (Juan); en su lugar van Gastos esenciales y Aportes.
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'esenciales', 'aportes', 'iva', 'tarjeta', 'balance'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'esenciales', 'aportes', 'iva', 'tarjeta', 'cobros', 'balance'];
 
 // ── Finanzas en solo lectura (el Contador) ──
 // No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
@@ -13217,15 +13230,19 @@ function _finRangoCambio() {
 // En Gastos esenciales el botón grande carga un gasto esencial, no un
 // movimiento (Juan, 1/10: lo cargaba ahí arriba y terminaba en Movimientos).
 // Los esenciales son solo para ver: nunca generan movimientos.
+// En Fijos, lo mismo con un fijo (Juan, 16/10: cargó un ingreso fijo con el
+// botón grande, se guardó como movimiento suelto y no aparecía en Fijos).
 let _finVistaActual = 'movimientos';
 function _finBotonNuevo() {
   if (_finVistaActual === 'esenciales') abrirEsencial();
+  else if (_finVistaActual === 'fijos') abrirFijo();
   else abrirMovimiento();
 }
 
 function finVista(cual) {
   _finVistaActual = cual;
-  document.getElementById('fin-btn-movimiento-txt').textContent = cual === 'esenciales' ? 'Gasto esencial' : 'Movimiento';
+  document.getElementById('fin-btn-movimiento-txt').textContent =
+    cual === 'esenciales' ? 'Gasto esencial' : cual === 'fijos' ? 'Fijo' : 'Movimiento';
   FIN_VISTAS.forEach(v => {
     document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
   });
@@ -13236,6 +13253,7 @@ function finVista(cual) {
   document.getElementById('fin-tab-aportes').classList.toggle('active', cual === 'aportes');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-tarjeta').classList.toggle('active', cual === 'tarjeta');
+  document.getElementById('fin-tab-cobros').classList.toggle('active', cual === 'cobros');
   document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
   // El Balance tiene su propio periodo (Este año / Desde el inicio /
   // Personalizado): el selector de rango no aplica y se esconde, como en IVA.
@@ -13253,6 +13271,7 @@ function finVista(cual) {
   if (cual === 'aportes') loadAportes();
   if (cual === 'iva') loadIva();
   if (cual === 'tarjeta') loadCobroTarjeta();
+  if (cual === 'cobros') loadCobrosPagos();
   if (cual === 'balance') loadBalanceDatos();
 }
 
@@ -13505,6 +13524,7 @@ async function loadFinanzas() {
     // mostrando el mes en el que se había abierto).
     if (_finVistaActual === 'iva') loadIva();
     if (_finVistaActual === 'fijos') loadFijos();
+    if (_finVistaActual === 'cobros') loadCobrosPagos();
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     kpisEl.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
@@ -14722,6 +14742,66 @@ async function finMarcarHecho(id, hecho) {
   if (!r.ok) { alert('No se pudo marcar el movimiento'); return; }
   const {desde, hasta} = _finRango();
   loadMovimientos(desde, hasta);
+  if (_finVistaActual === 'cobros') loadCobrosPagos();
+}
+
+// ── Cobros y pagos (Juan, 16/10) ──
+// Los movimientos del rango partidos por el tilde de "hecho": arriba lo que
+// falta cobrar y pagar, abajo lo ya cobrado y pagado. Tildar en Movimientos o
+// acá los cambia de lugar. Es la misma marca, no una cuenta nueva.
+async function loadCobrosPagos() {
+  const ids = ['fin-cobros-ingresos', 'fin-cobros-egresos', 'fin-cobros-hechos'];
+  const {desde, hasta} = _finRango();
+  const r = await fetch(`/api/finanzas/movimientos?desde=${desde}&hasta=${hasta}`);
+  if (!r.ok) {
+    ids.forEach(id => { document.getElementById(id).innerHTML =
+      '<div style="color:#f87171;padding:16px">No se pudieron cargar los movimientos</div>'; });
+    document.getElementById('fin-cobros-totales').innerHTML = '';
+    return;
+  }
+  const movs = await r.json();
+  const ingresos = movs.filter(m => !m.hecho && m.tipo === 'ingreso');
+  const egresos = movs.filter(m => !m.hecho && m.tipo !== 'ingreso');
+  const hechos = movs.filter(m => m.hecho);
+  const suma = l => l.reduce((t, m) => t + (m.monto_usd || 0), 0);
+  const cobrado = suma(hechos.filter(m => m.tipo === 'ingreso'));
+  const pagado = suma(hechos.filter(m => m.tipo !== 'ingreso'));
+  const kpi = (label, monto, cls, n) => '<div class="fin-kpi"><div class="fin-kpi-label">' + label + '</div>'
+    + '<div class="fin-kpi-valor ' + cls + '">' + _finUsd(monto) + '</div>'
+    + '<div class="fin-kpi-var">' + n + (n === 1 ? ' movimiento' : ' movimientos') + '</div></div>';
+  document.getElementById('fin-cobros-totales').innerHTML =
+    kpi('Falta cobrar', suma(ingresos), 'fin-verde', ingresos.length)
+    + kpi('Falta pagar', suma(egresos), 'fin-rojo', egresos.length)
+    + kpi('Ya cobrado', cobrado, 'fin-verde', hechos.filter(m => m.tipo === 'ingreso').length)
+    + kpi('Ya pagado', pagado, 'fin-rojo', hechos.filter(m => m.tipo !== 'ingreso').length);
+  document.getElementById('fin-cobros-ingresos').innerHTML =
+    _finCobrosFilas(ingresos, 'No falta cobrar nada en el período');
+  document.getElementById('fin-cobros-egresos').innerHTML =
+    _finCobrosFilas(egresos, 'No falta pagar nada en el período');
+  document.getElementById('fin-cobros-hechos').innerHTML =
+    _finCobrosFilas(hechos, 'Todavía no se tildó ningún movimiento del período');
+  if (window.lucide) lucide.createIcons();
+}
+
+function _finCobrosFilas(movs, vacio) {
+  if (!movs.length) return '<div class="empty-state">' + vacio + '</div>';
+  const soloLectura = _finSoloLectura();
+  return movs.map(m => {
+    const esIngreso = m.tipo === 'ingreso';
+    const hechoTxt = esIngreso ? 'Ya se cobró' : 'Ya se pagó';
+    return `
+    <div class="table-row no-cb${m.hecho ? ' fin-mov-hecho' : ''}" style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div class="biz-name">${esc(m.concepto)}</div>
+        <div class="fin-kpi-var">${m.fecha} · ${esc(m.categoria.replace(/_/g, ' '))}${m.hecho ? ' · ' + hechoTxt.toLowerCase() : ''}</div>
+      </div>
+      <div style="flex:0 0 auto;text-align:right;white-space:nowrap" class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}</div>
+      <div style="flex:0 0 36px;text-align:right">${soloLectura ? '' : `
+        <button class="btn-ghost btn-icono fin-btn-hecho${m.hecho ? ' activo' : ''}" onclick="finMarcarHecho(${m.id}, ${m.hecho ? 0 : 1})"
+                title="${m.hecho ? 'Desmarcar: ' + hechoTxt.toLowerCase() : 'Marcar: ' + hechoTxt.toLowerCase()}"><i data-lucide="check" class="nav-icon"></i></button>`}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function borrarMovimientoUI(id, esDeUnFijo) {
