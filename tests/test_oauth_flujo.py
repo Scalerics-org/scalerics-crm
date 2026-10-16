@@ -615,3 +615,96 @@ def test_authorize_post_sin_sesion_tampoco_resuelve_el_cliente(anonimo, monkeypa
     r = anonimo.post("/oauth/authorize", data=form)
     assert r.status_code == 302 and r.headers["Location"].startswith("/login")
     assert llamadas == []
+
+
+# ── revocación desde el panel de usuarios ────────────────────────────────────
+
+ADMIN = "jefe@scalerics.com"
+
+
+@pytest.fixture
+def admin(app, ruta, monkeypatch):
+    """Cliente logueado como admin. ADMIN_EMAIL lo lee `is_admin` en cada
+    llamada, así que alcanza con fijarlo acá."""
+    monkeypatch.setenv("ADMIN_EMAIL", ADMIN)
+    jefe = create_user(ruta, name="Jefe", email=ADMIN, phone="097",
+                       password_hash=generate_password_hash("x" * 10))
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s["logged_in"] = True
+        s["user_id"] = jefe
+        s["user_name"] = "Jefe"
+    return c
+
+
+def _tokens_de_ana(logueado):
+    cid = _registrar(logueado)
+    verifier, challenge = _pkce()
+    return cid, _canjear(logueado, cid, _code(logueado, cid, challenge), verifier).get_json()
+
+
+def test_admin_corta_el_acceso_de_claude_y_el_access_deja_de_validar(admin, logueado, uid, ruta):
+    from services import oauth_tokens as ot
+    cid, t = _tokens_de_ana(logueado)
+    assert ot.validar_access(ruta, t["access_token"]) is not None
+    r = admin.post(f"/oauth/admin/revocar/{uid}")
+    assert r.status_code == 302
+    assert r.headers["Location"].startswith("/admin/users")
+    assert ot.validar_access(ruta, t["access_token"]) is None
+    r = logueado.post("/oauth/token", data={"grant_type": "refresh_token",
+                                            "refresh_token": t["refresh_token"], "client_id": cid})
+    assert r.get_json()["error"] == "invalid_grant"
+
+
+def test_cortar_el_acceso_queda_en_el_registro_de_actividad(admin, logueado, uid, ruta):
+    import sqlite3
+    _tokens_de_ana(logueado)
+    admin.post(f"/oauth/admin/revocar/{uid}")
+    conn = sqlite3.connect(ruta)
+    try:
+        fila = conn.execute("SELECT user_name, entity_type, entity_id, entity_name, action "
+                            "FROM activity_log ORDER BY id DESC LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    assert fila[:4] == ("Jefe", "user", uid, "Ana")
+    assert "claude" in fila[4].lower()
+
+
+def test_quien_no_es_admin_recibe_403_y_no_corta_nada(logueado, uid, ruta):
+    from services import oauth_tokens as ot
+    _, t = _tokens_de_ana(logueado)
+    r = logueado.post(f"/oauth/admin/revocar/{uid}")
+    assert r.status_code == 403
+    assert ot.validar_access(ruta, t["access_token"]) is not None
+
+
+def test_cortar_el_acceso_de_alguien_que_no_existe_es_404(admin):
+    assert admin.post("/oauth/admin/revocar/9999").status_code == 404
+
+
+def test_anonimo_no_puede_cortar_accesos(anonimo, uid):
+    r = anonimo.post(f"/oauth/admin/revocar/{uid}")
+    assert r.status_code in (302, 401, 403)
+    assert not r.headers.get("Location", "").startswith("/admin/users")
+
+
+def test_tokens_vivos_cuenta_solo_los_no_revocados_ni_vencidos(logueado, uid, ruta, monkeypatch):
+    from datetime import timedelta
+    from services import oauth_tokens as ot
+    _tokens_de_ana(logueado)
+    _, t = _tokens_de_ana(logueado)
+    assert ot.tokens_vivos_por_usuario(ruta) == {uid: 2}
+    ot.revocar(ruta, t["access_token"])
+    assert ot.tokens_vivos_por_usuario(ruta) == {uid: 1}
+    futuro = ot._ahora() + timedelta(days=31)
+    monkeypatch.setattr(ot, "_ahora", lambda: futuro)
+    assert ot.tokens_vivos_por_usuario(ruta) == {}
+
+
+def test_el_panel_de_usuarios_trae_los_tokens_vivos_y_el_boton(admin, logueado, uid):
+    _tokens_de_ana(logueado)
+    datos = {u["id"]: u for u in admin.get("/api/admin/users-data").get_json()}
+    assert datos[uid]["claude_tokens_vivos"] == 1
+    html = admin.get("/admin/users").get_data(as_text=True)
+    assert "Cortar acceso de Claude" in html
+    assert "/oauth/admin/revocar/" in html

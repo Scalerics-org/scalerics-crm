@@ -345,3 +345,19 @@ También la llama el botón "Cortar acceso de Claude" del panel de usuarios."""
         conn.commit()
     finally:
         conn.close()
+
+
+def tokens_vivos_por_usuario(db: str) -> dict[int, int]:
+    """Cuántos tokens vivos (sin revocar y con el refresh vigente) tiene cada
+    persona. Lo muestra el panel de usuarios al lado del botón para cortar el
+    acceso. Una sola consulta agrupada, no una por usuario. Quien no tiene
+    ninguno no aparece en el dict."""
+    conn = _connect(db)
+    try:
+        filas = conn.execute(
+            "SELECT user_id, COUNT(*) AS n FROM oauth_tokens "
+            "WHERE revocado_en IS NULL AND refresh_expira > ? GROUP BY user_id",
+            (_iso(_ahora()),)).fetchall()
+    finally:
+        conn.close()
+    return {f["user_id"]: f["n"] for f in filas}

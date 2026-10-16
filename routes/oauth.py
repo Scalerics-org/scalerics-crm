@@ -5,9 +5,11 @@ cliente) y `services/oauth_tokens.py` (códigos y tokens). Las reglas que
 claude.ai exige están en el spec y en
 https://claude.com/docs/connectors/building/authentication.
 
-Estas rutas están exentas del candado de sesión de `dashboard.require_login`:
-cada una aplica su propia autenticación. `/oauth/authorize` es la única que
-pide la sesión del CRM, porque ahí la persona autoriza a Claude.
+Las rutas de Claude están exentas del candado de sesión de
+`dashboard.require_login`: cada una aplica su propia autenticación.
+`/oauth/authorize` es la única de ellas que pide la sesión del CRM, porque ahí
+la persona autoriza a Claude. `/oauth/admin/revocar/<id>` no es para Claude
+sino para el panel de usuarios: no está exenta, y además exige admin.
 """
 
 import hmac
@@ -19,7 +21,9 @@ from urllib.parse import urlencode, urlsplit
 from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template_string,
                    request, session, url_for)
 
+from database import get_user_by_id, log_activity
 from services import oauth_clientes, oauth_tokens
+from services.auth import is_admin
 from services.oauth_tokens import CHALLENGE_RE, SCOPE_LECTURA, base_url, recurso_mcp
 
 oauth_bp = Blueprint("oauth", __name__)
@@ -368,3 +372,24 @@ def revocar():
     oauth_tokens.revocar(_db(), request.form.get("token", ""))
     # Cache-Control y Pragma los pone el after_request del blueprint.
     return jsonify({})
+
+
+# ── administración ───────────────────────────────────────────────────────────
+
+@oauth_bp.route("/oauth/admin/revocar/<int:user_id>", methods=["POST"])
+def admin_revocar(user_id: int):
+    """Botón "Cortar acceso de Claude" del panel de usuarios: revoca todos los
+    tokens vivos de esa persona y borra sus códigos pendientes. Claude le va a
+    pedir que vuelva a autorizar. Mismo control que el panel: `is_admin`."""
+    if not is_admin(_db(), session.get("user_id")):
+        abort(403)
+    persona = get_user_by_id(_db(), user_id)
+    if not persona:
+        abort(404)
+    vivos = oauth_tokens.tokens_vivos_por_usuario(_db()).get(user_id, 0)
+    oauth_tokens.revocar_todos_de_usuario(_db(), user_id)
+    log_activity(_db(), session.get("user_name") or "", "cortar_acceso_claude",
+                 entity_type="user", entity_id=user_id, entity_name=persona["name"],
+                 detail=f"{vivos} token(s) de Claude revocados",
+                 user_id=session.get("user_id"))
+    return redirect(url_for("admin_users_page") + "?claude_cortado=1")

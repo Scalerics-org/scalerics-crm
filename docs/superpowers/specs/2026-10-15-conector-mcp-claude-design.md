@@ -462,8 +462,11 @@ Verificación de integración, en este orden:
 - Pasos para el Owner del plan Team: Configuración → Conectores → Agregar
   conector personalizado → URL `https://scalerics-crm.fly.dev/mcp` →
   identidad publicada de Claude → cada miembro conecta con su usuario.
-- Cómo revocar a alguien hoy: `UPDATE oauth_tokens SET revocado_en = … WHERE
-  user_id = …` desde la consola de Fly, hasta que exista el panel.
+- Cómo revocar a alguien: botón "Cortar acceso de Claude" en `/admin/users`
+  (solo admin; `POST /oauth/admin/revocar/<user_id>` llama a
+  `revocar_todos_de_usuario` y deja `log_activity`). Al lado, cuántos tokens
+  vivos tiene la persona. Como alternativa, el `UPDATE oauth_tokens` desde la
+  consola de Fly.
 - Qué registra `mcp_llamadas` y cómo consultarlo.
 
 ## Seguimientos propuestos
