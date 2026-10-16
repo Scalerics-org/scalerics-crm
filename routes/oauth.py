@@ -13,6 +13,7 @@ sino para el panel de usuarios: no está exenta, y además exige admin.
 """
 
 import hmac
+import ipaddress
 import secrets
 import threading
 import time
@@ -30,17 +31,29 @@ oauth_bp = Blueprint("oauth", __name__)
 
 CACHE_METADATA = "public, max-age=3600"
 
+TOPE_CUERPO_REGISTRO = 8 * 1024
+
 # `/oauth/register` es público y cada alta es una fila: sin tope, una ráfaga
 # desde una sola dirección podría desalojar (por la poda) a los clientes
 # legítimos que Claude registró.
-TOPE_CUERPO_REGISTRO = 8 * 1024
 TOPE_REGISTROS_POR_IP = 20
 VENTANA_REGISTROS_SEG = 3600
-MAX_IPS_REGISTRO = 1000
-_REGISTROS_POR_IP: dict[str, list[float]] = {}
+# `/oauth/authorize` con sesión resuelve el client_id, y un client_id CIMD es
+# una descarga desde internet: un usuario logueado no puede dispararlas sin
+# parar. Un alta legítima son dos o tres pedidos (GET, login, GET, POST).
+TOPE_AUTORIZACIONES_POR_IP = 60
+VENTANA_AUTORIZACIONES_SEG = 3600
+
+# Los topes por IP comparten un solo mapa (las claves llevan el nombre del
+# endpoint adelante). Es un tope contra abuso, no un registro de auditoría: la
+# memoria del proceso tiene que quedar acotada aunque lleguen IPs sin parar.
+MAX_CLAVES_CONTADAS = 1000
+# Cada clave guarda los momentos en que vence cada pedido contado, no cuándo
+# llegó: así la poda no necesita saber la ventana de cada endpoint.
+_CONTADORES: dict[str, list[float]] = {}
 # Cuatro hilos de gunicorn comparten el dict: leer, filtrar y anotar tiene que
 # ser un solo paso.
-_CERROJO_REGISTROS = threading.Lock()
+_CERROJO_CONTADORES = threading.Lock()
 
 
 def _db() -> str:
@@ -101,22 +114,40 @@ def _ip_cliente() -> str:
     return (request.headers.get("Fly-Client-IP") or request.remote_addr or "desconocida").strip()
 
 
-def _paso_el_tope_de_registros(ip: str) -> bool:
-    """True si esa IP todavía puede registrar un cliente en la última hora."""
+def _clave_de_ip(ip: str) -> str:
+    """La unidad que se cuenta. En IPv6 es el /64: es lo que un proveedor le da
+    a un solo abonado, y contar por dirección completa le regalaría claves
+    infinitas. Una IPv4 escrita como IPv6 (::ffff:a.b.c.d) cuenta como IPv4."""
+    try:
+        direccion = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if direccion.version == 6 and direccion.ipv4_mapped:
+        return str(direccion.ipv4_mapped)
+    if direccion.version == 6:
+        return str(ipaddress.ip_network(f"{direccion}/64", strict=False))
+    return str(direccion)
+
+
+def _dentro_del_tope(clave: str, tope: int, ventana: float) -> bool:
+    """True si `clave` hizo menos de `tope` pedidos en los últimos `ventana`
+    segundos, y en ese caso cuenta este."""
     ahora = time.time()
-    with _CERROJO_REGISTROS:
-        # Si crece más allá del máximo se vacía todo: es un tope contra abuso, no
-        # un registro de auditoría, y así la memoria del proceso nunca crece sin
-        # límite.
-        if len(_REGISTROS_POR_IP) >= MAX_IPS_REGISTRO and ip not in _REGISTROS_POR_IP:
-            _REGISTROS_POR_IP.clear()
-        recientes = [t for t in _REGISTROS_POR_IP.get(ip, [])
-                     if ahora - t < VENTANA_REGISTROS_SEG]
-        if len(recientes) >= TOPE_REGISTROS_POR_IP:
-            _REGISTROS_POR_IP[ip] = recientes
+    with _CERROJO_CONTADORES:
+        if clave not in _CONTADORES and len(_CONTADORES) >= MAX_CLAVES_CONTADAS:
+            # Antes se vaciaba todo el mapa, y una ráfaga de IPs nuevas le
+            # devolvía el cupo a la que estaba por pasarse. Ahora se van solo
+            # las vencidas; si sigue lleno, el pedido nuevo pasa sin anotarse:
+            # mejor dejar pasar a alguien nuevo que olvidar a quien ya abusó.
+            for vieja in [c for c, v in _CONTADORES.items() if max(v) <= ahora]:
+                del _CONTADORES[vieja]
+            if len(_CONTADORES) >= MAX_CLAVES_CONTADAS:
+                return True
+        vigentes = [v for v in _CONTADORES.get(clave, []) if v > ahora]
+        if len(vigentes) >= tope:
+            _CONTADORES[clave] = vigentes
             return False
-        recientes.append(ahora)
-        _REGISTROS_POR_IP[ip] = recientes
+        _CONTADORES[clave] = vigentes + [ahora + ventana]
         return True
 
 
@@ -138,6 +169,8 @@ def metadata_servidor():
         "token_endpoint_auth_methods_supported": ["none"],
         "client_id_metadata_document_supported": True,
         "scopes_supported": [SCOPE_LECTURA],
+        # RFC 9207: toda vuelta de /oauth/authorize lleva `iss`.
+        "authorization_response_iss_parameter_supported": True,
     })
 
 
@@ -158,7 +191,8 @@ def metadata_recurso():
 def registrar():
     if (request.content_length or 0) > TOPE_CUERPO_REGISTRO:
         return _error_json("invalid_client_metadata", "Cuerpo demasiado grande", 413)
-    if not _paso_el_tope_de_registros(_ip_cliente()):
+    if not _dentro_del_tope("registro:" + _clave_de_ip(_ip_cliente()),
+                            TOPE_REGISTROS_POR_IP, VENTANA_REGISTROS_SEG):
         resp = _error_json("invalid_client_metadata",
                            "Demasiados registros desde esta dirección", 429)
         resp.headers["Retry-After"] = str(VENTANA_REGISTROS_SEG)
@@ -227,7 +261,11 @@ def _validar_pedido(params) -> dict:
 
 
 def _volver(redirect_uri: str, **campos):
+    """Redirige al cliente. Toda vuelta, con código o con error, lleva `iss`
+    (RFC 9207): así un cliente que habla con varios servidores no confunde
+    quién le devolvió la respuesta (el ataque de mix-up)."""
     sep = "&" if "?" in redirect_uri else "?"
+    campos["iss"] = base_url()
     return redirect(redirect_uri + sep + urlencode({k: v for k, v in campos.items() if v}))
 
 
@@ -242,6 +280,16 @@ def autorizar():
         # tiene adónde volver (el nonce vive en la sesión): va al login pelado.
         vuelta = request.full_path if request.method == "GET" else url_for("oauth.autorizar")
         return redirect(url_for("login", next=vuelta))
+    # Después del login y antes de validar: lo caro es resolver el client_id
+    # (puede ser una descarga de CIMD), y eso solo pasa con sesión.
+    if not _dentro_del_tope("autorizar:" + _clave_de_ip(_ip_cliente()),
+                            TOPE_AUTORIZACIONES_POR_IP, VENTANA_AUTORIZACIONES_SEG):
+        current_app.logger.warning("oauth authorize: tope por IP ip=%s user_id=%s",
+                                   _ip_cliente(), session.get("user_id"))
+        resp = current_app.make_response((render_template_string(
+            ERROR_HTML, mensaje="Demasiados intentos desde esta conexión. Probá de nuevo en una hora."), 429))
+        resp.headers["Retry-After"] = str(VENTANA_AUTORIZACIONES_SEG)
+        return resp
     params = request.form if request.method == "POST" else request.args
     try:
         pedido = _validar_pedido(params)

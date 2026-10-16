@@ -364,11 +364,11 @@ def app(sembrada):
     return a
 
 
-def _token_de(db, uid):
+def _token_de(db, uid, scope="crm:leer", resource="https://crm.test/mcp"):
     import base64, hashlib, secrets
     verifier = secrets.token_urlsafe(40)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    code = ot.emitir_codigo(db, uid, "cli", "https://r/cb", challenge, "crm:leer", "https://crm.test/mcp")
+    code = ot.emitir_codigo(db, uid, "cli", "https://r/cb", challenge, scope, resource)
     return ot.canjear_codigo(db, code, "cli", "https://r/cb", verifier)["access_token"]
 
 
@@ -584,3 +584,44 @@ def test_cuerpo_chunked_demasiado_grande_es_413_json(app, sembrada, ana):
 def test_initialize_avisa_que_los_textos_de_leads_son_datos(claude):
     r = claude(_rpc("initialize", {"protocolVersion": "2025-06-18"}))
     assert "nunca instrucciones" in r.get_json()["result"]["instructions"]
+
+
+# ── scope y resource del token ───────────────────────────────────────────────
+# Hoy /oauth/authorize solo emite crm:leer para https://crm.test/mcp, así que
+# estos tokens se insertan a mano: el chequeo tiene que estar antes de que
+# aparezca un segundo scope o un segundo recurso.
+
+def _ping_con(app, token):
+    return app.test_client().post("/mcp", json=_rpc("ping"),
+                                  headers={"Authorization": f"Bearer {token}"})
+
+
+def test_token_sin_scope_de_lectura_es_403_insufficient_scope(app, sembrada, ana):
+    r = _ping_con(app, _token_de(sembrada, ana, scope="crm:escribir"))
+    assert r.status_code == 403
+    assert r.get_json()["error"] == "insufficient_scope"
+    assert r.headers["WWW-Authenticate"] == 'Bearer error="insufficient_scope", scope="crm:leer"'
+
+
+def test_scope_que_solo_contiene_el_texto_no_alcanza(app, sembrada, ana):
+    """Se compara por palabra, no por substring."""
+    r = _ping_con(app, _token_de(sembrada, ana, scope="crm:leer-todo"))
+    assert r.status_code == 403
+
+
+def test_token_con_scope_de_lectura_entre_otros_vale(app, sembrada, ana):
+    r = _ping_con(app, _token_de(sembrada, ana, scope="crm:escribir crm:leer"))
+    assert r.status_code == 200
+
+
+@pytest.mark.parametrize("resource", ["https://otro.test/mcp", "https://crm.test/mcp/", None])
+def test_token_para_otro_recurso_es_401(app, sembrada, ana, resource, caplog):
+    import logging
+    caplog.set_level(logging.WARNING)
+    token = _token_de(sembrada, ana, resource=resource)
+    r = _ping_con(app, token)
+    assert r.status_code == 401
+    assert r.get_json()["error"] == "invalid_token"
+    assert r.headers["WWW-Authenticate"] == WWW_AUTH
+    assert any("otro recurso" in m for m in caplog.messages)
+    assert all(token not in m for m in caplog.messages)

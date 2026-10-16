@@ -181,7 +181,8 @@ de abajo se arman desde esa variable, nunca desde el `Host` del request.
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["none"],
   "client_id_metadata_document_supported": true,
-  "scopes_supported": ["crm:leer"]
+  "scopes_supported": ["crm:leer"],
+  "authorization_response_iss_parameter_supported": true
 }
 ```
 
@@ -403,8 +404,11 @@ con un único JSON.
 - `texto` y `responsable` tienen `maxLength` 100 y se les escapan los
   comodines de `LIKE`; los argumentos se recortan al registrarlos.
 - Toda respuesta JSON de `/mcp` se recorta a 200 leads o 20 eventos y lo dice.
-- No hay límite de tasa en v1. Los tokens están atados a usuarios del CRM y
-  el worker ya tiene tope de hilos. Queda anotado como posible seguimiento.
+- `/mcp` no tiene límite de tasa en v1. Los tokens están atados a usuarios del
+  CRM y el worker ya tiene tope de hilos. Queda anotado como posible seguimiento.
+- `/oauth/register` (20) y `/oauth/authorize` (60, GET y POST, con sesión) tienen tope por hora por IP, con el /64 como unidad en IPv6; pasado el tope, `429` con `Retry-After`, y el mapa en memoria poda vencidas en vez de vaciarse.
+- `/mcp` rechaza un token cuyo `resource` no es `recurso_mcp()` con `401 invalid_token` (RFC 8707), y uno sin `crm:leer` entre sus scopes con `403 insufficient_scope` (RFC 6750 §3.1).
+- Toda vuelta de `/oauth/authorize` al cliente, con código o con error, lleva `iss` (RFC 9207, contra el mix-up), y la metadata lo anuncia.
 
 ## Tests
 

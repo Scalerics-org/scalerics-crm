@@ -8,8 +8,9 @@ sync.
 
 Autenticación: Bearer emitido por `/oauth/token`. Sin token, o con uno malo,
 `401` con el `WWW-Authenticate` que claude.ai necesita para arrancar el OAuth
-(y lo necesita en un 401: en un 200 lo ignora). Con token, las mismas reglas
-que la API web: el usuario existe y no es vendedor de Fidelidad.
+(y lo necesita en un 401: en un 200 lo ignora). Un token emitido para otro
+recurso también es 401; uno sin el scope `crm:leer`, 403. Con token, las mismas
+reglas que la API web: el usuario existe y no es vendedor de Fidelidad.
 """
 
 import logging
@@ -20,7 +21,7 @@ from werkzeug.exceptions import HTTPException
 from database import get_user_by_id
 from services import mcp_tools, oauth_tokens
 from services.fidelidad import es_vendedor
-from services.oauth_tokens import SCOPE_LECTURA, base_url
+from services.oauth_tokens import SCOPE_LECTURA, base_url, recurso_mcp
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,14 @@ def _rechazo_401():
     return resp
 
 
+def _rechazo_scope():
+    """RFC 6750 §3.1: token válido pero sin el scope que hace falta."""
+    resp = jsonify({"error": "insufficient_scope"})
+    resp.status_code = 403
+    resp.headers["WWW-Authenticate"] = f'Bearer error="insufficient_scope", scope="{SCOPE_LECTURA}"'
+    return resp
+
+
 def _autenticar():
     """(usuario, None) o (None, respuesta de error)."""
     auth = request.headers.get("Authorization", "")
@@ -103,6 +112,20 @@ def _autenticar():
         # Nunca el token: solo que hubo un rechazo y desde dónde.
         logger.warning("mcp: token inválido o vencido ip=%s", _ip_cliente())
         return None, _rechazo_401()
+    # RFC 8707: un token emitido para otro recurso no vale acá aunque lo haya
+    # firmado este mismo servidor. Es un 401 y no un 403 porque el token, para
+    # este recurso, no es válido: Claude tiene que pedir otro.
+    if info.get("resource") != recurso_mcp():
+        logger.warning("mcp: token para otro recurso token_id=%s ip=%s",
+                       info["token_id"], _ip_cliente())
+        return None, _rechazo_401()
+    # Hoy solo se emite crm:leer, pero el día que aparezca un scope de
+    # escritura un token sin lectura no tiene que poder usar las herramientas.
+    # Se compara por palabra (RFC 6749 §3.3), no por substring.
+    if SCOPE_LECTURA not in (info.get("scope") or "").split():
+        logger.warning("mcp: token sin %s token_id=%s ip=%s",
+                       SCOPE_LECTURA, info["token_id"], _ip_cliente())
+        return None, _rechazo_scope()
     usuario = get_user_by_id(_db(), info["user_id"])
     if not usuario or es_vendedor(_db(), usuario["id"]):
         logger.warning("mcp: usuario %s sin permiso ip=%s", info["user_id"], _ip_cliente())
