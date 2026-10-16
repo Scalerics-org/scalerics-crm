@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-conector-mcp-claude-design.md`. Leerlo antes de empezar.
 
-**Dónde se trabaja:** el worktree `C:\Users\gonza\Documents\GitHub\crm-mcp`, rama `feat/conector-mcp`. Correr todo desde ahí. No deployar nada: eso lo pide Juan.
+**Dónde se trabaja:** el worktree `C:\Users\gonza\Documents\GitHub\crm-mcp`, rama `feat/conector-mcp`. Correr todo desde ahí. No deployar nada: el deploy lo decide Gonzalo.
 
 **Cómo se corren los tests:** `python -m pytest tests/<archivo> -q` desde la raíz del worktree. La suite entera tarda minutos; correr solo el archivo que se toca y, al final de cada tarea, `python -m pytest tests/test_oauth_clientes.py tests/test_oauth_tokens.py tests/test_oauth_flujo.py tests/test_mcp.py -q`.
 
@@ -49,7 +49,7 @@
 Abrir `COORDINACION.md`, ubicar la tabla con encabezado `| Sesión | Territorio | Archivos que está tocando | Desde |` y agregar al final de esa tabla:
 
 ```markdown
-| M (conector MCP para Claude) | servidor MCP + OAuth propio para que el equipo use el CRM desde claude.ai. Solo lectura: leads y pipeline. Rama `feat/conector-mcp`, worktree `crm-mcp`. Spec en `docs/superpowers/specs/2026-10-15-conector-mcp-claude-design.md`. **No deployo sin que Juan lo pida.** | nuevos: `routes/oauth.py`, `routes/mcp.py`, `services/oauth_tokens.py`, `services/oauth_clientes.py`, `services/mcp_tools.py`, `tests/test_oauth_*.py`, `tests/test_mcp.py`. Zona compartida, cambios chicos: `database.py` (dos `init_*` en `init_db`), `dashboard.py` (dos blueprints, tres prefijos exentos en `require_login`, `next` en `/login`). | 15/10 |
+| M (conector MCP para Claude) | servidor MCP + OAuth propio para que el equipo use el CRM desde claude.ai. Solo lectura: leads y pipeline. Rama `feat/conector-mcp`, worktree `crm-mcp`. Spec en `docs/superpowers/specs/2026-10-15-conector-mcp-claude-design.md`. **No deployo sin que Gonzalo lo pida.** | nuevos: `routes/oauth.py`, `routes/mcp.py`, `services/oauth_tokens.py`, `services/oauth_clientes.py`, `services/mcp_tools.py`, `tests/test_oauth_*.py`, `tests/test_mcp.py`. Zona compartida, cambios chicos: `database.py` (dos `init_*` en `init_db`), `dashboard.py` (dos blueprints, tres prefijos exentos en `require_login`, `next` en `/login`). | 15/10 |
 ```
 
 - [ ] **Step 2: Commit**
@@ -3000,7 +3000,7 @@ Usar el agente `code-reviewer` sobre `git diff origin/main...HEAD` y, como toca 
 
 - [ ] **Step 3: Actualizar la bitácora**
 
-En `COORDINACION.md`, en la fila de la sesión M, cambiar el territorio a: "**Listo en `feat/conector-mcp`, probado con Claude Code contra el CRM local. Sin PR, sin merge y sin deploy hasta que Juan lo pida.** Para deployar: `CRM_URL` en Fly y seguir `docs/puesta-en-produccion-conector-claude.md`."
+En `COORDINACION.md`, en la fila de la sesión M, cambiar el territorio a: "**Listo en `feat/conector-mcp`, probado con Claude Code contra el CRM local. Sin PR, sin merge y sin deploy hasta que Gonzalo lo pida.** Para deployar: `CRM_URL` en Fly y seguir `docs/puesta-en-produccion-conector-claude.md`."
 
 ```bash
 git add COORDINACION.md
@@ -3013,7 +3013,7 @@ git commit -m "docs: bitácora de la sesión M, conector listo sin deployar"
 git push -u origin feat/conector-mcp
 ```
 
-El PR y el deploy los decide Juan.
+El PR y el deploy los decide Gonzalo.
 
 ---
 
