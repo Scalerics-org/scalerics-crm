@@ -232,7 +232,8 @@ def _barrer(conn: sqlite3.Connection, ahora: datetime) -> None:
 # ── access / refresh ─────────────────────────────────────────────────────────
 
 def validar_access(db: str, token: str) -> Optional[dict]:
-    """El usuario y cliente detrás de un access token vivo, o None.
+    """El usuario, cliente, scope y resource detrás de un access token vivo, o
+    None. Quién llama decide si el scope y el resource le sirven.
 
     Actualiza `ultimo_uso` como mucho una vez por minuto: sirve para el panel
     de tokens que vendrá, y no vale la pena una escritura por llamada."""
@@ -242,7 +243,8 @@ def validar_access(db: str, token: str) -> Optional[dict]:
     conn = _connect(db)
     try:
         fila = conn.execute(
-            "SELECT t.id, t.user_id, t.client_id, t.scope, t.access_expira, t.ultimo_uso "
+            "SELECT t.id, t.user_id, t.client_id, t.scope, t.resource, t.access_expira, "
+            "t.ultimo_uso "
             "FROM oauth_tokens t JOIN users u ON u.id = t.user_id "
             "WHERE t.access_hash = ? AND t.revocado_en IS NULL", (_hash(token),)).fetchone()
         if not fila or fila["access_expira"] < _iso(ahora):
@@ -252,7 +254,8 @@ def validar_access(db: str, token: str) -> Optional[dict]:
                          (_iso(ahora), fila["id"]))
             conn.commit()
         return {"token_id": fila["id"], "user_id": fila["user_id"],
-                "client_id": fila["client_id"], "scope": fila["scope"]}
+                "client_id": fila["client_id"], "scope": fila["scope"],
+                "resource": fila["resource"]}
     finally:
         conn.close()
 

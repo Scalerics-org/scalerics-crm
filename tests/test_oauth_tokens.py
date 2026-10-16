@@ -117,6 +117,17 @@ def test_validar_access_devuelve_usuario_y_cliente(db, uid):
     assert ot.validar_access(db, "no-existe") is None
 
 
+def test_validar_access_devuelve_el_resource(db, uid):
+    """/mcp lo compara con recurso_mcp(): un token emitido para otro recurso no
+    tiene que valer acá (RFC 8707)."""
+    verifier, challenge = _pkce()
+    code = ot.emitir_codigo(db, uid, "cli", "https://r/cb", challenge, "crm:leer",
+                            "https://crm.test/mcp")
+    tokens = ot.canjear_codigo(db, code, "cli", "https://r/cb", verifier)
+    assert ot.validar_access(db, tokens["access_token"])["resource"] == "https://crm.test/mcp"
+    assert ot.validar_access(db, _tokens(db, uid)["access_token"])["resource"] is None
+
+
 def test_access_vencido_no_vale(db, uid, monkeypatch):
     tokens = _tokens(db, uid)
     futuro = datetime.now(timezone.utc) + timedelta(hours=2)
