@@ -270,6 +270,13 @@ def test_en_esenciales_el_boton_grande_carga_un_esencial_y_no_un_movimiento():
     assert "if (_finVistaActual === 'esenciales') abrirEsencial();" in HTML
 
 
+def test_en_fijos_el_boton_grande_carga_un_fijo_y_no_un_movimiento():
+    """Juan (16/10): cargó un ingreso fijo con el botón de arriba, se guardó
+    como movimiento suelto y no aparecía en Fijos."""
+    assert "else if (_finVistaActual === 'fijos') abrirFijo();" in HTML
+    assert "cual === 'fijos' ? 'Fijo' : 'Movimiento'" in HTML
+
+
 def test_cambiar_de_mes_refresca_el_iva_si_esta_abierto():
     """Juan (1/10): al pasar de mes el IVA seguía mostrando el anterior."""
     assert "if (_finVistaActual === 'iva') loadIva();" in HTML
