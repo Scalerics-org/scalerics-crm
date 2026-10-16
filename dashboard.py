@@ -45,6 +45,8 @@ from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from routes.backups import backups_bp
+from routes.oauth import oauth_bp
+from routes.mcp import mcp_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -96,6 +98,7 @@ button:hover{opacity:.9}
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="POST">
+    <input type="hidden" name="next" value="{{ next or '' }}">
     <label>Email</label>
     <input type="email" name="email" autocomplete="email" required autofocus>
     <label>Contraseña</label>
@@ -21831,6 +21834,13 @@ def _maybe_sync_notion(db_path: str) -> None:
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
+    # Cookie de sesión: SameSite=Lax (nunca Strict: el GET de claude.ai a
+    # /oauth/authorize necesita la cookie) y Secure solo cuando el CRM se sirve
+    # por HTTPS, para no romper el login en local por http.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+        "CRM_URL", "https://scalerics-crm.fly.dev").startswith("https://")
     app.config["DB_PATH"] = db_path
     # Los envios que salen fuera de un request (los hilos de las campanas) se
     # registran en esta base para el panel Email marketing.
@@ -21847,12 +21857,20 @@ def create_app(db_path: str) -> Flask:
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
-                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp):
+                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp):
         app.register_blueprint(bp)
 
     @app.before_request
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad", "baja_recordatorios"):
+            return
+        # Conector MCP para Claude: metadata pública, OAuth del conector y el
+        # endpoint MCP. Solo las rutas exactas de routes/oauth.py y routes/mcp.py:
+        # /oauth/gmail/* de Fidelidad NO entra acá y sigue pidiendo sesión.
+        # /oauth/authorize pide la sesión adentro; /mcp valida su propio Bearer.
+        if (request.path == "/mcp" or request.path.startswith("/.well-known/")
+                or request.path in ("/oauth/authorize", "/oauth/token",
+                                    "/oauth/register", "/oauth/revoke")):
             return
         if request.path.startswith("/api/meta/webhook"):
             return
@@ -22039,6 +22057,12 @@ def create_app(db_path: str) -> Flask:
         from werkzeug.security import check_password_hash
         from database import get_user_by_email
         error = None
+        # Solo la pantalla de autorización del conector MCP puede pedir volver
+        # a algún lado después de entrar. Cualquier otro `next` se ignora: así
+        # el login no sirve para mandar a nadie a un sitio ajeno.
+        destino = request.args.get("next") or request.form.get("next") or ""
+        if destino != "/oauth/authorize" and not destino.startswith("/oauth/authorize?"):
+            destino = ""
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
@@ -22047,9 +22071,9 @@ def create_app(db_path: str) -> Flask:
                 session["logged_in"] = True
                 session["user_id"] = user["id"]
                 session["user_name"] = user["name"]
-                return redirect(url_for("index"))
+                return redirect(destino or url_for("index"))
             error = "Email o contraseña incorrectos"
-        return render_template_string(LOGIN_HTML, error=error)
+        return render_template_string(LOGIN_HTML, error=error, next=destino)
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -22653,15 +22677,22 @@ def create_app(db_path: str) -> Flask:
             return jsonify({"ok": True})
         finally: conn2.close()
 
+    def _usuarios_con_tokens_claude():
+        """Los usuarios con cuántos tokens vivos de Claude tiene cada uno, para
+        el botón "Cortar acceso de Claude" del panel. Lo usan la página y su
+        recarga por JSON: los dos tienen que traer el mismo dato."""
+        from database import get_all_users
+        from services.oauth_tokens import tokens_vivos_por_usuario
+        vivos = tokens_vivos_por_usuario(db_path)
+        return [{**dict(u), "claude_tokens_vivos": vivos.get(u["id"], 0)}
+                for u in get_all_users(db_path)]
+
     @app.route("/api/admin/users-data", methods=["GET"])
     def admin_users_data():
-        from database import get_user_by_id, get_all_users
         current_user_id = session.get("user_id")
         if not is_admin(db_path, current_user_id):
             return jsonify({"error": "No autorizado"}), 403
-        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        users = get_all_users(db_path)
-        return jsonify([dict(u) for u in users])
+        return jsonify(_usuarios_con_tokens_claude())
 
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():
@@ -22800,7 +22831,7 @@ input:focus{border-color:#0088CC}
         es_admin = is_admin(db_path, user_id)
         if not es_admin:
             return redirect(url_for("index"))
-        users = get_all_users(db_path)
+        users = _usuarios_con_tokens_claude()
         ADMIN_PAGE = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -22860,6 +22891,7 @@ select:focus{border-color:#0088cc}
 <div class="section">
   <div class="section-title">Usuarios</div>
   {% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
+  {% if request.args.get('claude_cortado') %}<div class="msg-ok">Acceso de Claude cortado. Si quiere volver a usarlo, tiene que autorizarlo de nuevo.</div>{% endif %}
   <div id="users-list"></div>
 </div>
 
@@ -22994,6 +23026,10 @@ function renderUsers() {
         </div>
         <span class="badge ${u.role_id?'has-role':''}">${roleName}</span>
         <select onchange="setRole(${u.id}, this.value)">${opts}</select>
+        <span class="sub" title="Conexiones de Claude vivas (tokens sin revocar ni vencer)">Claude: ${u.claude_tokens_vivos || 0}</span>
+        <form method="POST" action="/oauth/admin/revocar/${u.id}" onsubmit="return confirm('Cortar el acceso de Claude de esta persona? Va a tener que volver a autorizarlo.')" style="display:inline">
+          <button class="btn btn-ghost" type="submit">Cortar acceso de Claude</button>
+        </form>
         <form method="POST" action="/admin/users/${u.id}/delete" onsubmit="return confirm('Eliminar a ${u.name}?')" style="display:inline">
           <button class="btn btn-danger" type="submit">Borrar</button>
         </form>

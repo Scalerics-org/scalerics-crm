@@ -2196,6 +2196,12 @@ def init_db(db_path: str) -> None:
         # Cobro automático con tarjeta (services/plexo.py, 24/9).
         from services.plexo import init_plexo
         init_plexo(conn)
+        # Conector MCP para Claude (15/10): tokens OAuth del equipo y registro
+        # de lo que Claude llama. Ver docs/superpowers/specs/2026-10-15-conector-mcp-claude-design.md.
+        from services.oauth_tokens import init_oauth
+        from services.mcp_tools import init_mcp
+        init_oauth(conn)
+        init_mcp(conn)
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
@@ -3967,6 +3973,11 @@ def update_user_password(db_path: str, user_id: int, password_hash: str) -> None
         conn.commit()
     finally:
         conn.close()
+    # Cambiar la contraseña tiene que cortar también a Claude: los tokens del
+    # conector MCP viven semanas y no dependen de la sesión web. Import local
+    # para no crear un ciclo (oauth_tokens importa _connect de acá).
+    from services.oauth_tokens import revocar_todos_de_usuario
+    revocar_todos_de_usuario(db_path, user_id)
 
 def update_user_profile(db_path: str, user_id: int, name: str, email: str, phone: str) -> None:
     conn = _connect(db_path)
