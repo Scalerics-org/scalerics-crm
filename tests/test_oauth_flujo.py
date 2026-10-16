@@ -807,3 +807,18 @@ def test_el_panel_de_usuarios_trae_los_tokens_vivos_y_el_boton(admin, logueado, 
     html = admin.get("/admin/users").get_data(as_text=True)
     assert "Cortar acceso de Claude" in html
     assert "/oauth/admin/revocar/" in html
+
+
+def test_claude_ai_autoriza_sin_que_el_crm_salga_a_internet(logueado, monkeypatch):
+    """Lo que pasó en producción el 16/10: claude.ai manda su CIMD como
+    client_id y el CRM no puede descargarlo (403 por IP). Tiene que andar igual."""
+    def sin_red(*a, **k):
+        raise AssertionError("el CRM no tiene que descargar el documento de Claude")
+    monkeypatch.setattr(oc.requests, "get", sin_red)
+    verifier, challenge = _pkce()
+    cid = "https://claude.ai/oauth/mcp-oauth-client-metadata"
+    r = _autorizar(logueado, cid, challenge)
+    assert r.status_code == 302 and r.headers["Location"].startswith(CALLBACK + "?")
+    code = _query(r.headers["Location"])["code"]
+    t = _canjear(logueado, cid, code, verifier)
+    assert t.status_code == 200 and t.get_json()["access_token"]

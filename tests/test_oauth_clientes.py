@@ -15,6 +15,9 @@ from services import oauth_clientes as oc
 from services import oauth_tokens as ot
 
 CIMD_CLAUDE = "https://claude.ai/oauth/mcp-oauth-client-metadata"
+# Otro documento bajo claude.ai: sigue el camino de la descarga, que es lo que
+# prueban los tests de cache y validación. El de Claude está fijo en el código.
+CIMD_DESCARGABLE = "https://claude.ai/oauth/otro-cliente"
 CALLBACK_CLAUDE = "https://claude.ai/api/mcp/auth_callback"
 
 
@@ -50,9 +53,9 @@ def _mock_get(monkeypatch, datos, llamadas=None):
 
 def test_cimd_de_claude_se_acepta_y_se_cachea(db, monkeypatch):
     llamadas = []
-    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
+    _mock_get(monkeypatch, {"client_id": CIMD_DESCARGABLE, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) == [CALLBACK_CLAUDE]
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) == [CALLBACK_CLAUDE]
     assert len(llamadas) == 1
 
 
@@ -65,14 +68,14 @@ def test_cimd_de_otro_host_se_rechaza_sin_descargar(db, monkeypatch):
 
 def test_cimd_cuyo_client_id_no_coincide_se_rechaza(db, monkeypatch):
     _mock_get(monkeypatch, {"client_id": "https://claude.ai/otro", "redirect_uris": [CALLBACK_CLAUDE]})
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
 
 
 def test_cimd_que_no_responde_se_rechaza(db, monkeypatch):
     def fake(url, timeout, allow_redirects):
         raise oc.requests.ConnectionError("sin red")
     monkeypatch.setattr(oc.requests, "get", fake)
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
 
 
 def test_registrar_cliente_dcr(db):
@@ -145,13 +148,13 @@ def _reloj(monkeypatch, inicio=1000.0):
 def test_cache_del_cimd_vence_y_se_vuelve_a_descargar(db, monkeypatch):
     reloj = _reloj(monkeypatch)
     llamadas = []
-    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
-    oc.redirect_uris_de(db, CIMD_CLAUDE)
+    _mock_get(monkeypatch, {"client_id": CIMD_DESCARGABLE, "redirect_uris": [CALLBACK_CLAUDE]}, llamadas)
+    oc.redirect_uris_de(db, CIMD_DESCARGABLE)
     reloj["t"] += oc.CACHE_SEGUNDOS - 1
-    oc.redirect_uris_de(db, CIMD_CLAUDE)
+    oc.redirect_uris_de(db, CIMD_DESCARGABLE)
     assert len(llamadas) == 1
     reloj["t"] += 2
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) == [CALLBACK_CLAUDE]
     assert len(llamadas) == 2
 
 
@@ -164,12 +167,12 @@ def test_cimd_que_falla_no_se_reintenta_dentro_de_60_segundos(db, monkeypatch):
         raise oc.requests.ConnectionError("sin red")
     monkeypatch.setattr(oc.requests, "get", fake)
 
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
     reloj["t"] += 59
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
     assert len(llamadas) == 1
     reloj["t"] += 2  # 61 s desde el fallo
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
     assert len(llamadas) == 2
 
 
@@ -190,8 +193,8 @@ def test_cimd_con_userinfo_o_subdominio_falso_se_rechaza_sin_descargar(db, monke
     [CALLBACK_CLAUDE + "#frag"],
 ])
 def test_cimd_con_redirect_invalida_se_rechaza(db, monkeypatch, uris):
-    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": uris})
-    assert oc.redirect_uris_de(db, CIMD_CLAUDE) is None
+    _mock_get(monkeypatch, {"client_id": CIMD_DESCARGABLE, "redirect_uris": uris})
+    assert oc.redirect_uris_de(db, CIMD_DESCARGABLE) is None
 
 
 def test_registrar_rechaza_mas_de_diez_redirects(db):
@@ -299,3 +302,17 @@ def test_cache_de_cimd_tiene_tope_y_purga_las_vencidas(db, monkeypatch):
     reloj["t"] += oc.CACHE_FALLO_SEGUNDOS + 1
     assert oc.redirect_uris_de(db, "https://claude.ai/nuevo") is None
     assert list(oc._cache_cimd) == ["https://claude.ai/nuevo"]
+
+
+def test_el_documento_de_claude_esta_fijo_y_no_se_descarga(db, monkeypatch):
+    """En producción claude.ai le da 403 a la IP de Fly: el documento de Claude
+    no puede depender de la descarga."""
+    llamadas = []
+    _mock_get(monkeypatch, {"client_id": CIMD_CLAUDE, "redirect_uris": ["https://otro/cb"]}, llamadas)
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
+    assert llamadas == []
+
+
+def test_el_documento_fijo_no_se_puede_modificar_desde_afuera(db):
+    oc.redirect_uris_de(db, CIMD_CLAUDE).append("https://evil.test/cb")
+    assert oc.redirect_uris_de(db, CIMD_CLAUDE) == [CALLBACK_CLAUDE]
