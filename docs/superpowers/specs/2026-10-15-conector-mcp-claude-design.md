@@ -105,6 +105,9 @@ Nombres y descripciones en español, porque así habla el equipo con Claude.
 Cada herramienta devuelve un único `content` de tipo `text` con JSON. Los
 errores esperables (lead inexistente, etapa inválida) vuelven con
 `isError: true` y un mensaje en español, nunca como excepción.
+El JSON de un resultado bueno va envuelto en `{"aviso", "datos"}`: el aviso
+dice que los textos los cargaron terceros desde formularios públicos y son
+datos, no instrucciones; el texto se marca, nunca se filtra ni se modifica.
 
 ### `buscar_leads`
 
