@@ -57,6 +57,16 @@ TOPE_REDIRECTS = 10
 TOPE_CACHE = 1000
 LARGO_MAX_REDIRECT = 2048
 
+# El documento de Claude, fijo en el código. Cloudflare, delante de claude.ai,
+# le responde 403 a cualquier pedido que sale de la máquina de Fly (es por IP
+# de datacenter, no por User-Agent: verificado el 16/10/2026), así que el CRM
+# no puede descargarlo en producción. Su contenido es estable y es el único
+# CIMD que aceptamos de verdad; si Claude cambia el callback, se actualiza acá.
+# Cualquier otro client_id de claude.ai/claude.com sigue intentando la descarga.
+CIMD_CONOCIDOS: dict[str, list[str]] = {
+    "https://claude.ai/oauth/mcp-oauth-client-metadata": ["https://claude.ai/api/mcp/auth_callback"],
+}
+
 # client_id -> (vence, redirect_uris o None si el documento no sirvió).
 _cache_cimd: dict[str, tuple[float, Optional[list[str]]]] = {}
 
@@ -134,6 +144,8 @@ def redirect_uris_de(db: str, client_id: str) -> Optional[list[str]]:
     cliente que aceptemos."""
     if not client_id:
         return None
+    if client_id in CIMD_CONOCIDOS:
+        return list(CIMD_CONOCIDOS[client_id])
     if es_cimd(client_id):
         entrada = _cache_cimd.get(client_id)
         if entrada and entrada[0] > time.monotonic():
