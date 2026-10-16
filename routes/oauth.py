@@ -165,6 +165,8 @@ def metadata_servidor():
         "token_endpoint_auth_methods_supported": ["none"],
         "client_id_metadata_document_supported": True,
         "scopes_supported": [SCOPE_LECTURA],
+        # RFC 9207: toda vuelta de /oauth/authorize lleva `iss`.
+        "authorization_response_iss_parameter_supported": True,
     })
 
 
@@ -255,7 +257,11 @@ def _validar_pedido(params) -> dict:
 
 
 def _volver(redirect_uri: str, **campos):
+    """Redirige al cliente. Toda vuelta, con código o con error, lleva `iss`
+    (RFC 9207): así un cliente que habla con varios servidores no confunde
+    quién le devolvió la respuesta (el ataque de mix-up)."""
     sep = "&" if "?" in redirect_uri else "?"
+    campos["iss"] = base_url()
     return redirect(redirect_uri + sep + urlencode({k: v for k, v in campos.items() if v}))
 
 

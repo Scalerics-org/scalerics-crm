@@ -99,6 +99,8 @@ def test_metadata_del_servidor_de_autorizacion(anonimo):
     assert m["grant_types_supported"] == ["authorization_code", "refresh_token"]
     assert m["response_types_supported"] == ["code"]
     assert m["scopes_supported"] == ["crm:leer"]
+    # RFC 9207: el cliente puede comprobar quién le devolvió el código.
+    assert m["authorization_response_iss_parameter_supported"] is True
     assert r.headers["Access-Control-Allow-Origin"] == "*"
     assert "max-age" in r.headers["Cache-Control"]
 
@@ -365,7 +367,7 @@ def test_errores_de_parametros_vuelven_al_redirect_con_state(logueado, cambio, e
     assert r.status_code == 302
     assert r.headers["Location"].startswith(CALLBACK + "?")
     q = _query(r.headers["Location"])
-    assert q["error"] == error and q["state"] == "abc123"
+    assert q["error"] == error and q["state"] == "abc123" and q["iss"] == BASE
 
 
 def _autorizar(c, cid, challenge, accion="autorizar"):
@@ -384,7 +386,7 @@ def test_autorizar_devuelve_code_y_state(logueado):
     assert r.status_code == 302
     assert r.headers["Location"].startswith(CALLBACK + "?")
     q = _query(r.headers["Location"])
-    assert q["code"] and q["state"] == "abc123"
+    assert q["code"] and q["state"] == "abc123" and q["iss"] == BASE
 
 
 def test_cancelar_devuelve_access_denied(logueado):
@@ -392,7 +394,7 @@ def test_cancelar_devuelve_access_denied(logueado):
     _, ch = _pkce()
     r = _autorizar(logueado, cid, ch, accion="cancelar")
     q = _query(r.headers["Location"])
-    assert q["error"] == "access_denied" and q["state"] == "abc123"
+    assert q["error"] == "access_denied" and q["state"] == "abc123" and q["iss"] == BASE
 
 
 def test_post_sin_nonce_valido_es_403(logueado):
