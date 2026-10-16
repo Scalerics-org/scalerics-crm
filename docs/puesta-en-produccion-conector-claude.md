@@ -57,13 +57,25 @@ Nada de escritura. Las finanzas, tareas y agenda no están expuestas.
 
 ## Revocar el acceso de alguien
 
-Hoy no hay pantalla. Desde la consola de Fly:
+Desde el CRM, con un usuario admin: **Usuarios** (el engranaje del menú, o
+`/admin/users`). Cada persona muestra `Claude: N`, la cantidad de conexiones de
+Claude vivas, y al lado el botón **Cortar acceso de Claude**. El botón revoca
+todos sus tokens y borra los códigos pendientes; la acción queda en el registro
+de actividad. Si la persona quiere volver a usarlo, Claude le pide que autorice
+de nuevo. Con `N` en 0 el botón sigue activo: borra igual una autorización que
+haya quedado a medias.
+
+Cambiar la contraseña de alguien también le corta el acceso a Claude, y aunque
+nadie haga nada, una conexión dura como mucho 90 días desde que se autorizó:
+después Claude vuelve a pedir el consentimiento.
+
+Alternativa, si el CRM no responde, desde la consola de Fly:
 
 ```bash
 flyctl ssh console -a scalerics-crm -C "sqlite3 /data/leads.db \"UPDATE oauth_tokens SET revocado_en = datetime('now') WHERE user_id = (SELECT id FROM users WHERE email = 'persona@scalerics.com') AND revocado_en IS NULL\""
 ```
 
-Si la persona se borra del CRM, sus tokens se borran solos.
+Si la persona se borra del CRM, sus tokens dejan de valer en el acto.
 
 ## Ver qué consultó Claude
 

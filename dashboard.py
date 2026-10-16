@@ -22677,15 +22677,22 @@ def create_app(db_path: str) -> Flask:
             return jsonify({"ok": True})
         finally: conn2.close()
 
+    def _usuarios_con_tokens_claude():
+        """Los usuarios con cuántos tokens vivos de Claude tiene cada uno, para
+        el botón "Cortar acceso de Claude" del panel. Lo usan la página y su
+        recarga por JSON: los dos tienen que traer el mismo dato."""
+        from database import get_all_users
+        from services.oauth_tokens import tokens_vivos_por_usuario
+        vivos = tokens_vivos_por_usuario(db_path)
+        return [{**dict(u), "claude_tokens_vivos": vivos.get(u["id"], 0)}
+                for u in get_all_users(db_path)]
+
     @app.route("/api/admin/users-data", methods=["GET"])
     def admin_users_data():
-        from database import get_user_by_id, get_all_users
         current_user_id = session.get("user_id")
         if not is_admin(db_path, current_user_id):
             return jsonify({"error": "No autorizado"}), 403
-        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        users = get_all_users(db_path)
-        return jsonify([dict(u) for u in users])
+        return jsonify(_usuarios_con_tokens_claude())
 
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():
@@ -22824,7 +22831,7 @@ input:focus{border-color:#0088CC}
         es_admin = is_admin(db_path, user_id)
         if not es_admin:
             return redirect(url_for("index"))
-        users = get_all_users(db_path)
+        users = _usuarios_con_tokens_claude()
         ADMIN_PAGE = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -22884,6 +22891,7 @@ select:focus{border-color:#0088cc}
 <div class="section">
   <div class="section-title">Usuarios</div>
   {% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
+  {% if request.args.get('claude_cortado') %}<div class="msg-ok">Acceso de Claude cortado. Si quiere volver a usarlo, tiene que autorizarlo de nuevo.</div>{% endif %}
   <div id="users-list"></div>
 </div>
 
@@ -23018,6 +23026,10 @@ function renderUsers() {
         </div>
         <span class="badge ${u.role_id?'has-role':''}">${roleName}</span>
         <select onchange="setRole(${u.id}, this.value)">${opts}</select>
+        <span class="sub" title="Conexiones de Claude vivas (tokens sin revocar ni vencer)">Claude: ${u.claude_tokens_vivos || 0}</span>
+        <form method="POST" action="/oauth/admin/revocar/${u.id}" onsubmit="return confirm('Cortar el acceso de Claude de esta persona? Va a tener que volver a autorizarlo.')" style="display:inline">
+          <button class="btn btn-ghost" type="submit">Cortar acceso de Claude</button>
+        </form>
         <form method="POST" action="/admin/users/${u.id}/delete" onsubmit="return confirm('Eliminar a ${u.name}?')" style="display:inline">
           <button class="btn btn-danger" type="submit">Borrar</button>
         </form>

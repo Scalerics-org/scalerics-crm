@@ -8,6 +8,12 @@ Duraciones: el código de autorización vence a los 10 minutos, el access a la
 hora, el refresh a los 30 días. El refresh se rota en cada uso (OAuth 2.1 lo
 exige para clientes públicos, y Claude se registra como público).
 
+Una familia (todo lo que nace de un mismo código, rotación tras rotación) vive
+como mucho 90 días desde el canje. Sin ese tope cada rotación volvía a dar 30
+días, y un refresh robado que el ladrón siguiera rotando no vencía nunca. Pasados
+los 90 días la persona vuelve a autorizar a Claude en la pantalla de
+consentimiento. El refresh vence en `min(ahora + 30 días, familia_en + 90 días)`.
+
 Un código reusado no solo falla: revoca lo que se emitió con él. Es la defensa
 de OAuth 2.1 §4.1.3 contra un código robado que llega segundo.
 
@@ -34,6 +40,8 @@ SCOPE_LECTURA = "crm:leer"
 CODIGO_DURA = timedelta(minutes=10)
 ACCESS_DURA = timedelta(hours=1)
 REFRESH_DURA = timedelta(days=30)
+# Tope de la familia entera, contado desde el canje del código.
+FAMILIA_DURA = timedelta(days=90)
 # Tokens cuyo refresh venció hace más de esto se borran en el barrido.
 BASURA_DESPUES_DE = timedelta(days=30)
 # `ultimo_uso` se escribe como mucho una vez por minuto, para no escribir en
@@ -102,6 +110,7 @@ def init_oauth(conn: sqlite3.Connection) -> None:
             refresh_expira   TEXT NOT NULL,
             ultimo_uso       TEXT,
             revocado_en      TEXT,
+            familia_en       TEXT,
             created_at       TEXT NOT NULL
         )
     """)
@@ -197,8 +206,9 @@ def canjear_codigo(db: str, code: str, client_id: str, redirect_uri: str,
             (_iso(ahora), code_hash))
         if marcado.rowcount != 1:
             return None
+        # El canje es el nacimiento de la familia: de acá se cuentan los 90 días.
         tokens = _emitir_tokens(conn, fila["user_id"], fila["client_id"], fila["scope"],
-                                fila["resource"], code_hash, ahora)
+                                fila["resource"], code_hash, ahora, familia_en=ahora)
         conn.commit()
         return tokens
     finally:
@@ -206,13 +216,18 @@ def canjear_codigo(db: str, code: str, client_id: str, redirect_uri: str,
 
 
 def _emitir_tokens(conn: sqlite3.Connection, user_id: int, client_id: str, scope: str,
-                   resource: Optional[str], codigo_hash: Optional[str], ahora: datetime) -> dict:
+                   resource: Optional[str], codigo_hash: Optional[str], ahora: datetime,
+                   familia_en: datetime) -> dict:
+    """`familia_en` es cuándo se canjeó el código del que viene este par. El
+    refresh no pasa nunca de `familia_en + FAMILIA_DURA`, por más que se rote."""
     access, refresh = _secreto(), _secreto()
+    refresh_expira = min(ahora + REFRESH_DURA, familia_en + FAMILIA_DURA)
     conn.execute(
         "INSERT INTO oauth_tokens (user_id, client_id, codigo_hash, access_hash, refresh_hash, "
-        "scope, resource, access_expira, refresh_expira, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "scope, resource, access_expira, refresh_expira, familia_en, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (user_id, client_id, codigo_hash, _hash(access), _hash(refresh), scope, resource,
-         _iso(ahora + ACCESS_DURA), _iso(ahora + REFRESH_DURA), _iso(ahora)))
+         _iso(ahora + ACCESS_DURA), _iso(refresh_expira), _iso(familia_en), _iso(ahora)))
     return {
         "access_token": access,
         "refresh_token": refresh,
@@ -290,8 +305,10 @@ def refrescar(db: str, refresh_token: str, client_id: str) -> Optional[dict]:
                            "WHERE id = ? AND revocado_en IS NULL", (_iso(ahora), fila["id"]))
         if rev.rowcount != 1:
             return None
+        # La familia se hereda: rotar no reinicia el reloj de los 90 días.
         tokens = _emitir_tokens(conn, fila["user_id"], fila["client_id"], fila["scope"],
-                                fila["resource"], fila["codigo_hash"], ahora)
+                                fila["resource"], fila["codigo_hash"], ahora,
+                                familia_en=datetime.fromisoformat(fila["familia_en"]))
         _barrer(conn, ahora)
         conn.commit()
         return tokens
@@ -318,7 +335,8 @@ def revocar(db: str, token: str) -> None:
 def revocar_todos_de_usuario(db: str, user_id: int) -> None:
     """Corta todo acceso de Claude a nombre de esa persona: tokens vivos y códigos
     pendientes. Se llama al cambiar la contraseña; si no, quien la robó y ya
-    conectó a Claude seguiría leyendo el CRM hasta 30 días después del cambio (lo que dura el refresh)."""
+    conectó a Claude seguiría leyendo el CRM hasta que venza su familia de tokens.
+También la llama el botón "Cortar acceso de Claude" del panel de usuarios."""
     conn = _connect(db)
     try:
         conn.execute("UPDATE oauth_tokens SET revocado_en = ? "
@@ -327,3 +345,19 @@ def revocar_todos_de_usuario(db: str, user_id: int) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def tokens_vivos_por_usuario(db: str) -> dict[int, int]:
+    """Cuántos tokens vivos (sin revocar y con el refresh vigente) tiene cada
+    persona. Lo muestra el panel de usuarios al lado del botón para cortar el
+    acceso. Una sola consulta agrupada, no una por usuario. Quien no tiene
+    ninguno no aparece en el dict."""
+    conn = _connect(db)
+    try:
+        filas = conn.execute(
+            "SELECT user_id, COUNT(*) AS n FROM oauth_tokens "
+            "WHERE revocado_en IS NULL AND refresh_expira > ? GROUP BY user_id",
+            (_iso(_ahora()),)).fetchall()
+    finally:
+        conn.close()
+    return {f["user_id"]: f["n"] for f in filas}
