@@ -534,6 +534,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/10 — Fidelidad: la cola de mails automáticos se vaciaba (pedido de Juan).** Worktree `../crm-fid-resend`, rama `fix/fid-cola-no-se-corta`. El buscador de Actions traía 5-20 mails por día contra 25+ enviados, y cada corrida perdía ~35 min reabriendo ~44 webs caídas. Ahora: una web que no abre 3 veces se deja (`fid_prospectos.mail_intentos`, `INTENTOS_WEB`); el workflow corre 07:30 y 19:30 UTC en 3 máquinas (matrix `parte`, `/mails-auto/webs?parte=&partes=` reparte las webs por `id % partes`); la rotación usa `GITHUB_RUN_NUMBER` (los cron salen hasta 5 h tarde); 8 tipos de local más y 30 resultados por búsqueda (874 búsquedas, ~18 días por vuelta). Después del merge: deploy (el endpoint cambia) y correr el workflow a mano con "forzar".
+
 - **14/10 — Outbound de Fidelidad: los cambios que pidió Lucas desde la calle (PDF del 14/10).** Worktree
   `../crm-fid-calle`, rama `feat/fid-cambios-calle`, sale de `origin/main` (`e430132`). Solo
   `services/fidelidad.py`, `routes/fidelidad.py`, `dashboard.py` (FID_JS, CSS y el panel `cola`) y tests.
