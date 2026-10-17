@@ -341,3 +341,48 @@ def test_la_pagina_principal_abre_con_los_totales(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert b'id="fin-fijos-totales"' in r.data
     assert b"function _finTotalesFijos(" in r.data
+
+
+# ── con todos activos (Juan, 17/10) ──────────────────────────────────────────
+
+@sin_node
+def test_con_todos_cuentan_los_apagados_y_los_que_no_empezaron(tmp_path):
+    fijos = [
+        _fijo(1, "egreso", 100),
+        _fijo(2, "ingreso", 300),
+        _fijo(3, "egreso", 50, activo=0),                 # apagado: cuenta
+        _fijo(4, "ingreso", 200, desde="2026-11"),        # todavía no empezó: cuenta
+        _fijo(5, "egreso", 999, hasta="2026-08"),         # ya terminó: no
+    ]
+    t = _correr(tmp_path, "console.log(JSON.stringify(_finTotalesFijos(%s, '2026-09', true)));"
+                % json.dumps(fijos))
+    assert t["egresos"] == 150
+    assert t["ingresos"] == 500
+    assert t["resultado"] == 350
+    assert t["contados"] == 4
+
+
+@sin_node
+def test_la_fila_con_todos_activos_aparece_solo_si_falta_alguno(tmp_path):
+    fijos = [_fijo(1, "egreso", 100), _fijo(2, "ingreso", 300),
+             _fijo(3, "ingreso", 200, desde="2026-11")]
+    prueba = """
+(async () => {
+  _finMeses = {mes_actual: '2026-09', con_datos: [], abiertos: []};
+  _RESP['/api/finanzas/recurrentes'] = __FIJOS__;
+  await loadFijos();
+  const con = _el('fin-fijos-totales-todos').innerHTML;
+  _RESP['/api/finanzas/recurrentes'] = __FIJOS__.slice(0, 2);
+  await loadFijos();
+  console.log(JSON.stringify({con, sin: _el('fin-fijos-totales-todos').innerHTML,
+                              usd: _finUsd(500)}));
+  process.exit(0);
+})().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
+""".replace("__FIJOS__", json.dumps(fijos))
+    s = _correr(tmp_path, prueba)
+    tarjetas = _tarjetas(s["con"])
+    assert list(tarjetas) == ["Egresos con todos activos", "Ingresos con todos activos",
+                              "Resultado con todos activos"]
+    assert tarjetas["Ingresos con todos activos"] == ("fin-verde", s["usd"])
+    assert "1 fijo que todavía no corre" in s["con"]
+    assert s["sin"] == ""
