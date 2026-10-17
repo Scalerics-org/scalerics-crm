@@ -5164,6 +5164,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div id="fin-vista-fijos" style="display:none">
       <div class="fin-kpis" id="fin-fijos-totales"></div>
+      <div class="fin-kpis" id="fin-fijos-totales-todos"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
     </div>
@@ -14997,10 +14998,13 @@ function _finFijoVigente(f, mes) {
 // Un ingreso con tarjeta cuenta lo que queda despues de la comision y Plexo
 // (su desglose.te_queda, en USD con la misma cotizacion del fijo), no el
 // precio entero (Juan, 1/10).
-function _finTotalesFijos(fijos, mes) {
+// Con `todos` (Juan, 17/10: "los que van a estar por entrar una vez que estén
+// todos activos") cuentan también los apagados y los que todavía no empezaron;
+// solo quedan afuera los que ya terminaron.
+function _finTotalesFijos(fijos, mes, todos) {
   const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0, comisiones: 0};
   (fijos || []).forEach(f => {
-    if (!f.activo || !_finFijoVigente(f, mes)) return;
+    if (todos ? (f.hasta && f.hasta < mes) : (!f.activo || !_finFijoVigente(f, mes))) return;
     if (f.tipo !== 'ingreso' && f.tipo !== 'egreso') return;
     if (f.monto_usd === null || f.monto_usd === undefined) { t.sinCotizar += 1; return; }
     if (f.tipo === 'ingreso') {
@@ -15040,6 +15044,29 @@ function _finKpisFijos(t) {
     </div>`;
 }
 
+// La segunda fila: lo que va a entrar y salir por mes cuando corran todos los
+// fijos. Solo aparece si hay alguno apagado o que todavía no empezó.
+function _finKpisFijosTodos(t, faltan) {
+  const nota = '<div class="fin-kpi-var">por mes, con ' + faltan + (faltan === 1
+    ? ' fijo que todavía no corre' : ' fijos que todavía no corren') + '</div>';
+  return `
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Egresos con todos activos</div>
+      <div class="fin-kpi-valor fin-rojo">${_finUsd(t.egresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Ingresos con todos activos</div>
+      <div class="fin-kpi-valor fin-verde">${_finUsd(t.ingresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Resultado con todos activos</div>
+      <div class="fin-kpi-valor ${t.resultado >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(t.resultado)}</div>
+      <div class="fin-kpi-var">ingresos menos egresos</div>
+    </div>`;
+}
+
 // El desglose de un ingreso fijo con tarjeta, como en "Cobro con tarjeta"
 // (Juan, 1/10). Lo calcula /api/finanzas/recurrentes con las mismas cuentas
 // con las que se genera cada mes.
@@ -15069,6 +15096,7 @@ async function loadFijos() {
   if (!r.ok) {
     // Sin datos no hay totales: dejar los de antes seria mostrar numeros viejos.
     totalesEl.innerHTML = '';
+    document.getElementById('fin-fijos-totales-todos').innerHTML = '';
     cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los fijos</div>';
     return;
   }
@@ -15079,6 +15107,9 @@ async function loadFijos() {
   const sinCotizar = totales.sinCotizar;
   const soloLectura = _finSoloLectura();
   totalesEl.innerHTML = _finKpisFijos(totales);
+  const todos = _finTotalesFijos(fijos, mes, true);
+  document.getElementById('fin-fijos-totales-todos').innerHTML =
+    todos.contados > totales.contados ? _finKpisFijosTodos(todos, todos.contados - totales.contados) : '';
 
   const encabezado = `
     <div class="fin-toolbar">
