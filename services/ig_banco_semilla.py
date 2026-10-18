@@ -395,3 +395,527 @@ BANCO = [
      "slides": [_s("Usamos lo que *hacemos*", "Nuestro CRM recibe y ordena cada consulta solo.", "Detrás de escena", "Escribinos DEMO")],
      "caption": "Historia: el CRM propio."},
 ]
+
+# ── tanda del 17/10/2026 ─────────────────────────────────────────────────────
+# Investigacion de lo que publican agencias de software, proveedores de IA y
+# de fidelizacion, y fechas de Uruguay. Las cifras llevan la fuente en el
+# caption; las de proveedores de EE. UU. lo dicen. Las de calendario estan
+# escritas para servir cualquier semana: el banco elige sin mirar la fecha.
+# Cerrar pidiendo que lo guarden o lo manden suma guardados (Metricool 2026).
+
+GUARDA = "📌 Guardalo para tenerlo a mano."
+
+BANCO += [
+    # ── software y automatización ───────────────────────────────────────────
+    {"clave": "car-no-automatizar", "formato": "carrusel", "pilar": "propio",
+     "slides": [
+         _s("Lo que *no* automatizaríamos", "Somos una empresa de automatización y te lo decimos igual.", "Contracorriente"),
+         _s("La primera charla con *un cliente grande*", "Ahí se gana la confianza. Eso lo hace una persona.", "1"),
+         _s("Un reclamo *enojado*", "Primero escuchar. Después, si querés, el sistema ordena el seguimiento.", "2"),
+         _s("Un proceso que *cambia cada semana*", "Si todavía no tiene forma, automatizarlo es congelar el desorden.", "3"),
+         _s("Algo que pasa *dos veces por año*", "No vale lo que cuesta armarlo.", "4"),
+         _s("Automatizamos lo repetitivo *para que te quede tiempo para esto*", "Te ayudamos a separar una cosa de la otra.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "No todo se tiene que automatizar. La primera charla con un cliente, un reclamo delicado o un proceso que todavía cambia todas las semanas necesitan a una persona.",
+         "Lo que sí conviene sacarle a tu equipo es lo que se repite, sigue siempre los mismos pasos y cuesta plata cuando sale mal.",
+         "Así decidimos qué automatizar en cada empresa.")},
+
+    {"clave": "car-glosario", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("Glosario *sin humo*", "Lo que te va a decir cualquier proveedor de software, explicado con el almacén.", "Guardalo"),
+         _s("API = *el repartidor*", "Lleva los datos de un sistema a otro, sin que nadie los copie.", "1"),
+         _s("Integración = *que se hablen*", "La caja, la planilla y la e-factura con los mismos datos.", "2"),
+         _s("Bot = *el que contesta lo repetido*", "Horarios, precios, envíos. Lo raro te lo pasa a vos.", "3"),
+         _s("Nube = *tus datos no viven en la compu del mostrador*", "Si se rompe la PC, no perdés nada.", "4"),
+         _s("Mantenimiento = *que no desaparezcan*", "Ajustes, copias de seguridad y alguien que responde si algo falla.", "5"),
+         _s("¿Qué palabra te dijeron *y no entendiste?*", "Comentala y la explicamos.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "API, integración, bot, nube. Son palabras que aparecen en cualquier presupuesto de software y casi nadie las explica.",
+         "Acá van en una línea cada una, con ejemplos de una pyme.",
+         GUARDA)},
+
+    {"clave": "car-medida-enlatado", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("¿A medida o *enlatado?*", "Cuál te conviene, sin vueltas.", "Guía rápida"),
+         _s("Tu proceso es *estándar*", "Facturar, cobrar, liquidar sueldos: hay sistemas hechos que andan bien.", "Enlatado"),
+         _s("Tu proceso es *lo que te diferencia*", "Cómo armás un pedido o atendés a tu cliente: ahí conviene a medida.", "A medida"),
+         _s("Pagás 3 sistemas *que no se hablan*", "Muchas veces no hace falta cambiar ninguno: hace falta conectarlos.", "Integración"),
+         _s("A veces *te recomendamos un enlatado*", "Y te ayudamos a conectarlo con lo tuyo.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "No todo tiene que ser a medida. Si tu proceso es igual al de cualquier empresa, un sistema hecho suele alcanzar.",
+         "El desarrollo a medida tiene sentido en lo que te hace distinto, y la integración cuando ya tenés varios sistemas que no se hablan.",
+         "En la primera charla te decimos cuál de los tres te conviene.")},
+
+    {"clave": "car-sistemas-no-hablan", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("Tus sistemas *no se hablan*", "Y alguien hace de puente todos los días.", "Pasa en muchas pymes"),
+         _s("Cada uno *por su lado*", "El banco, la e-factura, la tienda online y la planilla.", "Hoy"),
+         _s("Alguien *copia y pega*", "De uno a otro, todos los días. Y a veces se equivoca.", "Hoy"),
+         _s("¿Cuántas veces se escribe *el mismo dato?*", "Contalas en tu empresa. Suelen ser más de las que pensás.", "Pregunta"),
+         _s("Un pedido que se carga *una vez*", "Y llega solo a facturación, al depósito y al reporte.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Tener buenos sistemas no alcanza si no se hablan entre ellos. Entonces alguien de tu equipo pasa el día copiando datos de uno a otro.",
+         "Una integración hace ese trabajo sola: el dato se carga una vez y llega a todos lados.")},
+
+    {"clave": "car-vida-pedido", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("Un día en la vida *de un pedido*", "Contá cuántas veces se copia.", "Pasa en muchas pymes"),
+         _s("9:14 · Entra *por WhatsApp*", "Copias: 0.", "1"),
+         _s("9:40 · Alguien lo pasa *a la planilla*", "Copias: 1.", "2"),
+         _s("11:00 · El depósito *lo vuelve a anotar*", "Copias: 2.", "3"),
+         _s("16:30 · Administración *lo copia para facturar*", "Copias: 3. Y en cada copia puede haber un error.", "4"),
+         _s("El mismo pedido, *cargado una sola vez*", "Te mostramos cómo quedaría en tu empresa.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Un pedido que entra por WhatsApp puede copiarse tres o cuatro veces antes de facturarse. Cada copia es tiempo y una chance de error.",
+         "Con un sistema, el pedido se carga una vez y el resto lo ve al instante.")},
+
+    {"clave": "img-error-carga", "formato": "imagen", "pilar": "dolor",
+     "slides": [_s("¿Cuánto te cuesta *un error de carga?*", "Un precio viejo, una dirección mal anotada, un pedido duplicado.")],
+     "caption": _c(
+         "Los errores de carga no aparecen en ninguna factura, pero se pagan: un presupuesto con precio viejo, un envío a la dirección equivocada, un pedido que se prepara dos veces.",
+         "Casi siempre pasan por lo mismo: mucha gente copiando datos a mano. Un solo lugar donde se carga cada dato, con controles, los evita.")},
+
+    {"clave": "car-sistema-viejo", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("Tu sistema de hace 10 años *ya no da más*", "Cuatro señales.", "Señales"),
+         _s("Solo anda *en una PC*", "Si esa compu se rompe, se frena la empresa.", "1"),
+         _s("Nadie sabe *quién lo hizo*", "Y nadie se anima a tocarlo.", "2"),
+         _s("No se conecta *con nada*", "Ni con la e-factura, ni con la web, ni con el celular.", "3"),
+         _s("Lo completás *con planillas*", "Lo que el sistema no hace, se hace en Excel por fuera.", "4"),
+         _s("Se puede migrar *sin parar la empresa*", "Te contamos cómo lo hacemos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Muchos sistemas viejos siguen andando, pero cada año cuesta más sostenerlos: dependen de una sola PC, nadie sabe cómo se hicieron y no se conectan con nada nuevo.",
+         "Migrar no es empezar de cero: se pasa por partes, sin frenar la operación.")},
+
+    {"clave": "car-despues-entregar", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("¿Y si *se rompe?*", "Qué pasa después de entregar un sistema.", "Lo preguntan siempre"),
+         _s("Nos enteramos *antes que vos*", "El sistema manda alertas cuando algo falla.", "1"),
+         _s("Copias de seguridad *todos los días*", "Si algo sale mal, se vuelve atrás.", "2"),
+         _s("Cambia tu negocio, *cambia el sistema*", "Un precio nuevo, un producto, un paso más: se ajusta.", "3"),
+         _s("No desaparecemos *al entregar*", "Contanos qué te preocupa.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Es una de las dudas más razonables: ¿qué pasa si el sistema falla un sábado o si mi negocio cambia?",
+         "Para eso está el mantenimiento: alertas, copias de seguridad y ajustes cuando hacen falta. Un sistema a medida tiene que acompañar a la empresa, no quedarse congelado el día que se entrega.")},
+
+    {"clave": "car-preguntas-proveedor", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("Preguntas para hacerle *a cualquier proveedor de software*", "También a nosotros.", "Antes de contratar"),
+         _s("¿De quién son *el código y los datos?*", "Tienen que ser tuyos.", "1"),
+         _s("¿Qué pasa si algo se rompe *un sábado?*", "Que te digan quién responde y cómo.", "2"),
+         _s("¿Cuánto sale *mantenerlo por mes?*", "El precio de arranque no es el único.", "3"),
+         _s("¿Lo puedo ver *andando antes de pagar todo?*", "Entregas por partes, no una caja negra al final.", "4"),
+         _s("¿Se conecta *con lo que ya uso?*", "E-factura, banco, WhatsApp, tu planilla.", "5"),
+         _s("Si te contestan *claro*, vas bien", "A nosotros preguntanos lo mismo.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Contratar un desarrollo es una decisión importante, y estas preguntas te ahorran sorpresas.",
+         "Hacéselas a cualquier proveedor, también a nosotros.",
+         "📌 Guardalo o mandáselo a tu socio.")},
+
+    {"clave": "img-nadie-lo-usa", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("Compraste el sistema *y nadie lo usa*", "Pasa cuando nadie lo pidió, es complicado o no hubo capacitación.")],
+     "caption": _c(
+         "Un sistema que el equipo no usa es plata perdida. Casi siempre falla por lo mismo: se eligió sin preguntarle a quien lo tiene que usar, tiene pantallas complicadas o nadie lo explicó.",
+         "Lo que funciona: sumar al equipo desde el primer día, arrancar por un solo proceso y pensar cada pantalla para la persona que carga los datos.")},
+
+    {"clave": "car-primera-reunion", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("Las preguntas de *la primera reunión*", "Y lo que respondemos.", "Preguntas frecuentes"),
+         _s("¿Tengo que *cambiar todo?*", "No. Arrancamos por lo que más te cuesta y lo demás sigue igual.", "1"),
+         _s("¿Cuánto *demora?*", "Depende del proyecto. Siempre hay una primera parte andando rápido.", "2"),
+         _s("¿Mi equipo *va a saber usarlo?*", "Lo diseñamos mirando cómo trabajan, y los acompañamos al arrancar.", "3"),
+         _s("¿Funciona *con e-factura?*", "Sí, se conecta con tu proveedor de facturación electrónica.", "4"),
+         _s("¿Qué tengo que *tener preparado?*", "Nada. Solo contarnos cómo trabajás hoy.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Estas son las preguntas que más escuchamos en la primera videollamada.",
+         "Si tenés otra, escribinos y la respondemos.")},
+
+    {"clave": "car-llaves-pyme", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("Las 6 llaves *que tu pyme no puede perder*", "Revisá a nombre de quién está cada una.", "Guardalo"),
+         _s("El *dominio* de tu web", "¿Está a nombre de la empresa o de quien la hizo?", "1"),
+         _s("El administrador de *Meta Business*", "Si se va esa persona, perdés Instagram y los anuncios.", "2"),
+         _s("El *mail principal*", "Y cómo se recupera si alguien se olvida la clave.", "3"),
+         _s("El *certificado digital* para facturar", "Quién lo tiene y cuándo vence.", "4"),
+         _s("El *respaldo* de tus datos", "¿Dónde está la copia si se rompe la compu?", "5"),
+         _s("Las *contraseñas*", "En un gestor, no en un post-it ni en un chat.", "6"),
+         _s("¿Alguna *no la tenés clara?*", "Te ayudamos a ordenarlas.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Muchas pymes descubren que no tienen el control de su dominio o de su cuenta de Instagram el día que lo necesitan.",
+         "Revisá estas seis cosas con tu equipo: a nombre de quién están, quién tiene acceso y cómo se recuperan.",
+         GUARDA)},
+
+    # ── servicios por rubro ──────────────────────────────────────────────────
+    {"clave": "car-turno-no-vino", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("El turno *que no vino*", "Un hueco en la agenda es plata que no vuelve.", "Clínicas, peluquerías, talleres"),
+         _s("Recordatorio *24 horas antes*", "Con dos botones: confirmo o reprogramo.", "1"),
+         _s("Reprogramar *sin llamar*", "El cliente elige otro horario desde el celular.", "2"),
+         _s("Lista de espera *que avisa sola*", "Si alguien cancela, el siguiente se entera al instante.", "3"),
+         _s("¿Cuántos turnos *se te pierden por mes?*", "Te mostramos cómo quedaría tu agenda.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "En una clínica, una peluquería o un taller, cada turno que no viene es un hueco que ya no se recupera.",
+         "Un recordatorio automático con opción de confirmar o reprogramar, y una lista de espera que avisa sola, llenan esos huecos sin que nadie tenga que llamar.")},
+
+    {"clave": "img-en-que-anda", "formato": "imagen", "pilar": "servicio",
+     "slides": [_s("«¿En qué anda *mi pedido?*»", "Si tu cliente lo puede ver solo, tu equipo deja de atender esa llamada.")],
+     "caption": _c(
+         "Las llamadas para preguntar por un pedido interrumpen a tu equipo todo el día.",
+         "Con un portal simple, el cliente ve el estado (confirmado, en preparación, enviado) y recibe un aviso en cada cambio. Sirve para distribuidoras, talleres, imprentas y cualquiera que entregue después de vender.")},
+
+    {"clave": "img-resenas-google", "formato": "imagen", "pilar": "servicio",
+     "slides": [_s("El cliente contento *no deja reseña* si no se la pedís", "Un mensaje automático unos días después de la compra lo cambia.")],
+     "caption": _c(
+         "Las reseñas de Google pesan cuando alguien te busca por primera vez, y casi siempre las dejan los que tuvieron un problema.",
+         "Un mensaje automático unos días después de la compra le pide la reseña al cliente contento. Y si alguien responde que algo salió mal, la queja te llega a vos antes que a Google.")},
+
+    {"clave": "car-compras-proveedores", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("Compras a proveedores: *el lado olvidado*", "Se ordena la venta y la compra sigue a mano.", "Dolor"),
+         _s("Pedidos *por WhatsApp*", "Sin registro de qué se pidió, a quién y a qué precio.", "1"),
+         _s("Llega *distinto a lo pedido*", "Y nadie lo nota hasta que falta algo.", "2"),
+         _s("La factura *no coincide*", "Ni con lo pedido ni con lo recibido.", "3"),
+         _s("Orden de compra *automática*", "Pedido, recepción y factura comparados solos, con alertas de vencimientos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Muchas empresas ordenan cómo venden y dejan las compras a proveedores en el chat.",
+         "Una orden de compra que se genera sola y se compara contra lo que llegó y lo que se facturó evita pagar de más y quedarte sin mercadería.")},
+
+    {"clave": "car-barraca-presupuesto", "formato": "carrusel", "pilar": "caso",
+     "slides": [
+         _s("Barraca: el presupuesto *que tarda dos días*", "Un ejemplo de cómo lo pensamos.", "Cómo lo resolvemos"),
+         _s("«¿Me pasás precio de *40 bolsas de pórtland?*»", "Y 2 m³ de arena, con entrega en Shangrilá.", "El pedido"),
+         _s("Hoy: *buscar, llamar, escribir*", "La lista de precios, el flete, el stock. Todo a mano.", "Hoy"),
+         _s("Con un formulario, *el PDF sale solo*", "Precios actualizados, flete por zona y validez del presupuesto.", "Mañana"),
+         _s("El que contesta primero *suele llevarse la obra*", "¿Tu negocio presupuesta a mano? Contanos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "En una barraca, el cliente pide precio a varias a la vez. El que contesta primero, con un presupuesto claro, suele llevarse la obra.",
+         "Un formulario que arma el presupuesto con la lista de precios y el flete al día lo resuelve en minutos.",
+         "Es un ejemplo de cómo pensamos estos sistemas.")},
+
+    {"clave": "img-inmobiliaria-domingo", "formato": "imagen", "pilar": "dolor",
+     "slides": [_s("Inmobiliaria: la consulta *del domingo a las 23*", "El interesado le escribió a tres. ¿Quién le contesta primero?")],
+     "caption": _c(
+         "Las consultas por alquileres y ventas llegan cuando la gente tiene tiempo: de noche y los fines de semana.",
+         "Un asistente puede preguntar zona, presupuesto y tipo de garantía, mostrar opciones y dejar la visita agendada. El lunes llegás con interesados ya filtrados.")},
+
+    {"clave": "car-estudio-contable", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("Estudio contable: *perseguir papeles* a fin de mes", "Tus clientes mandan fotos borrosas por WhatsApp.", "Para contadores"),
+         _s("Los documentos llegan *por todos lados*", "WhatsApp, mail, en mano. Y siempre falta alguno.", "Hoy"),
+         _s("Un lugar que *recibe y archiva*", "Cada comprobante queda guardado con nombre y cliente.", "1"),
+         _s("Aviso automático *de lo que falta*", "El cliente sabe qué mandar sin que lo llames.", "2"),
+         _s("Fin de mes *sin perseguir a nadie*", "Te mostramos cómo funcionaría en tu estudio.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Para un estudio contable, el cierre de mes empieza persiguiendo papeles.",
+         "Un portal o un asistente que recibe, nombra y archiva cada documento, y le avisa al cliente lo que falta, devuelve esas horas al trabajo que importa.",
+         "📌 Mandáselo a tu contador.")},
+
+    {"clave": "car-3-automatizaciones-rubro", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("Automatizaciones *por rubro*", "Ideas concretas para empezar.", "Guardalo"),
+         _s("Inmobiliaria", "Aviso a interesados cuando entra una propiedad que buscan, vencimientos de contratos y fichas que se arman solas.", "Rubro 1"),
+         _s("Taller mecánico", "Aviso de auto listo, recordatorio de service y presupuesto aprobado desde el celular.", "Rubro 2"),
+         _s("Clínica", "Confirmación de turnos, recordatorio de controles y formularios previos online.", "Rubro 3"),
+         _s("Distribuidora", "Pedido sugerido, hoja de ruta por zona y aviso de deuda vencida.", "Rubro 4"),
+         _s("¿Qué rubro *hacemos después?*", "Comentalo y armamos el próximo.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Cada rubro tiene sus tareas repetidas. Acá van tres por rubro que suelen dar resultado rápido.",
+         "Si el tuyo no está, comentalo y lo sumamos.",
+         GUARDA)},
+
+    # ── inteligencia artificial ──────────────────────────────────────────────
+    {"clave": "car-chatbot-agente", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("Chatbot vs. agente: *no es lo mismo*", "Y conviene saber cuál te están ofreciendo.", "IA sin humo"),
+         _s("El chatbot *sigue un guion*", "Si preguntan X, responde Y.", "Chatbot"),
+         _s("El agente *recibe un objetivo*", "Y decide los pasos para cumplirlo.", "Agente"),
+         _s("Un ejemplo", "Recibe la consulta, revisa el stock, cotiza, agenda la entrega y te avisa.", "Agente"),
+         _s("Por eso el agente *lleva límites*", "Qué puede hacer solo y qué te tiene que consultar.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Muchas veces se le dice «IA» a cualquier respuesta automática. Pero un chatbot que sigue un guion y un agente que decide los pasos para cumplir un objetivo son cosas distintas.",
+         "Un agente puede hacer mucho más, y por eso se diseña con límites claros.")},
+
+    {"clave": "car-ia-no-deberia", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("Lo que la IA *no debería hacer* en tu negocio", "Si te la venden para esto, desconfiá.", "Límites"),
+         _s("Aprobar *descuentos grandes*", "Sin que vos lo sepas.", "1"),
+         _s("Contestar *reclamos delicados*", "Eso pasa a una persona.", "2"),
+         _s("Tocar *plata* sin registro", "Todo lo que hace tiene que quedar anotado.", "3"),
+         _s("*Inventar* precios", "Los lee de tu lista, no los imagina.", "4"),
+         _s("Bien hecha, *sabe cuándo pasarte la conversación*", "Así la diseñamos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "La IA puede atender, ordenar y hacer seguimiento. Pero hay cosas que no debería hacer sola.",
+         "Un buen sistema sabe hasta dónde llega y cuándo pasarle el caso a una persona.")},
+
+    {"clave": "car-mitos-ia", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("3 mitos de la IA *que frenan a las pymes*", "Y lo que pasa en realidad.", "Mito vs. realidad"),
+         _s("«Es para *empresas grandes*»", "Hoy una pyme puede tener un asistente en WhatsApp sin un equipo técnico.", "Mito 1"),
+         _s("«Va a *reemplazar a mi equipo*»", "Le saca lo repetitivo para que hagan lo que importa.", "Mito 2"),
+         _s("«Necesito *saber programar*»", "Necesitás saber cómo funciona tu negocio. Lo técnico lo hacemos nosotros.", "Mito 3"),
+         _s("Primero orden, *después IA*", "Te mostramos por dónde empezar.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "La IA dejó de ser algo de empresas grandes, pero estas tres ideas siguen frenando a muchas pymes.",
+         "Lo importante no es la herramienta: es tener claro qué tarea le vas a sacar de encima a tu equipo.")},
+
+    {"clave": "img-ia-desorden", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("La IA *no arregla* un negocio desordenado", "Primero los datos ordenados. Después el agente.")],
+     "caption": _c(
+         "«No hay adopción de IA exitosa sin una digitalización de base resuelta», dijo Fernando Vargas, del BID, al presentar una encuesta sobre IA en pymes argentinas (Mercado, 2025).",
+         "Si tus precios, clientes y pedidos están en cinco lugares distintos, la IA va a responder con datos viejos. Por eso empezamos ordenando.")},
+
+    {"clave": "img-ceos-ia", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("Solo el 6% de los CEO uruguayos dice que la IA *ya le trajo ingresos*", "En el mundo es el 30%. ¿La tuya ahorra o vende?")],
+     "caption": _c(
+         "Según la encuesta global de PwC a CEO (publicada por El Observador), solo el 6% de los CEO uruguayos dice que la IA ya le generó ingresos extra. En el mundo, el 30%.",
+         "La mayoría la usa para ahorrar tiempo. Para que venda, tiene que contestar rápido, hacer seguimiento y estar conectada a tus datos.")},
+
+    {"clave": "car-dia-agente", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("Un día de un agente *de WhatsApp*", "En una pyme cualquiera.", "Detrás de escena"),
+         _s("8:00", "Contesta las consultas que entraron de noche.", "Mañana"),
+         _s("11:00", "Agenda una visita y te la deja en el calendario.", "Mediodía"),
+         _s("15:00", "Le avisa a un cliente que su pedido está listo.", "Tarde"),
+         _s("19:00", "Te pasa a vos el caso raro, con todo el contexto.", "Noche"),
+         _s("23:00", "Sigue contestando. Vos, no.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Un agente de WhatsApp no reemplaza a tu equipo: se ocupa de lo repetido y te pasa lo que necesita criterio.",
+         "Así se ve un día normal.")},
+
+    {"clave": "car-prompts-duenos", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("5 usos de la IA *para dueños*", "Para probar hoy con ChatGPT o similar.", "Guardalo"),
+         _s("Resumir *los reclamos del mes*", "Pegá los mensajes y pedile los tres temas que más se repiten.", "1"),
+         _s("Contestar *una reseña negativa*", "Pedile una respuesta amable, corta y sin excusas.", "2"),
+         _s("Comparar *dos presupuestos*", "Que te marque diferencias de precio, plazos y lo que no incluye.", "3"),
+         _s("Armar *el guion de una promo*", "Para WhatsApp, en tono uruguayo y en tres líneas.", "4"),
+         _s("Ordenar *tus pendientes*", "Pasale la lista y que la ordene por lo que más impacta.", "5"),
+         _s("¿Y si lo hace *conectado a tus datos?*", "Eso es lo que armamos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "No hace falta un sistema para empezar a usar IA. Estas cinco tareas las podés probar hoy.",
+         "Cuando se repiten todos los días, conviene que la IA lo haga sola y con tus datos. Ahí entramos nosotros.",
+         GUARDA)},
+
+    {"clave": "car-preguntar-ia", "formato": "carrusel", "pilar": "objecion",
+     "slides": [
+         _s("Qué preguntarle *a quien te venda IA*", "Cinco preguntas antes de firmar.", "Antes de contratar"),
+         _s("¿Con qué datos *responde?*", "Tiene que usar los tuyos, no inventar.", "1"),
+         _s("¿Qué hace *cuando no sabe?*", "La respuesta correcta: te pasa la conversación.", "2"),
+         _s("¿Cómo mido *si funciona?*", "Consultas atendidas, ventas, tiempo de respuesta.", "3"),
+         _s("¿De quién son *los datos?*", "Tuyos.", "4"),
+         _s("¿Lo puedo *apagar?*", "Siempre. Preguntanos lo mismo a nosotros.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Hoy cualquiera vende IA. Estas preguntas te ayudan a distinguir una herramienta seria de una demo linda.",
+         "📌 Guardalo para la próxima reunión con un proveedor.")},
+
+    {"clave": "car-ia-supervision", "formato": "carrusel", "pilar": "propio",
+     "slides": [
+         _s("IA con *supervisión*", "Así ponemos un agente a trabajar.", "Cómo trabajamos"),
+         _s("Primero *sugiere*", "El agente propone la respuesta y vos la aprobás.", "Paso 1"),
+         _s("Después *aprende*", "Ajustamos lo que no le salió bien.", "Paso 2"),
+         _s("Recién ahí *gana autonomía*", "Tarea por tarea, cuando acierta seguido.", "Paso 3"),
+         _s("Todo queda *registrado*", "Podés ver qué hizo y por qué.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "No soltamos un agente de un día para el otro. Arranca sugiriendo, vos aprobás, y va ganando autonomía a medida que demuestra que acierta.",
+         "Así la IA trabaja para tu negocio sin sorpresas.")},
+
+    # ── Scalerics Fidelidad ──────────────────────────────────────────────────
+    {"clave": "car-fid-7-por-ciento", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("El 7% de tus clientes puede hacer *la mitad de tus ventas*", "Dato de Toast y Resy, restaurantes de EE. UU.", "Restaurantes"),
+         _s("Los habituales *son pocos y valen mucho*", "¿Sabés quiénes son los tuyos?", "1"),
+         _s("Sin datos, son *caras conocidas*", "Y cuando dejan de venir, nadie se entera.", "2"),
+         _s("Con el *QR de la boleta*", "Tu cliente suma puntos y vos sabés quién vino, cuándo y cuánto gastó.", "3"),
+         _s("Conocé a tus habituales *por nombre*", "Así funciona Scalerics Fidelidad.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Según el Regulars Report 2026 de Toast y Resy (datos de restaurantes de EE. UU.), el 7% de los clientes puede generar hasta la mitad de los pedidos.",
+         "En la mayoría de los locales, esos clientes son caras conocidas sin datos. Con Scalerics Fidelidad se identifican con el QR de la boleta, sin formularios ni apps.")},
+
+    {"clave": "img-fid-retener", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("¿Cuánto ponés en anuncios *y cuánto en los que ya vinieron?*", "Retener un 5% más puede subir las ganancias entre 25% y 95% (Bain).")],
+     "caption": _c(
+         "Frederick Reichheld, de Bain, calculó que subir la retención de clientes un 5% puede aumentar las ganancias entre 25% y 95% (citado en Harvard Business Review).",
+         "Salir a buscar clientes nuevos es necesario. Pero muchas veces la plata más fácil está en que vuelvan los que ya te conocen.")},
+
+    {"clave": "car-fid-descuento", "formato": "carrusel", "pilar": "dolor",
+     "slides": [
+         _s("El descuento que le regala margen *al que igual iba a venir*", "El problema del 2x1 para todos.", "Restaurantes"),
+         _s("El 2x1 *para todos*", "Lo usa también tu cliente fiel, que venía igual.", "1"),
+         _s("Plata que *se va*", "Pagás el descuento y no ganás una visita más.", "2"),
+         _s("Un premio *puntual*", "Al cliente que se está alejando, con lo que le gusta.", "3"),
+         _s("Medí *contra un grupo de control*", "Así sabés si la promo trajo gente o solo regaló margen.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Los descuentos generales son fáciles de lanzar y difíciles de medir. Muchas veces terminan pagándole un descuento a quien iba a venir igual.",
+         "Thanx, un proveedor de fidelización de EE. UU., reporta que los premios dirigidos rinden más que los descuentos genéricos. Lo importante es medir siempre contra un grupo que no recibe la oferta.")},
+
+    {"clave": "img-fid-recordar", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("Lo que más valora tu cliente *no son los puntos*", "Es que lo recuerden: su nombre y lo que pide siempre.")],
+     "caption": _c(
+         "En una encuesta de Toast y Resy a 1.500 comensales de EE. UU., casi la mitad dijo que lo que más valora es que el personal lo recuerde. Solo el 30% dice recibir ese trato siempre.",
+         "Los datos de fidelidad sirven para eso: que el mozo sepa quién tiene enfrente y qué le gusta.")},
+
+    {"clave": "car-fid-grupo-control", "formato": "carrusel", "pilar": "propio",
+     "slides": [
+         _s("¿Tu promo funcionó *o el cliente igual iba a venir?*", "Para eso existe el grupo de control.", "Cómo medimos"),
+         _s("Una pizzería *manda una oferta*", "A 9 de cada 10 clientes.", "1"),
+         _s("A 1 de cada 10 *no le manda nada*", "Ese es el grupo de control.", "2"),
+         _s("Se compara *cuánto gastó cada grupo*", "La diferencia es lo que trajo la oferta de verdad.", "3"),
+         _s("Si no le gana al grupo de control, *no sirve*", "Así medimos Scalerics Fidelidad todos los meses.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Mandar una promo y ver que vino gente no alcanza: quizás iban a venir igual.",
+         "Por eso dejamos siempre un grupo de clientes sin oferta. La diferencia entre los dos grupos es la plata que de verdad trajo la campaña, y es el número que le mostramos al restaurante cada mes.")},
+
+    {"clave": "img-fid-45-dias", "formato": "imagen", "pilar": "consejo",
+     "slides": [_s("Cliente que no vuelve hace 45 días: *¿qué le mandás?*", "«Te guardamos tu milanesa» le gana a «20% OFF».")],
+     "caption": _c(
+         "Cuando un cliente habitual deja de venir, casi nadie se da cuenta a tiempo.",
+         "Con los datos de cada visita se detecta solo, y se le puede mandar algo personal: lo que pide siempre, un postre o una entrada, en vez de un descuento para todos. Después se mide cuántos volvieron.")},
+
+    # ── calendario (sirven cualquier semana) ─────────────────────────────────
+    {"clave": "car-dias-pico", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("Checklist para *los días de más consultas*", "Black Friday, fiestas, Día de la Madre, temporada.", "Guardalo"),
+         _s("Respuestas *listas*", "Precio, envío, horario, medios de pago y cambios.", "1"),
+         _s("Link de pago *a mano*", "Nada de «pasame tu mail y te mando».", "2"),
+         _s("Horario *avisado*", "En el estado de WhatsApp y en la bio.", "3"),
+         _s("Una persona *a cargo del canal*", "Ese día, alguien responde y nadie supone que lo hace otro.", "4"),
+         _s("¿Y si contesta *solo?*", "Te mostramos cómo.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Las fechas comerciales llenan el WhatsApp de consultas, y la que no se contesta rápido se va a otro lado.",
+         "Revisá esta lista una semana antes de cada fecha fuerte.",
+         GUARDA)},
+
+    {"clave": "car-aguinaldo", "formato": "carrusel", "pilar": "consejo",
+     "slides": [
+         _s("Aguinaldo: *lo que tenés que saber*", "Se paga dos veces por año.", "Guardalo"),
+         _s("Junio y *diciembre*", "El de junio cubre de diciembre a mayo. El de diciembre, de junio a noviembre.", "Cuándo"),
+         _s("Total del período *dividido 12*", "Sobre lo nominal que cobró la persona en esos seis meses.", "Cómo se calcula"),
+         _s("Error típico: *olvidarse de lo variable*", "Comisiones y horas extra también entran.", "Ojo"),
+         _s("¿Que el sistema *lo calcule solo?*", "Escribinos.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "El aguinaldo se paga en junio y en diciembre, y es la doceava parte de lo que la persona cobró en los seis meses anteriores (MTSS).",
+         "Confirmá siempre las fechas de pago de cada año con tu contador o en el sitio del MTSS.",
+         GUARDA)},
+
+    {"clave": "img-vacaciones-atiende", "formato": "imagen", "pilar": "dolor",
+     "slides": [_s("Tu negocio atiende *mientras estás de vacaciones*", "Consultas de noche, de afuera y en otro idioma: alguien tiene que contestar.")],
+     "caption": _c(
+         "En temporada, las consultas llegan a cualquier hora, en dólares y desde números de Argentina o Brasil.",
+         "Una respuesta automática en español y portugués, con reservas o pedidos que quedan agendados, hace que no pierdas al que escribe cuando vos no podés.")},
+
+    {"clave": "car-feriados", "formato": "carrusel", "pilar": "servicio",
+     "slides": [
+         _s("Feriados *sin el celular en la mano*", "Carnaval, Turismo o un fin de semana largo.", "Antes de irte"),
+         _s("Mensaje de ausencia *con fecha de vuelta*", "Que nadie se quede esperando sin saber.", "1"),
+         _s("Un formulario para *dejar el pedido*", "Queda agendado y no se pierde en el chat.", "2"),
+         _s("Los vencimientos *agendados*", "Si un vencimiento cae en feriado, pasa al día hábil siguiente. Igual anotalo.", "3"),
+         _s("El día que volvés, *todo ordenado*", "Te mostramos cómo dejarlo andando solo.", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Cerrar unos días no tiene por qué significar perder pedidos.",
+         "Con un mensaje claro, un lugar donde dejar el pedido y los pendientes ordenados para el día de la vuelta, el negocio sigue recibiendo aunque no estés.",
+         GUARDA)},
+
+    {"clave": "car-fechas-comerciales", "formato": "carrusel", "pilar": "propio",
+     "slides": [
+         _s("Las fechas que *mueven tu año*", "Y qué hacer 10 días antes de cada una.", "Guardalo"),
+         _s("Día de la Madre *y del Padre*", "Avisá a tus clientes con tiempo y prepará el stock.", "1"),
+         _s("Día del Niño", "Las consultas empiezan dos semanas antes.", "2"),
+         _s("Black Friday y *Cyber Monday*", "Atención lista y link de pago a mano.", "3"),
+         _s("Fiestas y *Reyes*", "Horarios especiales avisados y entregas organizadas.", "4"),
+         _s("Las fechas exactas *las publica la Cámara de Comercio*", "Cada año. ¿Querés que te avisemos las del tuyo?", cta="Escribinos DEMO"),
+     ],
+     "caption": _c(
+         "Cada año, la Cámara de Comercio y Servicios del Uruguay publica el calendario comercial oficial con las fechas de la Madre, el Padre y el Niño.",
+         "Diez días antes de cada una es el momento de preparar mensajes, stock y atención.",
+         GUARDA)},
+
+    # ── historias ───────────────────────────────────────────────────────────
+    {"clave": "his-no-automatizar", "formato": "historia", "pilar": "propio",
+     "slides": [_s("Hay cosas que *no automatizaríamos*", "Un reclamo enojado lo atiende una persona.", "Contracorriente", "Escribinos DEMO")],
+     "caption": "Historia: lo que no automatizaríamos."},
+    {"clave": "his-glosario-api", "formato": "historia", "pilar": "consejo",
+     "slides": [_s("API = *el repartidor*", "Lleva los datos de un sistema a otro sin que nadie los copie.", "Glosario sin humo", "Escribinos DEMO")],
+     "caption": "Historia: glosario, API."},
+    {"clave": "his-mismo-dato", "formato": "historia", "pilar": "dolor",
+     "slides": [_s("¿Cuántas veces se escribe *el mismo dato* en tu empresa?", "1-2, 3-4, 5 o más.", "Pregunta", "Escribinos DEMO")],
+     "caption": "Historia: el mismo dato cargado varias veces."},
+    {"clave": "his-sistema-viejo", "formato": "historia", "pilar": "dolor",
+     "slides": [_s("¿Tu sistema *solo anda en una PC?*", "Se puede migrar sin parar la empresa.", "Señal", "Escribinos DEMO")],
+     "caption": "Historia: sistema viejo."},
+    {"clave": "his-mantenimiento", "formato": "historia", "pilar": "objecion",
+     "slides": [_s("No desaparecemos *al entregar*", "Alertas, copias de seguridad y ajustes.", "Después del proyecto", "Escribinos DEMO")],
+     "caption": "Historia: mantenimiento."},
+    {"clave": "his-llaves", "formato": "historia", "pilar": "consejo",
+     "slides": [_s("¿A nombre de quién está *tu dominio?*", "Revisalo hoy.", "Las llaves de tu pyme", "Escribinos DEMO")],
+     "caption": "Historia: las llaves de la pyme."},
+    {"clave": "his-turno", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("Recordatorio *24 h antes*", "Confirmo o reprogramo, en un toque.", "Turnos", "Escribinos DEMO")],
+     "caption": "Historia: recordatorio de turnos."},
+    {"clave": "his-pedido-estado", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("«¿En qué anda *mi pedido?*»", "Que tu cliente lo vea solo.", "Autogestión", "Escribinos DEMO")],
+     "caption": "Historia: estado del pedido."},
+    {"clave": "his-resenas", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("Pedí la reseña *en automático*", "Unos días después de la compra.", "Google", "Escribinos DEMO")],
+     "caption": "Historia: reseñas de Google."},
+    {"clave": "his-presupuesto", "formato": "historia", "pilar": "caso",
+     "slides": [_s("El que contesta primero *se lleva la obra*", "Presupuestos en minutos, no en días.", "Barracas", "Escribinos DEMO")],
+     "caption": "Historia: presupuesto rápido."},
+    {"clave": "his-contador", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("Fin de mes *sin perseguir papeles*", "Un lugar que recibe y archiva cada comprobante.", "Contadores", "Escribinos DEMO")],
+     "caption": "Historia: estudio contable."},
+    {"clave": "his-chatbot-agente", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("El chatbot sigue un guion. *El agente decide.*", "¿Cuál te conviene?", "IA sin humo", "Escribinos DEMO")],
+     "caption": "Historia: chatbot vs. agente."},
+    {"clave": "his-ia-usa", "formato": "historia", "pilar": "propio",
+     "slides": [_s("¿Tu negocio *ya usa IA?*", "Sí, no, o probé y la dejé.", "Pregunta", "Escribinos DEMO")],
+     "caption": "Historia: pregunta sobre IA."},
+    {"clave": "his-ia-limites", "formato": "historia", "pilar": "objecion",
+     "slides": [_s("Bien hecha, la IA *sabe cuándo pasarte la conversación*", "Así la diseñamos.", "Límites", "Escribinos DEMO")],
+     "caption": "Historia: límites de la IA."},
+    {"clave": "his-agente-noche", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("23:00. El agente sigue contestando. *Vos no.*", "Un asistente de WhatsApp para tu pyme.", "Agentes", "Escribinos DEMO")],
+     "caption": "Historia: el agente de noche."},
+    {"clave": "his-fid-habituales", "formato": "historia", "pilar": "dolor",
+     "slides": [_s("¿Sabés quiénes son *tus clientes habituales?*", "Con el QR de la boleta, sí.", "Restaurantes", "Escribinos DEMO")],
+     "caption": "Historia: clientes habituales."},
+    {"clave": "his-fid-control", "formato": "historia", "pilar": "propio",
+     "slides": [_s("¿Tu promo trajo gente *o venían igual?*", "Medimos contra un grupo de control.", "Fidelidad", "Escribinos DEMO")],
+     "caption": "Historia: grupo de control."},
+    {"clave": "his-fid-recordar", "formato": "historia", "pilar": "consejo",
+     "slides": [_s("Tu cliente quiere que *lo recuerdes*", "Su nombre y lo que pide siempre.", "Restaurantes", "Escribinos DEMO")],
+     "caption": "Historia: recordar al cliente."},
+    {"clave": "his-dias-pico", "formato": "historia", "pilar": "consejo",
+     "slides": [_s("¿Tu WhatsApp está listo *para el día de más consultas?*", "Respuestas, link de pago y alguien a cargo.", "Checklist", "Escribinos DEMO")],
+     "caption": "Historia: días de más consultas."},
+    {"clave": "his-feriado", "formato": "historia", "pilar": "servicio",
+     "slides": [_s("Cerrás el feriado, *tu negocio no desaparece*", "Mensaje de ausencia y pedidos agendados.", "Feriados", "Escribinos DEMO")],
+     "caption": "Historia: feriados."},
+]
