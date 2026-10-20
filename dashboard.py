@@ -16897,7 +16897,8 @@ function igModo(modo) {
 }
 
 const IG_COMENT_ESTADOS = {respondido: ['Respondido', 'so-chip-verde'], error: ['Responder a mano', 'so-chip-rojo'],
-  omitido: ['Sin responder', '']};
+  derivado: ['Responder a mano', 'so-chip-rojo'], pendiente: ['Esperando respuesta', ''],
+  respondiendo: ['Respondiendo', ''], omitido: ['Sin responder', '']};
 
 async function igCargarComentarios() {
   const lista = document.getElementById('ig-coment-lista');
@@ -16915,7 +16916,7 @@ async function igCargarComentarios() {
     return;
   }
   nota.textContent = (d.activo
-    ? 'Cada hora se revisan los comentarios de tus publicaciones y anuncios activos, y se responde solo, derivando al WhatsApp ' + d.whatsapp + '. Te llega un mail por cada uno.'
+    ? 'Cada hora se revisan los comentarios de tus publicaciones y anuncios activos. Claude le escribe a cada uno una respuesta según lo que preguntó y, si hay interés, lo invita al WhatsApp ' + d.whatsapp + '. Si en 24 horas no lo contestó, sale una frase fija. Te llega un mail por cada uno.'
     : 'Las respuestas automáticas están apagadas.') + ' Solo Instagram: los de Facebook no se pueden leer con el permiso actual.';
   if (!d.comentarios.length) {
     lista.innerHTML = '<div class="li-vacio">Todavía no hay comentarios.</div>';
@@ -16924,7 +16925,7 @@ async function igCargarComentarios() {
   lista.innerHTML = d.comentarios.map(c => {
     const est = IG_COMENT_ESTADOS[c.estado] || [c.estado, ''];
     const donde = c.origen === 'anuncio' ? 'Anuncio: ' + (c.origen_nombre || '') : 'Publicación';
-    const motivo = c.estado === 'omitido' && c.error ? ' (' + c.error + ')' : '';
+    const motivo = (c.estado === 'omitido' || c.estado === 'derivado') && c.error ? ' (' + c.error + ')' : '';
     return '<article class="so-item"><div class="so-cab"><span class="so-chip ' + est[1] + '">' + liEsc(est[0] + motivo) +
       '</span><span class="so-nombre">@' + liEsc(c.usuario || '') + '</span></div>' +
       '<div class="so-campana">' + liEsc(donde) + ' · ' + liEsc((c.creado_en || '').slice(0, 10)) + '</div>' +

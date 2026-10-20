@@ -486,14 +486,18 @@ def send_instagram_error(pub_id: int, error_detail: str) -> bool:
 
 @_tipo_envio("aviso_equipo")
 def send_instagram_comentario(usuario: str, texto: str, respuesta: str | None, estado: str,
-                              origen: str, nombre: str) -> bool:
+                              origen: str, nombre: str, motivo: str = "") -> bool:
     """Un comentario nuevo en Instagram: es un posible cliente."""
     donde = f"el anuncio «{nombre}»" if origen == "anuncio" else "una publicación"
     filas = [("Quién", f"@{html.escape(usuario or '')}"), ("Dónde", html.escape(donde)),
              ("Comentario", html.escape(texto or ""))]
     if estado == "respondido":
         filas.append(("Le respondimos", html.escape(respuesta or "")))
-        intro = "Alguien comentó en Instagram y ya le respondimos que escriba por WhatsApp."
+        intro = "Alguien comentó en Instagram y ya le respondimos."
+    elif estado == "derivado":
+        filas.append(("Por qué no se respondió solo", html.escape(motivo or "")))
+        intro = ("Alguien comentó en Instagram y <b>conviene que le contestes vos</b>. "
+                 "Respondele a mano desde la app.")
     else:
         intro = ("Alguien comentó en Instagram y <b>no se pudo responder solo</b>. "
                  "Contestale a mano desde la app.")
