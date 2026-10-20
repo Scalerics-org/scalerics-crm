@@ -6,8 +6,12 @@ liquidación en ningún lado, y no lo tiene que haber.
 Reglas:
 - Días hábiles = lunes a viernes. **Sin feriados** en esta versión.
 - Saldo de una persona = suma(horas de sus ausencias) − suma(horas de sus
-  recuperos). Cero o menos es "al día". Un recupero con fecha futura ya cuenta:
-  es un compromiso con fecha.
+  recuperos) − suma(horas a favor). Cero o menos es "al día"; menos de cero son
+  horas a favor que le quedan. Un recupero con fecha futura ya cuenta: es un
+  compromiso con fecha.
+- Horas a favor = horas que alguien suma sin deber nada. Cubren las ausencias
+  pendientes de esa persona, de la más vieja a la más nueva, y lo que sobra
+  queda a favor para la próxima.
 - Capacidad neta de una semana = horas base − horas de ausencia de esa semana.
   Los recuperos NO suman capacidad libre: esas horas ya están ocupadas.
 """
@@ -19,7 +23,8 @@ import re
 from datetime import date, timedelta
 
 from database import (entregas_de_proyectos, listar_ausencias_equipo,
-                      listar_personas_equipo, listar_recuperos_equipo)
+                      listar_horas_extra_equipo, listar_personas_equipo,
+                      listar_recuperos_equipo)
 from services.flujos import FUERA_DE_FLUJOS, estilo_de_persona, estilos_roles
 
 MOTIVO_MAX = 160
@@ -129,6 +134,33 @@ def validar_recupero(datos) -> tuple[dict | None, str | None]:
     return {"fecha": fecha.isoformat(), "horas": horas}, None
 
 
+def validar_horas_extra(datos, personas: dict[int, dict]) -> tuple[dict | None, str | None]:
+    """Horas a favor: persona, fecha y horas. El motivo es opcional."""
+    if not isinstance(datos, dict):
+        return None, "faltan los datos de las horas"
+    pid = datos.get("persona_id")
+    try:
+        pid = int(pid) if not isinstance(pid, bool) else None
+    except (TypeError, ValueError):
+        pid = None
+    persona = personas.get(pid) if pid is not None else None
+    if not persona or not persona.get("activo"):
+        return None, "elegí una persona del equipo"
+    if not persona.get("lleva_horas"):
+        return None, "a esa persona no se le llevan horas"
+    fecha = parse_fecha(datos.get("fecha"))
+    if fecha is None:
+        return None, "la fecha no es válida"
+    horas = _horas(datos.get("horas"))
+    if horas is None:
+        return None, "las horas tienen que ser un número mayor que cero"
+    motivo = " ".join(str(datos.get("motivo") or "").split())
+    if len(motivo) > MOTIVO_MAX:
+        return None, f"el motivo va en una línea, hasta {MOTIVO_MAX} caracteres"
+    return {"persona_id": pid, "fecha": fecha.isoformat(), "horas": horas,
+            "motivo": motivo}, None
+
+
 # ── organigrama ──────────────────────────────────────────────────────────────
 
 _CTO = re.compile(r"\bCTO\b")
@@ -223,17 +255,31 @@ def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> 
     rec_por_aus: dict[int, list[dict]] = {}
     for r in recuperos:
         rec_por_aus.setdefault(r["ausencia_id"], []).append(r)
+    extras = [x for x in listar_horas_extra_equipo(db_path) if x["persona_id"] in con_horas]
+    banco = {pid: _redondear(sum(x["horas"] for x in extras if x["persona_id"] == pid))
+             for pid in con_horas}
 
-    fechas_rec = {r["fecha"] for r in recuperos}
+    fechas_rec = {r["fecha"] for r in recuperos} | {x["fecha"] for x in extras}
     semanas = [[d for d in (lunes + timedelta(days=7 * s + i) for i in range(7))
                 if d.weekday() < 5 or d.isoformat() in fechas_rec] for s in range(2)]
     primer_dia, ultimo_dia = lunes, lunes + timedelta(days=13)
+
+    # Las horas a favor se gastan de la ausencia más vieja a la más nueva.
+    cubiertas_por_aus: dict[int, float] = {}
+    for a in sorted(ausencias, key=lambda x: (x["fecha_desde"], x["id"])):
+        recuperadas = sum(r["horas"] for r in rec_por_aus.get(a["id"], []))
+        falta = max(a["horas_totales"] - recuperadas, 0)
+        usa = min(falta, banco[a["persona_id"]])
+        if usa > _EPS:
+            cubiertas_por_aus[a["id"]] = _redondear(usa)
+            banco[a["persona_id"]] = _redondear(banco[a["persona_id"]] - usa)
 
     detalle = []
     for a in ausencias:
         suyos = rec_por_aus.get(a["id"], [])
         recuperadas = _redondear(sum(r["horas"] for r in suyos))
-        pendientes = _redondear(max(a["horas_totales"] - recuperadas, 0))
+        a_favor = cubiertas_por_aus.get(a["id"], 0.0)
+        pendientes = _redondear(max(a["horas_totales"] - recuperadas - a_favor, 0))
         detalle.append({
             "id": a["id"], "persona_id": a["persona_id"],
             "persona": con_horas[a["persona_id"]]["nombre"],
@@ -242,7 +288,8 @@ def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> 
             "dias_habiles": len(dias_habiles(parse_fecha(a["fecha_desde"]),
                                              parse_fecha(a["fecha_hasta"]))),
             "horas_totales": _redondear(a["horas_totales"]),
-            "horas_recuperadas": recuperadas, "horas_pendientes": pendientes,
+            "horas_recuperadas": recuperadas, "horas_a_favor": a_favor,
+            "horas_pendientes": pendientes,
             "recuperado": pendientes <= _EPS,
             "recuperos": [{"id": r["id"], "fecha": r["fecha"], "horas": _redondear(r["horas"])}
                           for r in suyos],
@@ -253,18 +300,23 @@ def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> 
         suyas = [d for d in detalle if d["persona_id"] == p["id"]]
         h_aus = _redondear(sum(d["horas_totales"] for d in suyas))
         h_rec = _redondear(sum(d["horas_recuperadas"] for d in suyas))
-        saldo = _redondear(h_aus - h_rec)
+        mias = [x for x in extras if x["persona_id"] == p["id"]]
+        h_extra = _redondear(sum(x["horas"] for x in mias))
+        saldo = _redondear(h_aus - h_rec - h_extra)
         dias = {}
         for d in semanas[0] + semanas[1]:
             iso = d.isoformat()
             falta = any(x["fecha_desde"] <= iso <= x["fecha_hasta"] for x in suyas)
             rec = _redondear(sum(r["horas"] for x in suyas for r in x["recuperos"]
                                  if r["fecha"] == iso))
-            dias[iso] = {"falta": falta, "recupero": rec}
+            extra = _redondear(sum(x["horas"] for x in mias if x["fecha"] == iso))
+            dias[iso] = {"falta": falta, "recupero": rec, "extra": extra}
         filas.append({"id": p["id"], "nombre": p["nombre"],
                       "horas_por_dia": p["horas_por_dia"],
                       "horas_ausencia": h_aus, "horas_recupero": h_rec,
-                      "saldo": saldo, "al_dia": saldo <= _EPS, "dias": dias})
+                      "horas_extra": h_extra,
+                      "saldo": saldo, "al_dia": saldo <= _EPS,
+                      "a_favor": _redondear(max(-saldo, 0)), "dias": dias})
 
     # Cruce con Proyectos. Solo ausencias que no terminaron antes de esta
     # semana: un aviso de algo que ya pasó no le sirve a nadie.
@@ -293,6 +345,10 @@ def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> 
                       "horas_por_dia": p["horas_por_dia"]} for p in con_horas.values()],
         "calendario": filas,
         "ausencias": detalle,
+        "horas_extra": [{"id": x["id"], "persona_id": x["persona_id"],
+                         "persona": con_horas[x["persona_id"]]["nombre"],
+                         "fecha": x["fecha"], "horas": _redondear(x["horas"]),
+                         "motivo": x.get("motivo") or ""} for x in extras],
         "avisos": avisos,
     }
 

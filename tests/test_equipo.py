@@ -151,7 +151,8 @@ def test_c7_ninguna_tabla_tiene_campos_de_dinero(tmp_path):
     init_db(db)
     conn = sqlite3.connect(db)
     try:
-        for tabla in ("equipo_personas", "equipo_ausencias", "equipo_recuperos"):
+        for tabla in ("equipo_personas", "equipo_ausencias", "equipo_recuperos",
+                      "equipo_horas_extra"):
             columnas = [c[1] for c in conn.execute(f"PRAGMA table_info({tabla})")]
             assert columnas, f"no existe {tabla}"
             sql = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (tabla,)).fetchone()[0]
@@ -932,3 +933,69 @@ def test_la_capacidad_en_el_simulador_no_es_un_campo():
         assert f'data-sim="{ruta}"' in bloque
     leido = re.search(r'<div class="sim-leido" id="sim-capacidad-equipo"[^>]*></div>', bloque)
     assert leido and "data-sim" not in leido.group(0)
+
+
+# ── horas a favor: sumar sin deber ───────────────────────────────────────────
+
+def _extra(cli, nombre="Gonzalo Siuciak", fecha=LUNES, horas=4, **extra):
+    datos = {"persona_id": _persona(_db(cli), nombre)["id"], "fecha": fecha,
+             "horas": horas, **extra}
+    return cli.post("/api/equipo/horas-extra", json=datos)
+
+
+def test_sumar_horas_sin_ausencia_deja_saldo_a_favor(cli):
+    r = _extra(cli, horas=6, motivo="Deploy de noche")
+    assert r.status_code == 201, r.get_json()
+    estado = _estado(cli)
+    gonzalo = _fila(estado, "Gonzalo Siuciak")
+    assert gonzalo["saldo"] == -6 and gonzalo["a_favor"] == 6
+    assert gonzalo["al_dia"] is True
+    assert gonzalo["dias"][LUNES]["extra"] == 6
+    assert estado["horas_extra"][0]["motivo"] == "Deploy de noche"
+    assert _fila(estado, "Juan Tomasetti")["a_favor"] == 0
+
+
+def test_las_horas_a_favor_cubren_la_ausencia_que_viene(cli):
+    _extra(cli, horas=6)
+    _ausencia(cli, desde=PROX_LUNES, hasta=PROX_LUNES)  # 4h
+    estado = _estado(cli)
+    gonzalo = _fila(estado, "Gonzalo Siuciak")
+    assert gonzalo["saldo"] == -2 and gonzalo["a_favor"] == 2
+    aus = estado["ausencias"][0]
+    assert aus["horas_a_favor"] == 4 and aus["recuperado"] is True
+
+
+def test_si_no_alcanzan_queda_debiendo_la_diferencia(cli):
+    _extra(cli, horas=3)
+    _ausencia(cli)  # 8h
+    estado = _estado(cli)
+    gonzalo = _fila(estado, "Gonzalo Siuciak")
+    assert gonzalo["saldo"] == 5 and gonzalo["al_dia"] is False and gonzalo["a_favor"] == 0
+    assert estado["ausencias"][0]["horas_pendientes"] == 5
+
+
+def test_horas_a_favor_en_sabado_agrega_la_columna(cli):
+    _extra(cli, fecha="2026-09-19")
+    assert "2026-09-19" in _estado(cli)["semanas"][0]
+
+
+def test_borrar_horas_a_favor_vuelve_el_saldo(cli):
+    xid = _extra(cli).get_json()["id"]
+    assert cli.delete(f"/api/equipo/horas-extra/{xid}").status_code == 200
+    assert _fila(_estado(cli), "Gonzalo Siuciak")["saldo"] == 0
+    assert cli.delete(f"/api/equipo/horas-extra/{xid}").status_code == 404
+
+
+@pytest.mark.parametrize("cambio,error", [
+    ({"horas": 0}, "mayor que cero"),
+    ({"fecha": "ayer"}, "fecha"),
+    ({"motivo": "x" * 200}, "una línea"),
+])
+def test_horas_a_favor_invalidas_dan_400(cli, cambio, error):
+    r = _extra(cli, **cambio)
+    assert r.status_code == 400 and error in r.get_json()["error"]
+
+
+def test_horas_a_favor_a_quien_no_lleva_horas_da_400(cli):
+    r = _extra(cli, nombre="Juan Pereyra")
+    assert r.status_code == 400
