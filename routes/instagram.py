@@ -229,6 +229,37 @@ def bot_imagen(pub_id, n):
     return send_file(ruta, mimetype="image/jpeg", max_age=0)
 
 
+@instagram_pub_bp.route("/api/instagram-bot/comentarios/pendientes")
+def bot_comentarios_pendientes():
+    """Los comentarios que esperan que la sesion de Claude les escriba la respuesta."""
+    from services import ig_comentarios
+    return jsonify({"ok": True, "pendientes": ig_comentarios.pendientes(_db())})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/comentarios/<cid>/responder", methods=["POST"])
+def bot_comentario_responder(cid):
+    from services import ig_comentarios
+    datos = request.get_json(silent=True) or {}
+    try:
+        c = ig_comentarios.responder(_db(), cid, datos.get("respuesta") or "")
+    except ig_comentarios.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if c["estado"] != "respondido":     # Meta no la acepto: queda para contestar a mano
+        return jsonify({"ok": False, "error": f"Instagram no la aceptó: {c['error']}"}), 502
+    return jsonify({"ok": True})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/comentarios/<cid>/derivar", methods=["POST"])
+def bot_comentario_derivar(cid):
+    from services import ig_comentarios
+    datos = request.get_json(silent=True) or {}
+    try:
+        ig_comentarios.derivar(_db(), cid, datos.get("motivo") or "")
+    except ig_comentarios.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
 @instagram_pub_bp.route("/api/instagram-bot/estrategias/pendientes")
 def bot_estrategias_pendientes():
     """Los PDF mensuales que el agente todavia no leyo."""

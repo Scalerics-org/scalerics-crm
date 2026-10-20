@@ -15,6 +15,12 @@ Uso:
     python scripts/ig_correcciones.py estrategia-pdf <id> <destino.pdf>
     python scripts/ig_correcciones.py estrategia-plan <id> <archivo.json>
         el JSON: {"plan": {"linea_de_color": "...", "piezas": [...], "objetivos": "..."}}
+    python scripts/ig_correcciones.py comentarios
+        los comentarios de Instagram que esperan respuesta
+    python scripts/ig_correcciones.py responder-comentario <id> <archivo.txt>
+        publica en Instagram el texto del archivo como respuesta
+    python scripts/ig_correcciones.py derivar-comentario <id> "motivo"
+        no responde: le avisa a Juan por mail que conteste una persona
 """
 
 import json
@@ -82,6 +88,16 @@ def main(args):
         cuerpo = json.load(open(args[2], encoding="utf-8"))
         print(json.dumps(_pedir("POST", f"/api/instagram-bot/estrategias/{int(args[1])}/plan",
                                 json=cuerpo), ensure_ascii=False))
+    elif cmd == "comentarios":
+        print(json.dumps(_pedir("GET", "/api/instagram-bot/comentarios/pendientes")["pendientes"],
+                         ensure_ascii=False, indent=2))
+    elif cmd == "responder-comentario" and len(args) == 3:
+        texto = open(args[2], encoding="utf-8").read().strip()
+        _pedir("POST", f"/api/instagram-bot/comentarios/{args[1]}/responder", json={"respuesta": texto})
+        print("ok")
+    elif cmd == "derivar-comentario" and len(args) == 3:
+        _pedir("POST", f"/api/instagram-bot/comentarios/{args[1]}/derivar", json={"motivo": args[2]})
+        print("ok")
     else:
         sys.exit(__doc__)
 
