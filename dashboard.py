@@ -31,6 +31,8 @@ from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
+from routes.oficina import oficina_bp
+from routes.oficina_bot import oficina_bot_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.sombra import sombra_bp
 from routes.equipo import equipo_bp
@@ -3072,6 +3074,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-horarios .nav-icon{stroke:#fbbf24}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
+#nav-oficina .nav-icon{stroke:#c084fc}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3106,6 +3109,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
+#nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3136,6 +3140,7 @@ body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
+body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -4437,6 +4442,47 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .cr-acciones button:hover{background:var(--hover)}
 .cr-error{font-size:.76rem;color:var(--rojo-texto);margin:4px 0 10px}
 .cr-error:empty{display:none}
+/* ======= Oficina (20/10): el equipo de agentes de Juan ======= */
+.of-equipo{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
+@media (max-width:900px){.of-equipo{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.of-equipo{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.of-ag{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;color:var(--texto);cursor:pointer;font-family:inherit}
+.of-ag:hover{border-color:var(--borde-fuerte)}
+.of-ag.sel{border-color:var(--azul);background:var(--azul-tinte);box-shadow:0 0 0 1px var(--azul)}
+.of-ag img{width:64px;height:64px}
+.of-ag-n{font-weight:700;color:var(--texto-fuerte);font-size:.95rem}
+.of-ag-r{font-size:.74rem;color:var(--texto-tenue);line-height:1.3}
+.of-ag-s{font-size:.72rem;color:var(--azul-claro);margin-top:2px}
+.of-cab{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.of-cab img{width:72px;height:72px;flex:none}
+.of-cab h2{font-size:1.1rem;color:var(--texto-fuerte);margin:0}
+.of-cab p{margin:2px 0 0;font-size:.84rem;color:var(--texto-tenue)}
+.of-ficha{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.of-ficha{grid-template-columns:1fr}}
+.of-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.of-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.of-card h3{font-size:.95rem;color:var(--texto-fuerte);margin:0}
+.of-ayuda{font-size:.78rem;color:var(--texto-tenue)}
+.of-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:460px;overflow-y:auto;padding:2px}
+.of-msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:.88rem;white-space:pre-line;line-height:1.5;overflow-wrap:anywhere}
+.of-msg.yo{align-self:flex-end;background:var(--azul);color:#fff;border-bottom-right-radius:4px}
+.of-msg.ag{align-self:flex-start;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);border-bottom-left-radius:4px}
+.of-msg.espera{align-self:flex-start;font-style:italic;color:var(--texto-tenue);font-size:.8rem;padding:2px 4px}
+.of-fuente{display:block;margin-top:6px;font-size:.72rem;color:var(--texto-tenue)}
+.of-op{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;white-space:normal}
+.of-op span{font-size:.74rem;color:var(--verde-texto)}
+.of-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 10px;font-size:.76rem;font-family:inherit;cursor:pointer}
+.of-btn:hover{background:var(--hover)}
+.of-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.of-form{display:flex;gap:8px;width:100%}
+.of-form input{flex:1;min-width:0;background:var(--fondo);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 11px;font-size:.86rem;font-family:inherit}
+.of-error{font-size:.76rem;color:var(--rojo-texto)}
+.of-error:empty{display:none}
+.of-li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.85rem;color:var(--texto)}
+.of-li:first-child{border-top:0}
+.of-li .t{flex:1;min-width:0}
+.of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
+.of-vacio{font-size:.8rem;color:var(--texto-tenue)}
 @media(max-width:768px){
   .cr-tabla{font-size:.78rem}
   .cr-tabla th,.cr-tabla td{padding:6px 8px}
@@ -4673,6 +4719,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
   <div class="nav-section-label">CALENDARIO</div>
   <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <!-- Oficina (20/10): el equipo de agentes de Juan. Va debajo del Calendario (que es lo primero, pedido de Juan del 14/9).
+       Solo admin, como Contraseñas:
+       se muestra desde el bloque de /api/me. -->
+  <div class="nav-section-label">OFICINA</div>
+  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="users-round" class="nav-icon"></i> Oficina</div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -5997,6 +6048,22 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
+  <!-- ======= OFICINA PANEL ======= -->
+  <!-- El equipo de agentes de Juan (20/10, services/oficina.py). Solo admin,
+       igual que Contraseñas: no se reparte por rol. -->
+  <div id="oficina-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Oficina</h1>
+        <div class="page-date">Tocá un agente para hablarle, darle indicaciones y ver lo que fue aprendiendo</div>
+      </div>
+    </div>
+    <div class="cr-nota" id="of-nota" role="status" aria-live="polite"></div>
+    <div class="of-equipo" id="of-equipo" aria-label="Tu equipo"></div>
+    <div id="of-ficha"></div>
+  </div>
+  <!-- ======= FIN OFICINA PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7179,6 +7246,7 @@ function showPanel(name) {
   if (name === 'instagram') igCargar();
   if (name === 'sombra') soCargar();
   if (name === 'credenciales') crCargar();
+  if (name === 'oficina') ofCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12361,6 +12429,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
       // "SEGURIDAD" se muestra u oculta solo, via _ocultarGruposVacios().
       const navCred = document.getElementById('nav-credenciales');
       if (navCred) navCred.style.display = 'flex';
+      const navOf = document.getElementById('nav-oficina');
+      if (navOf) navOf.style.display = 'flex';
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
     const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
@@ -16845,6 +16915,236 @@ async function crBorrar(id) {
   await crCargar();
 }
 // ========== FIN Credenciales ==========
+
+// ========== Oficina ==========
+// El equipo de agentes de Juan (20/10). Solo admin, igual que Contraseñas.
+// Las respuestas las escribe una sesión de Claude Code que corre en la compu
+// (scripts/oficina_responder.py), sin modelo pago: tardan unos minutos. Mientras
+// haya una pregunta esperando, la conversación se recarga sola cada 30 segundos.
+let ofAgentes = [];
+let ofSel = null;
+let ofFicha = null;
+let ofTimer = null;
+
+async function ofPedir(url, metodo, cuerpo) {
+  const opts = {method: metodo || 'GET'};
+  if (cuerpo !== undefined) {
+    opts.headers = {'Content-Type': 'application/json'};
+    opts.body = JSON.stringify(cuerpo);
+  }
+  const r = await fetch(url, opts);
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = {}; }
+  if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo completar. Probá de nuevo.');
+  return d;
+}
+
+function ofFecha(s) {
+  const d = new Date(String(s || '').replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit'});
+}
+
+async function ofCargar() {
+  const nota = document.getElementById('of-nota');
+  if (nota) nota.textContent = '';
+  try {
+    ofAgentes = (await ofPedir('/api/oficina/agentes')).agentes;
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  if (!ofSel && ofAgentes.length) ofSel = ofAgentes[0].id;
+  ofPintarEquipo();
+  if (ofSel) await ofAbrir(ofSel);
+}
+
+function ofEstado(a) {
+  if (a.pendientes) return a.pendientes === 1 ? '1 pregunta esperando' : a.pendientes + ' preguntas esperando';
+  if (a.indicaciones) return a.indicaciones === 1 ? '1 indicación' : a.indicaciones + ' indicaciones';
+  return 'Listo para ayudarte';
+}
+
+function ofPintarEquipo() {
+  const box = document.getElementById('of-equipo');
+  if (!box) return;
+  box.innerHTML = ofAgentes.map(a =>
+    '<button type="button" class="of-ag' + (a.id === ofSel ? ' sel' : '') + '" data-id="' + crEsc(a.id) + '" aria-pressed="' + (a.id === ofSel) + '">'
+    + '<img src="/static/oficina/' + encodeURIComponent(a.id) + '.svg" alt="">'
+    + '<span class="of-ag-n">' + crEsc(a.nombre) + '</span>'
+    + '<span class="of-ag-r">' + crEsc(a.rol) + '</span>'
+    + '<span class="of-ag-s">' + crEsc(ofEstado(a)) + '</span></button>').join('');
+  box.onclick = e => {
+    const b = e.target.closest('.of-ag');
+    if (b) ofAbrir(b.dataset.id);
+  };
+}
+
+async function ofAbrir(id) {
+  ofSel = id;
+  ofPintarEquipo();
+  const nota = document.getElementById('of-nota');
+  try {
+    ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(id));
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  if (nota) nota.textContent = '';
+  ofPintarFicha();
+}
+
+function ofMensajesHtml(f) {
+  const a = f.agente;
+  if (!f.mensajes.length) {
+    return '<div class="of-msg ag">Hola Juan, soy ' + crEsc(a.nombre) + '. ' + crEsc(a.descripcion) + '</div>';
+  }
+  return f.mensajes.map(m => {
+    if (m.autor === 'juan') {
+      return '<div class="of-msg yo">' + crEsc(m.texto) + '</div>'
+        + (m.estado === 'pendiente'
+          ? '<div class="of-msg espera">' + crEsc(a.nombre) + ' está pensando… te responde en unos minutos.</div>' : '');
+    }
+    let op;
+    if (m.feedback === 'ok') op = '<span>Te sirvió</span>';
+    else if (m.feedback === 'corregido') op = '<span>Corregida: lo aprendió</span>';
+    else op = '<button type="button" class="of-btn" data-op="ok" data-id="' + Number(m.id) + '">Me sirvió</button>'
+      + '<button type="button" class="of-btn" data-op="fix" data-id="' + Number(m.id) + '">Corregir</button>';
+    return '<div class="of-msg ag">' + crEsc(m.texto)
+      + (m.fuente ? '<span class="of-fuente">Fuente: ' + crEsc(m.fuente) + '</span>' : '')
+      + '<div class="of-op" id="of-op-' + Number(m.id) + '">' + op + '</div></div>';
+  }).join('');
+}
+
+function ofListaHtml(items, tipo) {
+  if (!items.length) {
+    return '<div class="of-vacio">' + (tipo === 'apr'
+      ? 'Todavía no aprendió nada. Cuando corrijas una respuesta, aparece acá.'
+      : 'Todavía no le diste indicaciones.') + '</div>';
+  }
+  return items.map(x => '<div class="of-li"><span class="t">' + crEsc(x.texto)
+    + '<small>' + (tipo === 'apr' ? crEsc(x.origen) + ' · ' : 'Desde el ') + ofFecha(x.creado_en) + '</small></span>'
+    + '<button type="button" class="of-btn" data-borrar="' + tipo + '" data-id="' + Number(x.id) + '">'
+    + (tipo === 'apr' ? 'Olvidar' : 'Borrar') + '</button></div>').join('');
+}
+
+function ofPintarFicha() {
+  const f = ofFicha;
+  const a = f.agente;
+  const box = document.getElementById('of-ficha');
+  if (!box) return;
+  box.innerHTML = '<div class="of-cab"><img src="/static/oficina/' + encodeURIComponent(a.id) + '.svg" alt="">'
+    + '<div><h2>' + crEsc(a.nombre) + ' · ' + crEsc(a.rol) + '</h2><p>' + crEsc(a.descripcion) + '</p>'
+    + '<p>Mira: ' + crEsc(a.mira) + '</p></div></div>'
+    + '<div class="of-ficha">'
+    + '<div class="of-card"><h3>Conversación</h3>'
+    + '<div class="of-msgs" id="of-msgs" aria-live="polite">' + ofMensajesHtml(f) + '</div>'
+    + '<form class="of-form" id="of-f-msg"><input id="of-in-msg" maxlength="2000" autocomplete="off" placeholder="Preguntale algo a ' + crEsc(a.nombre) + '">'
+    + '<button type="submit" class="of-btn prim">Enviar</button></form>'
+    + '<div class="of-error" id="of-err-msg" role="alert"></div>'
+    + '<div class="of-ayuda">Te responde en unos minutos: lo escribe Claude desde la compu, sin costo.</div></div>'
+    + '<div class="of-col">'
+    + '<div class="of-card"><h3>Indicaciones</h3>'
+    + '<div class="of-ayuda">Lo que le pedís a ' + crEsc(a.nombre) + ' queda fijo hasta que lo borres.</div>'
+    + '<div id="of-ind">' + ofListaHtml(f.indicaciones, 'ind') + '</div>'
+    + '<form class="of-form" id="of-f-ind"><input id="of-in-ind" maxlength="300" autocomplete="off" placeholder="De ahora en más…">'
+    + '<button type="submit" class="of-btn">Agregar</button></form>'
+    + '<div class="of-error" id="of-err-ind" role="alert"></div></div>'
+    + '<div class="of-card"><h3>Lo que fue aprendiendo</h3>'
+    + '<div class="of-ayuda">Sale de tus correcciones. Si algo está mal, lo hacés olvidar.</div>'
+    + '<div id="of-apr">' + ofListaHtml(f.aprendizajes, 'apr') + '</div></div>'
+    + '</div></div>';
+  ofEnviarCon('of-f-msg', 'of-in-msg', 'of-err-msg', 'Escribí algo antes de enviar.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/mensajes', 'POST', {texto: texto}));
+  ofEnviarCon('of-f-ind', 'of-in-ind', 'of-err-ind', 'Escribí la indicación antes de agregarla.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/indicaciones', 'POST', {texto: texto}));
+  box.querySelector('.of-col').onclick = ofBorrar;
+  const msgs = document.getElementById('of-msgs');
+  msgs.onclick = ofOpinar;
+  msgs.scrollTop = msgs.scrollHeight;
+  ofProgramarRecarga();
+}
+
+function ofEnviarCon(formId, inputId, errId, falta, enviar) {
+  const form = document.getElementById(formId);
+  const input = document.getElementById(inputId);
+  const err = document.getElementById(errId);
+  input.oninput = () => { err.textContent = ''; };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = falta; input.focus(); return; }
+    try {
+      await enviar(texto);
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+async function ofBorrar(e) {
+  const b = e.target.closest('[data-borrar]');
+  if (!b) return;
+  const url = b.dataset.borrar === 'apr' ? '/api/oficina/aprendizajes/' : '/api/oficina/indicaciones/';
+  try {
+    await ofPedir(url + Number(b.dataset.id), 'DELETE');
+  } catch (ex) {
+    const nota = document.getElementById('of-nota');
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  await ofCargar();
+}
+
+async function ofOpinar(e) {
+  const b = e.target.closest('[data-op]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const caja = document.getElementById('of-op-' + id);
+  if (b.dataset.op === 'ok') {
+    try { await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'ok'}); } catch (ex) { return; }
+    caja.innerHTML = '<span>Anotado: lo va a seguir haciendo así.</span>';
+    return;
+  }
+  caja.innerHTML = '<form class="of-form"><input maxlength="300" autocomplete="off" placeholder="¿Qué tendría que haber hecho?">'
+    + '<button type="submit" class="of-btn prim">Guardar</button></form><div class="of-error" role="alert"></div>';
+  const input = caja.querySelector('input');
+  const err = caja.querySelector('.of-error');
+  input.focus();
+  caja.querySelector('form').onsubmit = async ev => {
+    ev.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = 'Escribí la corrección.'; return; }
+    try {
+      await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'corregir', correccion: texto});
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+function ofProgramarRecarga() {
+  clearTimeout(ofTimer);
+  const esperando = ofFicha && ofFicha.mensajes.some(m => m.autor === 'juan' && m.estado === 'pendiente');
+  if (!esperando) return;
+  ofTimer = setTimeout(async () => {
+    if (activePanel !== 'oficina' || !ofSel) return;
+    try {
+      ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(ofSel));
+      ofAgentes = (await ofPedir('/api/oficina/agentes')).agentes;
+    } catch (e) { ofProgramarRecarga(); return; }
+    ofPintarEquipo();
+    const msgs = document.getElementById('of-msgs');
+    if (msgs) { msgs.innerHTML = ofMensajesHtml(ofFicha); msgs.scrollTop = msgs.scrollHeight; }
+    ofProgramarRecarga();
+  }, 30000);
+}
+// ========== FIN Oficina ==========
+
 
 // ========== Instagram ==========
 // Sin barras invertidas en este bloque: vive dentro de un string de Python.
@@ -22064,7 +22364,8 @@ def create_app(db_path: str) -> Flask:
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
-                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp):
+                credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
+                oficina_bp, oficina_bot_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -22111,6 +22412,9 @@ def create_app(db_path: str) -> Flask:
             return
         # Lo mismo para LinkedIn: LINKEDIN_BOT_TOKEN, que solo abre estas rutas.
         if request.path.startswith("/api/linkedin-bot/"):
+            return
+        # Lo mismo para la Oficina: OFICINA_BOT_TOKEN, que solo abre estas rutas.
+        if request.path.startswith("/api/oficina-bot/"):
             return
         # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
         # a una planilla que es de la agencia, y cualquiera con permiso de

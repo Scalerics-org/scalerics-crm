@@ -2219,6 +2219,9 @@ def init_db(db_path: str) -> None:
         from services.mcp_tools import init_mcp
         init_oauth(conn)
         init_mcp(conn)
+        # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
+        from services.oficina import init_oficina
+        init_oficina(conn)
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
