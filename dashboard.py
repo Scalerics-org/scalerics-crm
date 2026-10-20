@@ -4483,6 +4483,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-dia-extra{display:block;font-size:.66rem}
 .eq-saldo{padding:0 8px;text-align:right;white-space:nowrap;font-weight:700;min-width:64px}
 .eq-al-dia{color:var(--verde-texto)}
+.eq-cab-botones{display:flex;flex-wrap:wrap;gap:6px}
 .eq-debe{color:var(--rojo-texto)}
 .eq-leyenda{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:.72rem;color:var(--texto-tenue);align-items:center}
 .eq-nota{font-size:.7rem;color:var(--texto-debil);margin-top:6px}
@@ -6110,7 +6111,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <section class="eq-card" aria-labelledby="eq-titulo-aus">
       <div class="eq-cab">
         <div class="fin-card-title" id="eq-titulo-aus">Ausencias y recupero</div>
-        <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
+        <div class="eq-cab-botones">
+          <button class="btn-ghost" type="button" onclick="eqAbrirExtra()">Sumar horas</button>
+          <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
+        </div>
       </div>
       <div id="eq-avisos"></div>
       <div class="eq-cal-nav" role="group" aria-label="Semanas de la grilla">
@@ -6123,8 +6127,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-leyenda" aria-label="Referencia de colores">
         <span><i class="eq-muestra eq-muestra-normal"></i>Normal</span>
         <span><i class="eq-muestra eq-falta"></i>Falta</span>
-        <span><i class="eq-muestra eq-recupero"></i>Recupero, con las horas</span>
-        <span>Saldo: <b class="eq-al-dia">al día</b> o las horas que debe en <b class="eq-debe">rojo</b></span>
+        <span><i class="eq-muestra eq-recupero"></i>Recupero u horas a favor, con las horas</span>
+        <span>Saldo: <b class="eq-al-dia">al día</b>, las horas <b class="eq-al-dia">a favor</b> o las que debe en <b class="eq-debe">rojo</b></span>
       </div>
       <div class="eq-nota">Días hábiles de lunes a viernes. Esta versión no tiene en cuenta los feriados.</div>
     </section>
@@ -6132,6 +6136,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <section class="eq-card" aria-labelledby="eq-titulo-det">
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
       <div id="eq-detalle"></div>
+    </section>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-extra">
+      <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-extra">Horas a favor</div></div>
+      <div class="eq-ayuda">Horas trabajadas de más sin deber nada. Cubren la próxima ausencia de esa persona.</div>
+      <div id="eq-extras"></div>
     </section>
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
@@ -6789,6 +6799,32 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="modal-btns">
       <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-ausencia')">Cancelar</button>
       <button class="btn-primary" type="button" onclick="eqGuardarAusencia()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="eq-modal-extra" onclick="if(event.target===this)eqCerrarModal('eq-modal-extra')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-extra-titulo">
+    <h3 id="eq-extra-titulo">Sumar horas a favor</h3>
+    <p>Horas de más, sin que haya una ausencia que devolver. Quedan a favor y cubren la próxima.</p>
+    <label class="modal-label" for="eq-extra-persona">Persona</label>
+    <select id="eq-extra-persona"></select>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="eq-extra-fecha">Fecha</label>
+        <input type="date" id="eq-extra-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="eq-extra-horas">Horas</label>
+        <input type="number" id="eq-extra-horas" min="0" step="0.5" inputmode="decimal">
+      </div>
+    </div>
+    <label class="modal-label" for="eq-extra-motivo">Motivo (opcional)</label>
+    <input type="text" id="eq-extra-motivo" maxlength="160" placeholder="En una línea">
+    <div class="eq-error" id="eq-extra-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-extra')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqGuardarExtra()">Sumar</button>
     </div>
   </div>
 </div>
@@ -18524,6 +18560,7 @@ async function loadEquipo() {
     eqPoner('eq-calendario', () => falla);
     eqPoner('eq-avisos', () => '');
     eqPoner('eq-detalle', () => '');
+    eqPoner('eq-extras', () => '');
     return;
   }
   eqPintar(eqDatos);
@@ -18546,6 +18583,7 @@ function eqPintar(d) {
   if (rango) rango.textContent = d.desde
     ? 'Del ' + eqCorta(d.desde) + ' al ' + eqCorta(eqSumarDias(d.desde, 13)) : '';
   eqPoner('eq-detalle', () => eqDetalleHtml(d.ausencias || []));
+  eqPoner('eq-extras', () => eqExtrasHtml(d.horas_extra || []));
 }
 
 function eqSumarDias(iso, dias) {
@@ -18822,13 +18860,15 @@ function eqCalendarioHtml(d) {
   const cuerpo = filas.map(f => {
     const celdas = semanas.map(s => s.map(iso => {
       const dia = (f.dias || {})[iso] || {};
-      const rec = dia.recupero > 0 ? '+' + eqHoras(dia.recupero) : '';
+      const suma = (dia.recupero || 0) + (dia.extra || 0);
+      const rec = suma > 0 ? '+' + eqHoras(suma) : '';
       if (dia.falta) return '<td class="eq-dia eq-falta">falta' + (rec ? '<span class="eq-dia-extra">' + rec + '</span>' : '') + '</td>';
       if (rec) return '<td class="eq-dia eq-recupero">' + rec + '</td>';
       return '<td class="eq-dia"></td>';
     }).join('')).join(hueco('td'));
-    const saldo = f.al_dia ? '<td class="eq-saldo eq-al-dia">al día</td>'
-      : '<td class="eq-saldo eq-debe">−' + eqHoras(f.saldo) + '</td>';
+    const saldo = !f.al_dia ? '<td class="eq-saldo eq-debe">−' + eqHoras(f.saldo) + '</td>'
+      : f.a_favor > 0 ? '<td class="eq-saldo eq-al-dia">+' + eqHoras(f.a_favor) + ' a favor</td>'
+      : '<td class="eq-saldo eq-al-dia">al día</td>';
     return '<tr><th scope="row" class="eq-cal-persona">' + esc(f.nombre) + '</th>' + celdas + saldo + '</tr>';
   }).join('');
   return '<table class="eq-cal"><thead>'
@@ -18842,13 +18882,14 @@ function eqDetalleHtml(ausencias) {
   return ausencias.map(a => {
     const rango = a.fecha_desde === a.fecha_hasta ? eqCorta(a.fecha_desde)
       : eqCorta(a.fecha_desde) + ' al ' + eqCorta(a.fecha_hasta);
-    const cuando = a.recuperos.length
-      ? 'recupera ' + a.recuperos.map(r => eqCorta(r.fecha) + ' (' + eqHoras(r.horas) + ')').join(', ')
-      : 'sin recupero agendado';
+    const partes = [];
+    if (a.recuperos.length) partes.push('recupera ' + a.recuperos.map(r => eqCorta(r.fecha) + ' (' + eqHoras(r.horas) + ')').join(', '));
+    if (a.horas_a_favor > 0) partes.push(eqHoras(a.horas_a_favor) + ' cubiertas con horas a favor');
+    const cuando = partes.length ? partes.join(' · ') : 'sin recupero agendado';
     const estado = a.recuperado
       ? '<span class="eq-estado eq-estado-ok">recuperado</span>'
       : '<span class="eq-estado eq-estado-mal">sin fecha'
-        + (a.recuperos.length ? ' · faltan ' + eqHoras(a.horas_pendientes) : '') + '</span>';
+        + (a.recuperos.length || a.horas_a_favor > 0 ? ' · faltan ' + eqHoras(a.horas_pendientes) : '') + '</span>';
     const chips = a.recuperos.map(r => '<span class="eq-chip">' + esc(eqCorta(r.fecha)) + ' · +' + eqHoras(r.horas)
       + '<button type="button" class="eq-chip-x" aria-label="Borrar el recupero del ' + esc(eqCorta(r.fecha))
       + '" onclick="eqBorrarRecupero(' + Number(r.id) + ')">×</button></span>').join('');
@@ -18861,6 +18902,18 @@ function eqDetalleHtml(ausencias) {
       + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqBorrarAusencia(' + Number(a.id) + ')">Borrar ausencia</button></div>'
       + '</article>';
   }).join('');
+}
+
+function eqExtrasHtml(extras) {
+  if (!extras.length) return '<div class="eq-vacio">Nadie sumó horas a favor.</div>';
+  return extras.map(x => '<article class="eq-item">'
+    + '<div class="eq-item-cab"><div class="eq-item-titulo"><b>' + esc(x.persona) + '</b>'
+    + (x.motivo ? ' · ' + esc(x.motivo) : '') + '</div>'
+    + '<span class="eq-estado eq-estado-ok">+' + eqHoras(x.horas) + '</span></div>'
+    + '<div class="eq-item-linea">' + esc(eqCorta(x.fecha)) + '</div>'
+    + '<div class="eq-item-acciones"><button type="button" class="btn-ghost eq-btn-chico" onclick="eqBorrarExtra('
+    + Number(x.id) + ')">Borrar</button></div>'
+    + '</article>').join('');
 }
 
 // ── formularios ──
@@ -19024,6 +19077,48 @@ function eqBorrarAusencia(id) {
 
 function eqBorrarRecupero(id) {
   return eqBorrar('/api/equipo/recuperos/' + Number(id), '¿Borrar este recupero?');
+}
+
+function eqAbrirExtra() {
+  const personas = (eqDatos && eqDatos.personas) || [];
+  document.getElementById('eq-extra-persona').innerHTML = personas.map(p =>
+    '<option value="' + Number(p.id) + '">' + esc(p.nombre) + '</option>').join('');
+  document.getElementById('eq-extra-fecha').value = (eqDatos && eqDatos.hoy) || '';
+  document.getElementById('eq-extra-horas').value = '';
+  document.getElementById('eq-extra-motivo').value = '';
+  document.getElementById('eq-extra-error').textContent = personas.length ? '' : 'Nadie del equipo lleva horas.';
+  eqAbrirModal('eq-modal-extra');
+}
+
+async function eqGuardarExtra() {
+  const datos = {
+    persona_id: Number(document.getElementById('eq-extra-persona').value) || null,
+    fecha: document.getElementById('eq-extra-fecha').value,
+    horas: eqNumero(document.getElementById('eq-extra-horas').value),
+    motivo: document.getElementById('eq-extra-motivo').value.trim()
+  };
+  const error = document.getElementById('eq-extra-error');
+  const problema = !datos.persona_id ? 'Elegí una persona.'
+    : !eqFecha(datos.fecha) ? 'La fecha no es válida.'
+    : !(datos.horas > 0) ? 'Las horas tienen que ser un número mayor que cero.' : '';
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/horas-extra', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-extra');
+  eqIrALaFecha(datos.fecha);
+  await loadEquipo();
+}
+
+function eqBorrarExtra(id) {
+  return eqBorrar('/api/equipo/horas-extra/' + Number(id), '¿Borrar estas horas a favor?');
 }
 
 // ── flujos ──

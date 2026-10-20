@@ -9,13 +9,15 @@ from datetime import date
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (actualizar_rol_flujo_persona, borrar_ausencia_equipo,
-                      borrar_recupero_equipo, crear_ausencia_equipo,
+                      borrar_horas_extra_equipo, borrar_recupero_equipo,
+                      crear_ausencia_equipo, crear_horas_extra_equipo,
                       crear_recupero_equipo, get_ausencia_equipo,
-                      get_persona_equipo, get_recupero_equipo,
-                      listar_personas_equipo, log_activity)
+                      get_horas_extra_equipo, get_persona_equipo,
+                      get_recupero_equipo, listar_personas_equipo,
+                      log_activity)
 from services.auth import is_admin, require_admin, require_panel, tiene_panel
 from services.equipo import (capacidad, estado, parse_fecha, validar_ausencia,
-                             validar_recupero)
+                             validar_horas_extra, validar_recupero)
 from services.flujos import estilo_de_persona, validar_rol_flujo
 
 equipo_bp = Blueprint("equipo", __name__)
@@ -161,4 +163,37 @@ def api_borrar_recupero(rid):
     uid, quien = _quien()
     log_activity(db, quien, "equipo_recupero_borrado", "equipo", rec["ausencia_id"],
                  "", f"{rec['fecha']} · {rec['horas']:g} h", user_id=uid)
+    return jsonify({"ok": True})
+
+
+@equipo_bp.route("/api/equipo/horas-extra", methods=["POST"])
+def api_crear_horas_extra():
+    db = _db()
+    personas = {p["id"]: p for p in listar_personas_equipo(db)}
+    campos, error = validar_horas_extra(request.get_json(silent=True), personas)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    uid, quien = _quien()
+    xid = crear_horas_extra_equipo(db, created_by_id=uid, created_by_name=quien, **campos)
+    persona = personas[campos["persona_id"]]["nombre"]
+    detalle = f"{campos['fecha']} · {campos['horas']:g} h"
+    if campos["motivo"]:
+        detalle += f" · {campos['motivo']}"
+    log_activity(db, quien, "equipo_horas_a_favor", "equipo", xid, persona,
+                 detalle, user_id=uid)
+    return jsonify({"ok": True, "id": xid}), 201
+
+
+@equipo_bp.route("/api/equipo/horas-extra/<int:xid>", methods=["DELETE"])
+def api_borrar_horas_extra(xid):
+    db = _db()
+    extra = get_horas_extra_equipo(db, xid)
+    if not extra:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    borrar_horas_extra_equipo(db, xid)
+    persona = get_persona_equipo(db, extra["persona_id"]) or {}
+    uid, quien = _quien()
+    log_activity(db, quien, "equipo_horas_a_favor_borradas", "equipo", xid,
+                 persona.get("nombre", ""), f"{extra['fecha']} · {extra['horas']:g} h",
+                 user_id=uid)
     return jsonify({"ok": True})

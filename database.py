@@ -1308,6 +1308,23 @@ def init_db(db_path: str) -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_recuperos_ausencia "
                      "ON equipo_recuperos(ausencia_id)")
+        # Horas a favor: trabajadas sin que haya una ausencia que devolver.
+        # Restan saldo igual que un recupero, así que la persona puede quedar
+        # con saldo positivo y gastarlo en una ausencia que venga después.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_horas_extra (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                horas           REAL NOT NULL,
+                motivo          TEXT NOT NULL DEFAULT '',
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_horas_extra_persona "
+                     "ON equipo_horas_extra(persona_id)")
         conn.commit()
         _sembrar_equipo(conn)
         # Como Marketing y a diferencia de Finanzas/Simulador (Ruling R20):
@@ -5520,6 +5537,38 @@ def listar_recuperos_equipo(db_path: str) -> list[dict]:
     conn = _connect(db_path)
     try:
         cur = conn.execute("SELECT * FROM equipo_recuperos ORDER BY fecha, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_horas_extra_equipo(db_path: str, persona_id: int, fecha: str, horas: float,
+                             motivo: str = "", created_by_id: int | None = None,
+                             created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO equipo_horas_extra (persona_id, fecha, horas, motivo, "
+            "created_by_id, created_by_name) VALUES (?,?,?,?,?,?)",
+            (persona_id, fecha, horas, motivo, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_horas_extra_equipo(db_path: str, extra_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_horas_extra", extra_id)
+
+
+def borrar_horas_extra_equipo(db_path: str, extra_id: int) -> None:
+    _delete(db_path, "equipo_horas_extra", extra_id)
+
+
+def listar_horas_extra_equipo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM equipo_horas_extra ORDER BY fecha DESC, id DESC")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
