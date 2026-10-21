@@ -3542,6 +3542,47 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .plx-hist span{margin-right:10px}
 .plx-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
 .plx-vacio{color:var(--texto-debil);font-size:.8rem;padding:6px 0}
+/* ======= Oficina (20/10): el equipo de agentes de Juan ======= */
+.of-equipo{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
+@media (max-width:900px){.of-equipo{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.of-equipo{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.of-ag{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;color:var(--texto);cursor:pointer;font-family:inherit}
+.of-ag:hover{border-color:var(--borde-fuerte)}
+.of-ag.sel{border-color:var(--azul);background:var(--azul-tinte);box-shadow:0 0 0 1px var(--azul)}
+.of-ag img{width:64px;height:64px}
+.of-ag-n{font-weight:700;color:var(--texto-fuerte);font-size:.95rem}
+.of-ag-r{font-size:.74rem;color:var(--texto-tenue);line-height:1.3}
+.of-ag-s{font-size:.72rem;color:var(--azul-claro);margin-top:2px}
+.of-cab{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.of-cab img{width:72px;height:72px;flex:none}
+.of-cab h2{font-size:1.1rem;color:var(--texto-fuerte);margin:0}
+.of-cab p{margin:2px 0 0;font-size:.84rem;color:var(--texto-tenue)}
+.of-ficha{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.of-ficha{grid-template-columns:1fr}}
+.of-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.of-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.of-card h3{font-size:.95rem;color:var(--texto-fuerte);margin:0}
+.of-ayuda{font-size:.78rem;color:var(--texto-tenue)}
+.of-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:460px;overflow-y:auto;padding:2px}
+.of-msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:.88rem;white-space:pre-line;line-height:1.5;overflow-wrap:anywhere}
+.of-msg.yo{align-self:flex-end;background:var(--azul);color:#fff;border-bottom-right-radius:4px}
+.of-msg.ag{align-self:flex-start;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);border-bottom-left-radius:4px}
+.of-msg.espera{align-self:flex-start;font-style:italic;color:var(--texto-tenue);font-size:.8rem;padding:2px 4px}
+.of-fuente{display:block;margin-top:6px;font-size:.72rem;color:var(--texto-tenue)}
+.of-op{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;white-space:normal}
+.of-op span{font-size:.74rem;color:var(--verde-texto)}
+.of-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 10px;font-size:.76rem;font-family:inherit;cursor:pointer}
+.of-btn:hover{background:var(--hover)}
+.of-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.of-form{display:flex;gap:8px;width:100%}
+.of-form input{flex:1;min-width:0;background:var(--fondo);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 11px;font-size:.86rem;font-family:inherit}
+.of-error{font-size:.76rem;color:var(--rojo-texto)}
+.of-error:empty{display:none}
+.of-li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.85rem;color:var(--texto)}
+.of-li:first-child{border-top:0}
+.of-li .t{flex:1;min-width:0}
+.of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
+.of-vacio{font-size:.8rem;color:var(--texto-tenue)}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -4373,47 +4414,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ig-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
 .ig-pedido-item b{color:var(--texto-fuerte)}
 @media(max-width:480px){.ig-tarjetas{grid-template-columns:1fr}}
-/* ======= Oficina (20/10): el equipo de agentes de Juan ======= */
-.of-equipo{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
-@media (max-width:900px){.of-equipo{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:520px){.of-equipo{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.of-ag{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;color:var(--texto);cursor:pointer;font-family:inherit}
-.of-ag:hover{border-color:var(--borde-fuerte)}
-.of-ag.sel{border-color:var(--azul);background:var(--azul-tinte);box-shadow:0 0 0 1px var(--azul)}
-.of-ag img{width:64px;height:64px}
-.of-ag-n{font-weight:700;color:var(--texto-fuerte);font-size:.95rem}
-.of-ag-r{font-size:.74rem;color:var(--texto-tenue);line-height:1.3}
-.of-ag-s{font-size:.72rem;color:var(--azul-claro);margin-top:2px}
-.of-cab{display:flex;gap:14px;align-items:center;margin-bottom:14px}
-.of-cab img{width:72px;height:72px;flex:none}
-.of-cab h2{font-size:1.1rem;color:var(--texto-fuerte);margin:0}
-.of-cab p{margin:2px 0 0;font-size:.84rem;color:var(--texto-tenue)}
-.of-ficha{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:900px){.of-ficha{grid-template-columns:1fr}}
-.of-col{display:flex;flex-direction:column;gap:16px;min-width:0}
-.of-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
-.of-card h3{font-size:.95rem;color:var(--texto-fuerte);margin:0}
-.of-ayuda{font-size:.78rem;color:var(--texto-tenue)}
-.of-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:460px;overflow-y:auto;padding:2px}
-.of-msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:.88rem;white-space:pre-line;line-height:1.5;overflow-wrap:anywhere}
-.of-msg.yo{align-self:flex-end;background:var(--azul);color:#fff;border-bottom-right-radius:4px}
-.of-msg.ag{align-self:flex-start;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);border-bottom-left-radius:4px}
-.of-msg.espera{align-self:flex-start;font-style:italic;color:var(--texto-tenue);font-size:.8rem;padding:2px 4px}
-.of-fuente{display:block;margin-top:6px;font-size:.72rem;color:var(--texto-tenue)}
-.of-op{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;white-space:normal}
-.of-op span{font-size:.74rem;color:var(--verde-texto)}
-.of-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 10px;font-size:.76rem;font-family:inherit;cursor:pointer}
-.of-btn:hover{background:var(--hover)}
-.of-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
-.of-form{display:flex;gap:8px;width:100%}
-.of-form input{flex:1;min-width:0;background:var(--fondo);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 11px;font-size:.86rem;font-family:inherit}
-.of-error{font-size:.76rem;color:var(--rojo-texto)}
-.of-error:empty{display:none}
-.of-li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.85rem;color:var(--texto)}
-.of-li:first-child{border-top:0}
-.of-li .t{flex:1;min-width:0}
-.of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
-.of-vacio{font-size:.8rem;color:var(--texto-tenue)}
 /* ── LinkedIn ─────────────────────────────────────────────────────────────────
    Borradores para la pagina de Scalerics en LinkedIn. Solo tokens, sin reglas
    de tema claro. */
