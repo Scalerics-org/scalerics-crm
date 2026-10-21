@@ -45,3 +45,34 @@ def bot_responder(msj_id):
     except of.NoSePuede as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True, "id": nuevo})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/recordatorios")
+def bot_recordatorios():
+    return jsonify({"ok": True, **of.recordatorios_para_bot(_db())})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/recordatorios", methods=["POST"])
+def bot_crear_recordatorio():
+    try:
+        return jsonify({"ok": True, **of.crear_recordatorio(_db(), request.get_json(silent=True) or {})})
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@oficina_bot_bp.route("/api/oficina-bot/recordatorios/<int:rec_id>/borrador", methods=["POST"])
+def bot_borrador(rec_id):
+    try:
+        of.guardar_borrador(_db(), rec_id, (request.get_json(silent=True) or {}).get("texto"))
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/recordatorios/<int:rec_id>/hecho", methods=["POST"])
+def bot_hecho(rec_id):
+    try:
+        of.cerrar_por_bot(_db(), rec_id)
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})

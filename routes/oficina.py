@@ -84,3 +84,17 @@ def api_opinar(msj_id):
     except of.NoSePuede as e:
         return _error(e)
     return jsonify({"ok": True})
+
+
+@oficina_bp.route("/api/oficina/recordatorios")
+def api_recordatorios():
+    return jsonify({"ok": True, **of.recordatorios(_db())})
+
+
+@oficina_bp.route("/api/oficina/recordatorios/<int:rec_id>/<accion>", methods=["POST"])
+def api_resolver_recordatorio(rec_id, accion):
+    try:
+        of.resolver_recordatorio(_db(), rec_id, accion)
+    except of.NoSePuede as e:
+        return _error(e)
+    return jsonify({"ok": True})
