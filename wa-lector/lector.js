@@ -2,12 +2,15 @@
 
 /**
  * Lector de WhatsApp de Juan (21/10). Corre en su notebook, vinculado como
- * dispositivo a su WhatsApp Business, y SOLO LEE: no manda mensajes, no marca
- * como leído y no aparece "en línea", así que el teléfono sigue avisando igual.
+ * dispositivo a su WhatsApp Business. Lee sus chats; no marca como leído y no
+ * aparece "en línea", así que el teléfono sigue avisando igual.
+ *
+ * Lo ÚNICO que manda son las plantillas que Juan confirmó en el CRM eligiendo
+ * "desde mi WhatsApp" (services/wa_juan.py): las pide a /api/oficina-bot/envios,
+ * de a una, con pausa y un tope diario. Nada más sale de acá (`enviarCola`).
  *
  * No es el bot de ventas (wa-service): ese contesta solo a quien le escribe y
- * acá eso sería mandarle el embudo a cada cliente de Juan. Por eso es un
- * programa aparte que ni siquiera tiene cómo enviar.
+ * acá eso sería mandarle el embudo a cada cliente de Juan.
  *
  * Guarda los chats uno a uno (sin grupos, estados ni canales) en la base de
  * base.js, menos los contactos de excluidos.txt.
@@ -26,6 +29,10 @@ const base = require('./base');
 
 const BACKOFF_MS = [30_000, 5 * 60_000, 30 * 60_000];
 const HISTORIAL_DIAS = 90;
+const COLA_CADA_MS = 20_000;
+const PAUSA_ENTRE_ENVIOS_MS = 12_000;
+const TOPE_DIARIO = 30;
+const CRM = (process.env.CRM_URL || 'https://scalerics-crm.fly.dev').replace(/\/$/, '');
 
 const NO_LEIBLES = {
   audioMessage: '[audio]',
@@ -75,7 +82,14 @@ function chatDe(key, lidAPn) {
   let telefono = alt ? telefonoDeJid(alt) : null;
   if (!telefono && jid.endsWith('@lid')) telefono = lidAPn.get(telefonoDeJid(jid)) || null;
   if (!telefono && jid.endsWith('@s.whatsapp.net')) telefono = telefonoDeJid(jid);
-  return { chat: telefono || telefonoDeJid(jid), telefono };
+  return { chat: telefono || 'lid:' + telefonoDeJid(jid), telefono };
+}
+
+function tokenOficina(dir) {
+  const env = (process.env.OFICINA_BOT_TOKEN || '').trim();
+  if (env) return env;
+  const archivo = path.join(dir, '..', 'oficina_bot_token.txt');
+  return fs.existsSync(archivo) ? fs.readFileSync(archivo, 'utf8').trim() : '';
 }
 
 function aMensaje(msg, lidAPn) {
@@ -148,27 +162,107 @@ async function main() {
   const log = (...a) => console.log(new Date().toLocaleString('es-UY'), ...a);
   const excluidos = () => base.leerExcluidos(dir);
 
-  function guardar(mensajes) {
+  let sockActual = null;
+
+  /** El número de un LID, preguntándole a baileys si todavía no lo sabemos. */
+  async function resolverLid(jid) {
+    const lid = telefonoDeJid(jid);
+    if (lidAPn.has(lid)) return lidAPn.get(lid);
+    try {
+      const pn = await sockActual?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+      if (pn) aprenderLid(lid, telefonoDeJid(pn));
+    } catch {
+      // Sin número por ahora: queda como lid: hasta que aparezca.
+    }
+    return lidAPn.get(lid) || null;
+  }
+
+  function aprenderLid(lid, pn) {
+    if (!lid || !pn || lidAPn.get(lid) === pn) return;
+    lidAPn.set(lid, pn);
+    base.unirLid(db, lid, pn);
+  }
+
+  async function guardar(mensajes) {
     const lista = excluidos();
     let n = 0;
     for (const msg of mensajes) {
+      const jid = String(msg?.key?.remoteJid || '');
+      if (jid.endsWith('@lid') && !(msg.key.remoteJidAlt || msg.key.senderPn)) await resolverLid(jid);
       const m = aMensaje(msg, lidAPn);
       if (m && base.guardarMensaje(db, lista, m)) n += 1;
     }
     return n;
   }
 
+  function purgar() {
+    const borrados = base.purgarExcluidos(db, excluidos());
+    if (borrados) log(`se borraron ${borrados} mensajes de contactos excluidos`);
+  }
+
+  /** Las plantillas que Juan confirmó en el CRM para mandar desde su número. */
+  let enviando = false;
+  async function enviarCola() {
+    const token = tokenOficina(dir);
+    if (enviando || !token || !sockActual?.user) return;
+    enviando = true;
+    try {
+      const r = await fetch(CRM + '/api/oficina-bot/envios', { headers: { 'x-oficina-token': token } });
+      if (!r.ok) return;
+      const { envios = [] } = await r.json();
+      for (const e of envios) {
+        const hoy = new Date().toISOString().slice(0, 10);
+        if (base.marca(db, 'envios_dia') !== Number(hoy.replace(/-/g, ''))) {
+          base.marcar(db, 'envios_dia', Number(hoy.replace(/-/g, '')));
+          base.marcar(db, 'envios_hoy', 0);
+        }
+        let ok = false;
+        let error = null;
+        if (base.marca(db, 'envios_hoy') >= TOPE_DIARIO) {
+          error = `Tope de ${TOPE_DIARIO} por día desde tu WhatsApp`;
+        } else {
+          try {
+            await sockActual.sendMessage(`${String(e.telefono).replace(/\D/g, '')}@s.whatsapp.net`, { text: e.texto });
+            ok = true;
+            base.marcar(db, 'envios_hoy', base.marca(db, 'envios_hoy') + 1);
+          } catch (err) {
+            error = String(err?.message || err).slice(0, 200);
+          }
+        }
+        await fetch(CRM + `/api/oficina-bot/envios/${Number(e.id)}/resultado`, {
+          method: 'POST',
+          headers: { 'x-oficina-token': token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ok, error }),
+        });
+        log(ok ? `plantilla enviada (envío ${e.id})` : `no salió el envío ${e.id}: ${error}`);
+        await new Promise((res) => setTimeout(res, PAUSA_ENTRE_ENVIOS_MS));
+      }
+    } catch (err) {
+      log('cola de envíos:', err.message);
+    } finally {
+      enviando = false;
+    }
+  }
+  if (!vincular) setInterval(enviarCola, COLA_CADA_MS);
+
   function contactos(lista) {
     for (const c of lista || []) {
       const jid = String(c.id || '');
       if (!esUnoAUno(jid)) continue;
       const pn = c.phoneNumber ? telefonoDeJid(c.phoneNumber) : (jid.endsWith('@s.whatsapp.net') ? telefonoDeJid(jid) : null);
-      if (c.lid && pn) lidAPn.set(telefonoDeJid(c.lid), pn);
-      if (jid.endsWith('@lid') && pn) lidAPn.set(telefonoDeJid(jid), pn);
-      base.guardarContacto(db, { chat: pn || telefonoDeJid(jid), telefono: pn, agendado: c.name || null, perfil: c.notify || c.verifiedName || null });
+      if (c.lid && pn) aprenderLid(telefonoDeJid(c.lid), pn);
+      if (jid.endsWith('@lid') && pn) aprenderLid(telefonoDeJid(jid), pn);
+      const chat = pn || (jid.endsWith('@lid') ? 'lid:' + telefonoDeJid(jid) : telefonoDeJid(jid));
+      base.guardarContacto(db, { chat, telefono: pn, agendado: c.name || null, perfil: c.notify || c.verifiedName || null });
     }
-    const borrados = base.purgarExcluidos(db, excluidos());
-    if (borrados) log(`se borraron ${borrados} mensajes de contactos excluidos`);
+    purgar();
+  }
+
+  /** Al conectar, se intenta ponerle número a los chats que quedaron por LID. */
+  async function resolverPendientes() {
+    const lids = db.prepare("SELECT chat FROM contactos WHERE chat LIKE 'lid:%'").all();
+    for (const { chat } of lids) await resolverLid(chat.slice(4) + '@lid');
+    purgar();
   }
 
   async function conectar() {
@@ -196,7 +290,16 @@ async function main() {
       getMessage: async () => undefined,
     });
 
+    sockActual = sock;
     sock.ev.on('creds.update', saveCreds);
+
+    // baileys 7 avisa cuando aprende qué número hay detrás de un LID.
+    sock.ev.on('lid-mapping.update', (u) => {
+      for (const par of [].concat(u || [])) {
+        if (par?.lid && par?.pn) aprenderLid(telefonoDeJid(par.lid), telefonoDeJid(par.pn));
+      }
+      purgar();
+    });
 
     sock.ev.on('connection.update', async (u) => {
       const { connection, lastDisconnect, qr } = u;
@@ -217,7 +320,8 @@ async function main() {
       }
       if (connection === 'open') {
         intentos = 0;
-        log(`Conectado a WhatsApp (${telefonoDeJid(sock.user?.id)}). Solo lectura.`);
+        log(`Conectado a WhatsApp (${telefonoDeJid(sock.user?.id)}).`);
+        resolverPendientes().catch((e) => log('no se pudieron resolver LIDs', e.message));
         if (vincular) {
           // Después de vincular, WhatsApp manda el historial en tandas. Se le da
           // tiempo y se termina: el .bat arranca el lector oculto.
@@ -249,16 +353,16 @@ async function main() {
     sock.ev.on('contacts.upsert', contactos);
     sock.ev.on('contacts.update', contactos);
 
-    sock.ev.on('messaging-history.set', ({ contacts, messages }) => {
+    sock.ev.on('messaging-history.set', async ({ contacts, messages }) => {
       contactos(contacts);
       const limite = Math.floor(Date.now() / 1000) - HISTORIAL_DIAS * 86400;
       const recientes = (messages || []).filter((m) => Number(m.messageTimestamp?.low ?? m.messageTimestamp) >= limite);
-      const n = guardar(recientes);
+      const n = await guardar(recientes);
       if (n) log(`historial: ${n} mensajes guardados`);
     });
 
     sock.ev.on('messages.upsert', ({ messages }) => {
-      guardar(messages || []);
+      guardar(messages || []).catch((e) => log('error al guardar', e.message));
     });
   }
 

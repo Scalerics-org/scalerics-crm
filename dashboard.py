@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.oficina_bot import oficina_bot_bp
+from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.sombra import sombra_bp
 from routes.equipo import equipo_bp
@@ -4139,6 +4140,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .pl-faltan{font-size:.76rem;color:var(--ambar);margin-bottom:8px}
 .pl-faltan:empty{display:none}
 .pl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.pl-desde{border:0;padding:0;margin:0 0 10px;display:flex;flex-direction:column;gap:6px;font-size:.84rem;color:var(--texto)}
+.pl-desde[hidden]{display:none}
+.pl-desde label{display:flex;align-items:center;gap:8px;cursor:pointer}
 .pl-error:empty{display:none}
 .pl-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-10px 0 12px;line-height:1.7}
 .pl-check{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
@@ -7092,6 +7096,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="pl-elegido" id="pl-conf-para"></div>
     <div class="modal-label">Texto</div>
     <div class="pl-cuerpo pl-vista" id="pl-conf-texto"></div>
+    <!-- 21/10, pedido de Juan: el admin elige si sale de su WhatsApp Business
+         (lo manda el lector de su notebook, services/wa_juan.py) o del de Scalerics. -->
+    <fieldset class="pl-desde" id="pl-conf-desde" hidden>
+      <legend class="modal-label">Mandar desde</legend>
+      <label><input type="radio" name="pl-desde" value="juan" checked> Mi WhatsApp Business</label>
+      <label><input type="radio" name="pl-desde" value="scalerics"> Número de Scalerics</label>
+    </fieldset>
     <div class="pl-error" id="pl-conf-error" role="alert"></div>
     <div class="modal-btns">
       <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-confirmar')">Cancelar</button>
@@ -15680,7 +15691,28 @@ function plPedirEnvio() {
   document.getElementById('pl-conf-texto').textContent = plCompletar(p.cuerpo, plValores);
   document.getElementById('pl-conf-error').textContent = '';
   document.getElementById('pl-conf-enviar').disabled = false;
+  document.getElementById('pl-conf-desde').hidden = !window._isAdmin;
   plAbrirModal('pl-modal-confirmar');
+}
+
+function plDesdeJuan() {
+  const elegido = document.querySelector('input[name="pl-desde"]:checked');
+  return !!window._isAdmin && !!elegido && elegido.value === 'juan';
+}
+
+// Desde el WhatsApp de Juan el mensaje queda en cola: lo manda el lector de su
+// notebook en unos segundos. Se pregunta un rato cómo salió para avisarle.
+async function plSeguirEnvio(id, quien) {
+  for (let i = 0; i < 6; i++) {
+    await new Promise(res => setTimeout(res, 10000));
+    try {
+      const r = await fetch('/api/wa-juan/envios/' + Number(id));
+      const j = await plLeerRespuesta(r);
+      if (j.estado === 'enviado') { plAvisar('Salió desde tu WhatsApp a ' + quien + '.'); return; }
+      if (j.estado === 'error') { plAvisar('No salió desde tu WhatsApp: ' + (j.error || 'error') + '.'); return; }
+    } catch (e) {}
+  }
+  plAvisar('Sigue en cola: sale de tu WhatsApp cuando la notebook esté prendida.');
 }
 
 async function plEnviar() {
@@ -15688,7 +15720,29 @@ async function plEnviar() {
   const boton = document.getElementById('pl-conf-enviar');
   const error = document.getElementById('pl-conf-error');
   const datos = {phone: plLead.lead.telefono, text: plCompletar(plUsando.cuerpo, plValores)};
+  const quien = plLead.lead.nombre || plLead.lead.telefono;
   boton.disabled = true;
+  if (plDesdeJuan()) {
+    datos.destino = plLead.lead.nombre || '';
+    try {
+      const r = await fetch('/api/wa-juan/enviar', {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+      const j = await plLeerRespuesta(r);
+      if (!r.ok || !j.ok) {
+        error.textContent = 'No se pudo enviar: ' + (j.error || 'HTTP ' + r.status);
+        boton.disabled = false;
+        return;
+      }
+      plCerrarModal('pl-modal-confirmar');
+      plCerrarModal('pl-modal-usar');
+      plAvisar('En cola: sale desde tu WhatsApp en unos segundos.');
+      plSeguirEnvio(j.id, quien);
+    } catch (e) {
+      error.textContent = 'No se pudo enviar: ' + e.message;
+      boton.disabled = false;
+    }
+    return;
+  }
   try {
     const r = await fetch('/api/wa/send', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
@@ -22462,7 +22516,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp):
         app.register_blueprint(bp)
 
     @app.before_request
