@@ -9,6 +9,18 @@ Uso:
     python scripts/oficina_responder.py pendientes
     python scripts/oficina_responder.py responder <id> <archivo.json>
         el JSON: {"texto": "...", "fuente": "de dónde salió el dato"}
+    python scripts/oficina_responder.py recordatorios
+        los abiertos y los que esperan que Bruno arme el mensaje
+    python scripts/oficina_responder.py crear-recordatorio <archivo.json>
+        el JSON: {"que": "...", "cuando": "AAAA-MM-DD", "contacto": "...",
+                  "cita": "frase del chat", "clave": "algo-unico-para-no-repetir"}
+    python scripts/oficina_responder.py borrador <id> <archivo.json>
+        el JSON: {"texto": "el mensaje listo para que Juan lo mande"}
+    python scripts/oficina_responder.py hecho <id>
+    python scripts/oficina_responder.py esquema
+        las tablas del CRM que los agentes pueden leer, con columnas y cantidad de filas
+    python scripts/oficina_responder.py consulta "SELECT ..."
+        una consulta de solo lectura (máximo 500 filas)
 """
 
 import json
@@ -51,6 +63,26 @@ def main(args):
         cuerpo = json.load(open(args[2], encoding="utf-8"))
         print(json.dumps(_pedir("POST", f"/api/oficina-bot/mensajes/{int(args[1])}/responder",
                                 json=cuerpo), ensure_ascii=False))
+    elif cmd == "recordatorios":
+        datos = _pedir("GET", "/api/oficina-bot/recordatorios")
+        datos.pop("ok", None)
+        print(json.dumps(datos, ensure_ascii=False, indent=2))
+    elif cmd == "crear-recordatorio" and len(args) == 2:
+        cuerpo = json.load(open(args[1], encoding="utf-8"))
+        print(json.dumps(_pedir("POST", "/api/oficina-bot/recordatorios", json=cuerpo), ensure_ascii=False))
+    elif cmd == "borrador" and len(args) == 3:
+        cuerpo = json.load(open(args[2], encoding="utf-8"))
+        _pedir("POST", f"/api/oficina-bot/recordatorios/{int(args[1])}/borrador", json=cuerpo)
+        print("ok")
+    elif cmd == "esquema":
+        print(json.dumps(_pedir("GET", "/api/oficina-bot/esquema")["tablas"], ensure_ascii=False, indent=1))
+    elif cmd == "consulta" and len(args) == 2:
+        datos = _pedir("POST", "/api/oficina-bot/consulta", json={"sql": args[1]})
+        datos.pop("ok", None)
+        print(json.dumps(datos, ensure_ascii=False, default=str))
+    elif cmd == "hecho" and len(args) == 2:
+        _pedir("POST", f"/api/oficina-bot/recordatorios/{int(args[1])}/hecho")
+        print("ok")
     else:
         sys.exit(__doc__)
 

@@ -33,3 +33,4 @@ hexast-cajas/
 .coverage
 coverage.xml
 htmlcov/
+wa-lector/node_modules/

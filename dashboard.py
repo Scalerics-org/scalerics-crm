@@ -3583,6 +3583,21 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .of-li .t{flex:1;min-width:0}
 .of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
 .of-vacio{font-size:.8rem;color:var(--texto-tenue)}
+.of-recs{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+.of-recs-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.of-recs-cab h2{font-size:1.05rem;color:var(--texto-fuerte);margin:0}
+.of-recs-cab span{display:flex;align-items:center;gap:6px}
+.of-recs-cab img{width:22px;height:22px}
+.of-rec{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;display:flex;gap:14px;align-items:flex-start}
+.of-rec-cuando{flex:none;width:72px;text-align:center;border-radius:10px;padding:8px 4px;font-size:.78rem;font-weight:700;background:var(--azul-tinte);color:var(--azul-claro)}
+.of-rec-cuando.hoy{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.of-rec-cuando.manana{background:var(--ambar-tinte);color:var(--ambar)}
+.of-rec-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.of-rec-que{font-weight:600;color:var(--texto-fuerte);font-size:.92rem}
+.of-rec-cita{font-size:.82rem;color:var(--texto-tenue);border-left:2px solid var(--verde);padding-left:10px;overflow-wrap:anywhere}
+.of-rec-acc{display:flex;gap:6px;flex-wrap:wrap}
+.of-rec-borrador{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.of-rec-btxt{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -6059,6 +6074,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="cr-nota" id="of-nota" role="status" aria-live="polite"></div>
+    <div class="of-recs" id="of-recs" aria-live="polite"></div>
     <div class="of-equipo" id="of-equipo" aria-label="Tu equipo"></div>
     <div id="of-ficha"></div>
   </div>
@@ -16954,6 +16970,7 @@ async function ofCargar() {
     if (nota) nota.textContent = e.message;
     return;
   }
+  ofCargarRecs();
   if (!ofSel && ofAgentes.length) ofSel = ofAgentes[0].id;
   ofPintarEquipo();
   if (ofSel) await ofAbrir(ofSel);
@@ -17142,6 +17159,86 @@ function ofProgramarRecarga() {
     if (msgs) { msgs.innerHTML = ofMensajesHtml(ofFicha); msgs.scrollTop = msgs.scrollHeight; }
     ofProgramarRecarga();
   }, 30000);
+}
+// Recordatorios: los arma Bruno leyendo los chats de WhatsApp de Juan, que
+// viven en su notebook (wa-lector/). Acá llega solo el recordatorio.
+let ofRecs = [];
+let ofHoy = '';
+
+function ofDia(iso) {
+  return new Date(iso + 'T12:00:00');
+}
+
+function ofCuando(cuando) {
+  const dias = Math.round((ofDia(cuando) - ofDia(ofHoy)) / 86400000);
+  if (dias < 0) return {cls: 'hoy', txt: 'Vencido'};
+  if (dias === 0) return {cls: 'hoy', txt: 'Hoy'};
+  if (dias === 1) return {cls: 'manana', txt: 'Mañana'};
+  return {cls: '', txt: ofDia(cuando).toLocaleDateString('es-UY', {weekday: 'short', day: '2-digit', month: '2-digit'})};
+}
+
+function ofRecHtml(r) {
+  const c = ofCuando(r.cuando);
+  const id = Number(r.id);
+  let origen = '';
+  if (r.cita) origen = '<div class="of-rec-cita">WhatsApp' + (r.contacto ? ' · ' + crEsc(r.contacto) : '') + ': «' + crEsc(r.cita) + '»</div>';
+  else if (r.contacto) origen = '<div class="of-rec-cita">' + crEsc(r.contacto) + '</div>';
+  let borrador = '';
+  if (r.borrador) {
+    borrador = '<div class="of-rec-borrador"><div class="of-rec-btxt">' + crEsc(r.borrador) + '</div>'
+      + '<button type="button" class="of-btn" data-copiar="' + id + '">Copiar mensaje</button></div>';
+  } else if (r.borrador_pedido) {
+    borrador = '<div class="of-ayuda">Bruno te está armando el mensaje… aparece acá en unos minutos.</div>';
+  }
+  return '<div class="of-rec"><div class="of-rec-cuando ' + c.cls + '">' + crEsc(c.txt) + '</div>'
+    + '<div class="of-rec-cuerpo"><div class="of-rec-que">' + crEsc(r.que) + '</div>' + origen + borrador
+    + '<div class="of-rec-acc"><button type="button" class="of-btn prim" data-rec="hecho" data-id="' + id + '">Hecho</button>'
+    + (r.borrador_pedido ? '' : '<button type="button" class="of-btn" data-rec="borrador" data-id="' + id + '">Armame el mensaje</button>')
+    + '<button type="button" class="of-btn" data-rec="manana" data-id="' + id + '">Recordame mañana</button></div>'
+    + '</div></div>';
+}
+
+async function ofCargarRecs() {
+  const box = document.getElementById('of-recs');
+  if (!box) return;
+  let d;
+  try {
+    d = await ofPedir('/api/oficina/recordatorios');
+  } catch (e) {
+    box.innerHTML = '';
+    return;
+  }
+  ofRecs = d.recordatorios;
+  ofHoy = d.hoy;
+  box.innerHTML = '<div class="of-recs-cab"><h2>Recordatorios</h2>'
+    + '<span class="of-ayuda"><img src="/static/oficina/bruno.svg" alt="">Los arma Bruno leyendo tus chats de WhatsApp</span></div>'
+    + (ofRecs.length ? ofRecs.map(ofRecHtml).join('')
+      : '<div class="of-vacio">No tenés recordatorios pendientes. Bruno revisa tus chats cada hora.</div>');
+  box.onclick = ofRecAccion;
+}
+
+async function ofRecAccion(e) {
+  const copiar = e.target.closest('[data-copiar]');
+  if (copiar) {
+    const r = ofRecs.find(x => Number(x.id) === Number(copiar.dataset.copiar));
+    try {
+      await navigator.clipboard.writeText(r.borrador);
+      copiar.textContent = 'Copiado';
+    } catch (ex) {
+      copiar.textContent = 'No se pudo copiar: seleccioná el texto';
+    }
+    return;
+  }
+  const b = e.target.closest('[data-rec]');
+  if (!b) return;
+  try {
+    await ofPedir('/api/oficina/recordatorios/' + Number(b.dataset.id) + '/' + b.dataset.rec, 'POST');
+  } catch (ex) {
+    const nota = document.getElementById('of-nota');
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  await ofCargarRecs();
 }
 // ========== FIN Oficina ==========
 

@@ -40,3 +40,6 @@ bot/node_modules/
 # CRM, y en un disco de desarrollo trae wa-service/auth/ —la sesion de WhatsApp
 # de la empresa— y bases con conversaciones de leads.
 wa-service/
+
+# El lector de WhatsApp de Juan corre en su notebook, no en el CRM (21/10).
+wa-lector/

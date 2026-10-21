@@ -1,0 +1,21 @@
+{
+  "name": "scalerics-wa-lector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lector de WhatsApp de Juan para la Oficina: solo lee, corre en su notebook",
+  "main": "lector.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node lector.js",
+    "vincular": "node lector.js --vincular",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.6.0",
+    "qrcode": "1.5.4"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

@@ -203,3 +203,68 @@ def test_la_pantalla_esta_y_arranca_oculta():
 def test_oficina_no_se_reparte_por_rol():
     todos = re.search(r"const ALL_PANELS = \[([^\]]*)\]", HTML).group(1)
     assert "oficina" not in todos
+
+
+# ── recordatorios (Bruno + WhatsApp, 21/10) ──────────────────────────────────
+
+def test_bruno_crea_recordatorios_sin_repetir(db):
+    hoy = of._hoy().isoformat()
+    r1 = of.crear_recordatorio(db, {"que": "Mandarle la propuesta a TNT Burger", "cuando": hoy,
+                                    "contacto": "TNT Burger", "cita": "el jueves te paso la propuesta",
+                                    "clave": "tnt-propuesta"})
+    r2 = of.crear_recordatorio(db, {"que": "otra cosa", "cuando": hoy, "clave": "tnt-propuesta"})
+    assert r1["repetido"] is False and r2 == {"id": r1["id"], "repetido": True}
+    [rec] = of.recordatorios(db)["recordatorios"]
+    assert rec["contacto"] == "TNT Burger" and rec["cita"].startswith("el jueves")
+
+
+def test_recordame_manana_hecho_y_borrador(db):
+    hoy = of._hoy()
+    rid = of.crear_recordatorio(db, {"que": "Llamar a Rodelú", "cuando": hoy.isoformat()})["id"]
+    of.resolver_recordatorio(db, rid, "manana")
+    assert of.recordatorios(db)["recordatorios"][0]["cuando"] == (hoy + of.timedelta(days=1)).isoformat()
+    of.resolver_recordatorio(db, rid, "borrador")
+    assert [b["id"] for b in of.recordatorios_para_bot(db)["borradores_pedidos"]] == [rid]
+    of.guardar_borrador(db, rid, "Hola! ¿Coordinamos la demo?")
+    assert of.recordatorios_para_bot(db)["borradores_pedidos"] == []
+    assert of.recordatorios(db)["recordatorios"][0]["borrador"].startswith("Hola")
+    of.resolver_recordatorio(db, rid, "hecho")
+    assert of.recordatorios(db)["recordatorios"] == []
+    with pytest.raises(of.NoSePuede):
+        of.resolver_recordatorio(db, rid, "hecho")
+
+
+def test_solo_muestra_la_proxima_semana(db):
+    lejos = (of._hoy() + of.timedelta(days=of.DIAS_A_LA_VISTA + 3)).isoformat()
+    of.crear_recordatorio(db, {"que": "Cobrar el abono", "cuando": lejos})
+    assert of.recordatorios(db)["recordatorios"] == []
+    assert len(of.recordatorios_para_bot(db)["abiertos"]) == 1
+
+
+@pytest.mark.parametrize("datos", [{"que": "", "cuando": "2026-10-21"}, {"que": "x", "cuando": "mañana"}])
+def test_recordatorio_invalido(db, datos):
+    with pytest.raises(of.NoSePuede):
+        of.crear_recordatorio(db, datos)
+
+
+def test_recordatorios_por_la_api(app):
+    bot = app.test_client()
+    h = {"x-oficina-token": TOKEN}
+    hoy = of._hoy().isoformat()
+    rid = bot.post("/api/oficina-bot/recordatorios", headers=h,
+                   json={"que": "Responderle a Trouville", "cuando": hoy}).get_json()["id"]
+    jefe = _cli(app, "jefe@scalerics.com")
+    assert jefe.get("/api/oficina/recordatorios").get_json()["recordatorios"][0]["id"] == rid
+    assert jefe.post(f"/api/oficina/recordatorios/{rid}/borrador").get_json()["ok"]
+    assert jefe.post(f"/api/oficina/recordatorios/{rid}/cualquiera").status_code == 400
+    assert bot.get("/api/oficina-bot/recordatorios", headers=h).get_json()["borradores_pedidos"][0]["id"] == rid
+    assert bot.post(f"/api/oficina-bot/recordatorios/{rid}/borrador", headers=h, json={"texto": "Hola!"}).get_json()["ok"]
+    assert bot.post(f"/api/oficina-bot/recordatorios/{rid}/hecho", headers=h).get_json()["ok"]
+    assert jefe.get("/api/oficina/recordatorios").get_json()["recordatorios"] == []
+    otro = _cli(app, "otro@scalerics.com", paneles=["oficina"])
+    assert otro.get("/api/oficina/recordatorios").status_code == 403
+    assert app.test_client().post("/api/oficina-bot/recordatorios", json={"que": "x", "cuando": hoy}).status_code == 403
+
+
+def test_la_pantalla_tiene_los_recordatorios():
+    assert 'id="of-recs"' in HTML and "function ofCargarRecs()" in HTML
