@@ -12,6 +12,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from services import oficina as of
 from services import oficina_datos as datos
+from services import wa_juan
 
 oficina_bot_bp = Blueprint("oficina_bot", __name__)
 
@@ -90,3 +91,19 @@ def bot_consulta():
         return jsonify({"ok": True, **datos.consultar(_db(), (request.get_json(silent=True) or {}).get("sql"))})
     except datos.ConsultaInvalida as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+
+
+# Plantillas que Juan mandó desde su WhatsApp: las manda el lector de su notebook.
+@oficina_bot_bp.route("/api/oficina-bot/envios")
+def bot_envios():
+    return jsonify({"ok": True, "envios": wa_juan.pendientes(_db())})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/envios/<int:envio_id>/resultado", methods=["POST"])
+def bot_resultado_envio(envio_id):
+    datos_envio = request.get_json(silent=True) or {}
+    try:
+        wa_juan.resultado(_db(), envio_id, bool(datos_envio.get("ok")), datos_envio.get("error"))
+    except wa_juan.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})

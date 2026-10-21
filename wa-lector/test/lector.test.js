@@ -66,13 +66,37 @@ test('saca el texto o marca el tipo, y solo acepta chats uno a uno', () => {
   assert.deepEqual(chatDe({ remoteJid: '777@lid', remoteJidAlt: '59894053389@s.whatsapp.net' }, new Map()),
     { chat: '59894053389', telefono: '59894053389' });
   assert.deepEqual(chatDe({ remoteJid: '777@lid' }, new Map([['777', '59899']])), { chat: '59899', telefono: '59899' });
+  assert.deepEqual(chatDe({ remoteJid: '888@lid' }, new Map()), { chat: 'lid:888', telefono: null });
   const m = aMensaje({ key: { id: 'z', remoteJid: '59894053389@s.whatsapp.net', fromMe: true },
     message: { conversation: 'te llamo mañana' }, messageTimestamp: 1700000000 }, new Map());
   assert.equal(m.de_juan, true);
   assert.equal(m.ts, 1700000000);
 });
 
-test('el lector no tiene cómo mandar mensajes', () => {
+test('solo manda desde la cola de plantillas y nunca marca como leído', () => {
   const codigo = fs.readFileSync(path.join(__dirname, '..', 'lector.js'), 'utf8');
-  assert.equal(/sendMessage|readMessages|sendPresenceUpdate|sendReceipt/.test(codigo), false);
+  assert.equal(/readMessages|sendPresenceUpdate|sendReceipt/.test(codigo), false);
+  const envios = codigo.match(/sendMessage\(/g) || [];
+  assert.equal(envios.length, 1);
+  const cola = codigo.slice(codigo.indexOf('async function enviarCola'), codigo.indexOf('if (!vincular) setInterval(enviarCola'));
+  assert.ok(cola.includes('sendMessage('));
+});
+
+test('un chat sin número de un excluido queda afuera por su nombre de perfil, y se junta al saber el número', () => {
+  const d = db();
+  const ex = ['Maximiliano Diel', 'Javo'];
+  base.guardarContacto(d, { chat: '59891000001', telefono: '59891000001', agendado: 'Maximiliano Diel', perfil: 'Maxi Diel' });
+  base.guardarContacto(d, { chat: '59891000002', telefono: '59891000002', agendado: 'Javo', perfil: 'Javier' });
+  const lid = (id, chat, perfil) => ({ id, chat, telefono: null, de_juan: false, texto: 'hola', ts: 1000, perfil });
+  assert.equal(base.guardarMensaje(d, ex, lid('1', 'lid:111', 'Maxi Diel')), false);
+  assert.equal(base.guardarMensaje(d, ex, lid('2', 'lid:222', 'javier')), false);
+  assert.equal(base.guardarMensaje(d, ex, lid('3', 'lid:333', 'Javier Popich')), true);
+  assert.equal(base.guardarMensaje(d, ex, lid('4', 'lid:444', 'Trouville')), true);
+  base.unirLid(d, '444', '59899444444');
+  base.guardarContacto(d, { chat: '59899444444', telefono: '59899444444', agendado: 'Trouville pizzería' });
+  const filas = d.prepare('SELECT id, chat FROM mensajes ORDER BY id').all().map((f) => [f.id, f.chat]);
+  assert.deepEqual(filas, [['3', 'lid:333'], ['4', '59899444444']]);
+  base.unirLid(d, '333', '59891000002');
+  assert.equal(base.purgarExcluidos(d, ex), 1);
+  assert.deepEqual(d.prepare('SELECT id FROM mensajes').all().map((f) => f.id), ['4']);
 });

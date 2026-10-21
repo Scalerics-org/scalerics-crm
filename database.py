@@ -2222,6 +2222,9 @@ def init_db(db_path: str) -> None:
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
+        # Plantillas desde el WhatsApp de Juan (21/10, services/wa_juan.py).
+        from services.wa_juan import init_wa_juan
+        init_wa_juan(conn)
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))

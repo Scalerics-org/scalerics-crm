@@ -11,6 +11,13 @@
  * o número) no se guardan. Si un mensaje llega antes de saber cómo tiene Juan
  * agendado al contacto, se guarda, y en cuanto se sabe el nombre se borra todo
  * lo de ese contacto (`purgarExcluidos`).
+ *
+ * Ojo con el direccionamiento @lid de WhatsApp: muchos chats llegan con un
+ * identificador (`lid:...`) en vez del número, y entonces no se sabe cómo los
+ * agendó Juan. El 21/10 se colaron así mensajes de dos excluidos. Por eso un
+ * chat sin número también queda afuera si el nombre que se puso la persona es
+ * el mismo que el de un excluido (mejor perder un chat ajeno que leer uno de
+ * ellos), y apenas aparece el número (`unirLid`) se junta con su contacto.
  */
 
 const fs = require('node:fs');
@@ -86,6 +93,11 @@ function abrir(dir = carpeta()) {
       valor  INTEGER NOT NULL
     );
   `);
+  // Los chats por LID de antes del 21/10 se guardaban sin prefijo.
+  for (const c of db.prepare("SELECT chat FROM contactos WHERE telefono IS NULL AND chat NOT LIKE 'lid:%'").all()) {
+    db.prepare('UPDATE mensajes SET chat = ? WHERE chat = ?').run('lid:' + c.chat, c.chat);
+    db.prepare('UPDATE OR IGNORE contactos SET chat = ? WHERE chat = ?').run('lid:' + c.chat, c.chat);
+  }
   return db;
 }
 
@@ -95,6 +107,19 @@ function contacto(db, chat) {
 
 function nombresDe(c) {
   return c ? [c.agendado, c.perfil].filter(Boolean) : [];
+}
+
+/** El nombre que se pusieron los excluidos que Juan tiene agendados. */
+function perfilesExcluidos(db, excluidos) {
+  return new Set(db.prepare('SELECT * FROM contactos WHERE agendado IS NOT NULL AND perfil IS NOT NULL').all()
+    .filter((c) => estaExcluido(excluidos, { telefono: c.telefono, nombres: [c.agendado] }))
+    .map((c) => normalizar(c.perfil)).filter(Boolean));
+}
+
+function chatExcluido(excluidos, c, perfiles, telefono) {
+  if (estaExcluido(excluidos, { telefono: telefono || c?.telefono, nombres: nombresDe(c) })) return true;
+  const sinNumero = !(telefono || c?.telefono);
+  return Boolean(sinNumero && c?.perfil && perfiles.has(normalizar(c.perfil)));
 }
 
 function guardarContacto(db, { chat, telefono, agendado, perfil }) {
@@ -115,8 +140,7 @@ function guardarMensaje(db, excluidos, m) {
   if (!m.id || !m.chat || !m.texto) return false;
   if (m.perfil && !m.de_juan) guardarContacto(db, { chat: m.chat, telefono: m.telefono, perfil: m.perfil });
   const c = contacto(db, m.chat);
-  const nombres = nombresDe(c);
-  if (estaExcluido(excluidos, { telefono: m.telefono || c?.telefono, nombres })) return false;
+  if (chatExcluido(excluidos, c, perfilesExcluidos(db, excluidos), m.telefono)) return false;
   db.prepare('INSERT OR IGNORE INTO mensajes (id, chat, de_juan, texto, ts) VALUES (?, ?, ?, ?, ?)')
     .run(m.id, m.chat, m.de_juan ? 1 : 0, String(m.texto).slice(0, 4000), Number(m.ts) || Math.floor(Date.now() / 1000));
   return true;
@@ -125,8 +149,9 @@ function guardarMensaje(db, excluidos, m) {
 /** Borra todo lo de los contactos que ahora sabemos que están en la lista. */
 function purgarExcluidos(db, excluidos) {
   let borrados = 0;
+  const perfiles = perfilesExcluidos(db, excluidos);
   for (const c of db.prepare('SELECT * FROM contactos').all()) {
-    if (estaExcluido(excluidos, { telefono: c.telefono, nombres: nombresDe(c) })) {
+    if (chatExcluido(excluidos, c, perfiles)) {
       borrados += Number(db.prepare('DELETE FROM mensajes WHERE chat = ?').run(c.chat).changes);
     }
   }
@@ -148,13 +173,14 @@ function chatsNuevos(db, excluidos, { contexto = 15, horasMax = 72 } = {}) {
     .all(desde);
   const salida = [];
   let hasta = desde;
+  const perfiles = perfilesExcluidos(db, excluidos);
   for (const { chat, ultimo } of chats) {
     const c = contacto(db, chat);
-    if (estaExcluido(excluidos, { telefono: c?.telefono, nombres: nombresDe(c) })) continue;
+    hasta = Math.max(hasta, Number(ultimo));
+    if (chatExcluido(excluidos, c, perfiles)) continue;
     const mensajes = db.prepare('SELECT de_juan, texto, ts FROM mensajes WHERE chat = ? ORDER BY ts DESC LIMIT ?')
       .all(chat, contexto).reverse();
     salida.push({ chat, contacto: nombreVisible(c, chat), telefono: c?.telefono || null, mensajes: mensajes.map(fila) });
-    hasta = Math.max(hasta, Number(ultimo));
   }
   return { hasta, chats: salida };
 }
@@ -165,14 +191,26 @@ function chat(db, excluidos, quien, cantidad = 30) {
   const candidatos = db.prepare('SELECT * FROM contactos').all().filter((c) =>
     (digitos.length >= 6 && soloDigitos(c.telefono).endsWith(digitos.slice(-8)))
     || (q && nombresDe(c).some((n) => normalizar(n).includes(q))));
+  const perfiles = perfilesExcluidos(db, excluidos);
   return candidatos
-    .filter((c) => !estaExcluido(excluidos, { telefono: c.telefono, nombres: nombresDe(c) }))
+    .filter((c) => !chatExcluido(excluidos, c, perfiles))
     .map((c) => ({
       chat: c.chat, contacto: nombreVisible(c, c.chat), telefono: c.telefono || null,
       mensajes: db.prepare('SELECT de_juan, texto, ts FROM mensajes WHERE chat = ? ORDER BY ts DESC LIMIT ?')
         .all(c.chat, cantidad).reverse().map(fila),
     }))
     .filter((c) => c.mensajes.length);
+}
+
+/** Apareció el número de un chat que teníamos por LID: se junta con su contacto. */
+function unirLid(db, lid, telefono) {
+  const chatLid = 'lid:' + lid;
+  const previo = contacto(db, chatLid);
+  db.prepare('UPDATE mensajes SET chat = ? WHERE chat = ?').run(telefono, chatLid);
+  if (previo) {
+    guardarContacto(db, { chat: telefono, telefono, perfil: previo.perfil });
+    db.prepare('DELETE FROM contactos WHERE chat = ?').run(chatLid);
+  }
 }
 
 function fila(m) {
@@ -190,5 +228,5 @@ function marcar(db, nombre, valor) {
 
 module.exports = {
   carpeta, normalizar, leerExcluidos, estaExcluido, abrir, guardarContacto, guardarMensaje,
-  purgarExcluidos, chatsNuevos, chat, marca, marcar,
+  purgarExcluidos, chatsNuevos, chat, marca, marcar, unirLid,
 };
