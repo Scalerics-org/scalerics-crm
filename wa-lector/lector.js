@@ -205,14 +205,15 @@ async function main() {
           log('Falta vincular el teléfono: correr "Conectar WhatsApp a la Oficina.bat".');
           process.exit(2);
         }
+        // El QR cambia cada ~20 s y solo sirve el de esta ventana. No se guarda
+        // como imagen: el visor de fotos la deja bloqueada, la siguiente
+        // escritura fallaba y el lector se caía a mitad del escaneo (el
+        // teléfono decía "sin conexión").
         const QR = require('qrcode');
-        const png = path.join(dir, 'qr.png');
-        await QR.toFile(png, qr, { width: 420, margin: 2 });
         console.clear();
         console.log(await QR.toString(qr, { type: 'terminal', small: true }));
         console.log('\nEn tu teléfono: WhatsApp Business → Dispositivos vinculados → Vincular un dispositivo,');
-        console.log('y escaneá este código (también está en ' + png + ').');
-        if (process.platform === 'win32') require('node:child_process').exec(`start "" "${png}"`);
+        console.log('y escaneá este código. Se renueva solo cada unos segundos.');
       }
       if (connection === 'open') {
         intentos = 0;
