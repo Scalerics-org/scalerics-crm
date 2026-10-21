@@ -34,6 +34,7 @@ import sqlite3
 
 from database import (
     create_meeting,
+    es_cliente,
     get_all_businesses,
     get_business_by_phone,
     log_activity,
@@ -303,8 +304,9 @@ def sync_parsed(db_path: str, datas: list, dry_run: bool = False,
             client_id = client["id"]
             updates = {}
             # Una reunión que ya pasó no dice nada sobre dónde está hoy el
-            # lead: pisarle el estado lo haría retroceder desde "cliente".
-            if data["start_at"] and data["start_at"] > now:
+            # lead: pisarle el estado lo haría retroceder desde "cliente". Y una
+            # futura con alguien que ya es cliente tampoco (ver `es_cliente`).
+            if data["start_at"] and data["start_at"] > now and not es_cliente(client):
                 updates["crm_status"] = "demo_agendada"
             if data["service"] and not (client.get("interest") or "").strip():
                 updates["interest"] = data["service"]

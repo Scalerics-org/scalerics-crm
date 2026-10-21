@@ -129,6 +129,15 @@ ETAPA_DEMO_DADA = "demo_1"
 # concreto y el lead deja el pipeline de pre-clientes.
 ETAPAS_CLIENTE = ("cerrado", "en_desarrollo", "finalizado")
 
+
+def es_cliente(negocio: dict | None) -> bool:
+    """True si el negocio ya es cliente. Lo que el sistema hace solo (agendar
+    una reunion, anotar una llamada, Calendly, el bot de WhatsApp) lo pregunta
+    antes de tocar `crm_status`: con un cliente hay reuniones y llamadas todo el
+    tiempo, y ninguna lo devuelve al pipeline. El 21/10 dos clientes se fueron
+    de Clientes por una reunion agendada. Su etapa se cambia solo a mano."""
+    return ((negocio or {}).get("crm_status") or "") in ETAPAS_CLIENTE
+
 # Como se traduce cada estado viejo. Solo se migran los del pipeline: los de la
 # Cola y Seguimientos (sin_contactar, interesado, contactado, llamar_despues,
 # no_interesa) se dejan intactos, porque son de otra etapa del embudo.

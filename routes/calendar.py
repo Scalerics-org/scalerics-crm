@@ -656,9 +656,10 @@ def api_calendar_events():
             origen="crm",
             **extra,
         )
-        from database import update_business
-        update_business(db, int(client_id), crm_status="demo_agendada")
+        from database import es_cliente, update_business
         client = get_business(db, int(client_id)) or {}
+        if not es_cliente(client):
+            update_business(db, int(client_id), crm_status="demo_agendada")
         log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                      "lead", int(client_id), client.get("name", ""), title,
                      user_id=session.get("user_id"))

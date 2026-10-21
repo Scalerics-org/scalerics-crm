@@ -16,7 +16,7 @@ from database import (
                       add_call_log, get_call_logs,
                       increment_task_progress, get_lead_contributor_ids, log_activity)
 from database import (ETAPA_DEMO_AGENDADA, ETAPA_DEMO_DADA, ETAPAS_CLIENTE,
-                      ETAPAS_PRECLIENTE, normalizar_crm_status)
+                      ETAPAS_PRECLIENTE, es_cliente, normalizar_crm_status)
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
 from services.budget_ai import ai_edit_html
@@ -669,10 +669,14 @@ def api_set_callback(biz_id):
     db = _db()
     user_name = session.get("user_name", "sistema")
     biz = get_business(db, biz_id) or {}
-    update_business(db, biz_id, crm_status=outcome, callback_date=callback_date)
+    # A un cliente se le agenda el llamado, pero no cambia de etapa (ver `es_cliente`).
+    cliente = es_cliente(biz)
+    etapa = {} if cliente else {"crm_status": outcome}
+    update_business(db, biz_id, callback_date=callback_date, **etapa)
     if notes:
         update_business(db, biz_id, notes=notes)
-    add_lead_event(db, biz_id, outcome, note=f"Callback: {callback_date}", created_by=user_name)
+    if not cliente:
+        add_lead_event(db, biz_id, outcome, note=f"Callback: {callback_date}", created_by=user_name)
     add_call_log(db, biz_id, outcome, notes or f"Callback: {callback_date}", user_name)
     log_activity(db, user_name, "callback_set", "lead", biz_id, biz.get("name", ""), callback_date,
                  user_id=session.get("user_id"))
@@ -704,10 +708,11 @@ def api_add_call(biz_id):
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     if outcome == "reunion":
         from database import ETAPA_DEMO_AGENDADA, update_business, add_lead_event
-        update_business(db, biz_id, crm_status=ETAPA_DEMO_AGENDADA)
-        add_lead_event(db, biz_id, ETAPA_DEMO_AGENDADA, created_by=created_by)
-        log_activity(db, created_by, "status_change", "lead", biz_id, biz.get("name", ""),
-                     ETAPA_DEMO_AGENDADA, user_id=session.get("user_id"))
+        if not es_cliente(biz):
+            update_business(db, biz_id, crm_status=ETAPA_DEMO_AGENDADA)
+            add_lead_event(db, biz_id, ETAPA_DEMO_AGENDADA, created_by=created_by)
+            log_activity(db, created_by, "status_change", "lead", biz_id, biz.get("name", ""),
+                         ETAPA_DEMO_AGENDADA, user_id=session.get("user_id"))
         increment_task_progress(db, uids, "reuniones_agendadas",
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True}), 201
