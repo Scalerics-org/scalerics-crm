@@ -11,6 +11,7 @@ import os
 from flask import Blueprint, current_app, jsonify, request
 
 from services import oficina as of
+from services import oficina_datos as datos
 
 oficina_bot_bp = Blueprint("oficina_bot", __name__)
 
@@ -76,3 +77,16 @@ def bot_hecho(rec_id):
     except of.NoSePuede as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/esquema")
+def bot_esquema():
+    return jsonify({"ok": True, "tablas": datos.esquema(_db())})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/consulta", methods=["POST"])
+def bot_consulta():
+    try:
+        return jsonify({"ok": True, **datos.consultar(_db(), (request.get_json(silent=True) or {}).get("sql"))})
+    except datos.ConsultaInvalida as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
