@@ -236,6 +236,10 @@ ESCRITURAS = [
     ("POST", "/api/finanzas/movimientos/<int:mov_id>/hecho", "/api/finanzas/movimientos/1/hecho", None),
     ("PUT", "/api/finanzas/esenciales/<int:eid>", "/api/finanzas/esenciales/1", None),
     ("DELETE", "/api/finanzas/esenciales/<int:eid>", "/api/finanzas/esenciales/1", None),
+    # Ventas (22/10): cargar, corregir o borrar una venta a mano.
+    ("POST", "/api/finanzas/ventas", "/api/finanzas/ventas", None),
+    ("PUT", "/api/finanzas/ventas/<int:vid>", "/api/finanzas/ventas/1", None),
+    ("DELETE", "/api/finanzas/ventas/<int:vid>", "/api/finanzas/ventas/1", None),
 ]
 
 LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/finanzas/resumen",
@@ -244,6 +248,7 @@ LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/fina
             "/api/finanzas/balance?tipo=blanco", "/api/finanzas/balance?tipo=interno",
             "/api/finanzas/balance-general?tipo=blanco", "/api/finanzas/balance-general?tipo=interno",
             "/api/finanzas/tarjeta/ajustes", "/api/finanzas/cobros-tarjeta",
+            "/api/finanzas/ventas?periodo=2026-09",
             "/api/finanzas/tarjeta/desglose?modo=precio&monto=300&tarjeta=visa_credito"]
 
 
