@@ -3569,30 +3569,79 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .of-rec-acc{display:flex;gap:6px;flex-wrap:wrap}
 .of-rec-borrador{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .of-rec-btxt{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
-/* Agentes (22/10): lo que proponen las tareas programadas del equipo. */
-.ag-brujula{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
-.ag-brujula label{font-size:.8rem;font-weight:600;color:var(--texto-fuerte)}
-.ag-brujula textarea{min-height:90px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font-family:inherit;font-size:.85rem;padding:8px 10px;resize:vertical}
-.ag-brujula-pie{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.ag-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-.ag-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
-.ag-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
-.ag-lista{display:flex;flex-direction:column;gap:10px}
-.ag-prop{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
-.ag-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.74rem;color:var(--texto-tenue)}
-.ag-pill{border-radius:999px;padding:2px 9px;font-weight:600;background:var(--relleno);color:var(--texto)}
+/* Agentes (22/10): bandeja de lo que proponen las tareas nocturnas del equipo.
+   Se usa todos los días: casi sin movimiento, solo respuesta al apretar. */
+.ag-brujula{display:flex;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:10px 12px 10px 14px;margin-bottom:14px}
+.ag-brujula-ic{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--azul-tinte);color:var(--azul-claro)}
+.ag-brujula-ic svg{width:16px;height:16px}
+.ag-brujula-txt{flex:1;min-width:0}
+.ag-brujula-tit{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-brujula-res{font-size:.86rem;color:var(--texto-fuerte);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-brujula-res.vacia{color:var(--texto-tenue);font-style:italic}
+.ag-brujula-ed{display:none;flex-direction:column;gap:8px;margin:-6px 0 14px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px}
+.ag-brujula-ed.abierta{display:flex}
+.ag-brujula-ed textarea{min-height:110px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font:inherit;font-size:.86rem;line-height:1.55;padding:10px 12px;resize:vertical}
+.ag-brujula-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ag-b{appearance:none;border:1px solid var(--borde-fuerte);background:var(--relleno);color:var(--texto);border-radius:8px;padding:7px 12px;font:inherit;font-size:.8rem;font-weight:500;cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1),background-color 140ms ease}
+.ag-b:active{transform:scale(.97)}
+.ag-b:disabled{opacity:.5;cursor:default}
+.ag-b.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.ag-b.peligro{background:transparent;border-color:transparent;color:var(--rojo-texto)}
+.ag-b svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px}
+@media (hover:hover) and (pointer:fine){.ag-b:hover{background:var(--hover)}.ag-b.prim:hover{background:var(--azul-claro)}.ag-b.peligro:hover{background:var(--rojo-tinte)}}
+.ag-bandeja{display:grid;grid-template-columns:minmax(260px,340px) 1fr;height:calc(100vh - 285px);min-height:440px;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
+.ag-lista{border-right:1px solid var(--borde);overflow-y:auto;padding:6px 0}
+.ag-grupo{padding:14px 16px 6px;display:flex;justify-content:space-between;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-grupo span:last-child{font-variant-numeric:tabular-nums}
+details.ag-plegado>summary{list-style:none;cursor:pointer}
+details.ag-plegado>summary::-webkit-details-marker{display:none}
+details.ag-plegado>summary .ag-grupo span:first-child::before{content:'›';display:inline-block;margin-right:6px;transition:transform 140ms ease}
+details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:rotate(90deg)}
+.ag-fila{all:unset;box-sizing:border-box;display:grid;grid-template-columns:8px 1fr;gap:10px;width:100%;padding:10px 16px 10px 14px;cursor:pointer;border-left:2px solid transparent}
+.ag-fila:focus-visible{outline:2px solid var(--azul);outline-offset:-2px}
+.ag-fila[aria-current="true"]{background:var(--hover);border-left-color:var(--azul)}
+@media (hover:hover) and (pointer:fine){.ag-fila:hover{background:var(--hover)}}
+.ag-punto{width:7px;height:7px;border-radius:50%;margin-top:6px;background:transparent}
+.ag-fila.nueva .ag-punto{background:var(--azul)}
+.ag-fila-tit{font-size:.86rem;font-weight:600;color:var(--texto-fuerte);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.ag-fila:not(.nueva) .ag-fila-tit{font-weight:500;color:var(--texto)}
+.ag-fila-meta{font-size:.74rem;color:var(--texto-tenue);margin-top:3px}
+.ag-detalle{display:flex;flex-direction:column;min-width:0;min-height:0}
+.ag-det-cuerpo{flex:1;overflow-y:auto;padding:26px 30px 20px}
+.ag-det-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.76rem;color:var(--texto-tenue)}
+.ag-pill{border-radius:999px;padding:2px 9px;font-size:.72rem;font-weight:600;background:var(--relleno);color:var(--texto)}
 .ag-pill.propuesta{background:var(--azul-tinte);color:var(--azul-claro)}
 .ag-pill.aceptada{background:var(--ambar-tinte);color:var(--ambar)}
 .ag-pill.hecha{background:var(--verde-tinte);color:var(--verde-texto)}
 .ag-pill.descartada{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.ag-titulo{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
-.ag-resumen{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
-.ag-enlaces{display:flex;gap:10px;flex-wrap:wrap;font-size:.8rem}
-.ag-enlaces a{color:var(--azul-claro);overflow-wrap:anywhere}
-.ag-detalle{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;font-size:.84rem;color:var(--texto);white-space:pre-wrap;overflow-wrap:anywhere;max-height:480px;overflow-y:auto;font-family:ui-monospace,Consolas,monospace}
-.ag-coment{font-size:.82rem;color:var(--texto-tenue);border-left:2px solid var(--ambar);padding-left:10px;white-space:pre-line;overflow-wrap:anywhere}
-.ag-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start}
-.ag-acc textarea{flex:1 1 260px;min-height:38px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font-family:inherit;font-size:.82rem;padding:7px 9px;resize:vertical}
+.ag-det-tit{font-size:1.3rem;line-height:1.3;font-weight:700;color:var(--texto-fuerte);margin:10px 0 8px;overflow-wrap:anywhere;text-wrap:balance}
+.ag-det-res{font-size:.95rem;line-height:1.6;color:var(--texto);max-width:72ch;white-space:pre-line;overflow-wrap:anywhere}
+.ag-enlaces{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.ag-enlace{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borde-fuerte);border-radius:8px;padding:6px 10px;font-size:.8rem;font-weight:500;color:var(--azul-claro);text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-enlace svg{width:13px;height:13px;flex:none}
+@media (hover:hover) and (pointer:fine){.ag-enlace:hover{background:var(--hover)}}
+.ag-coment{margin-top:18px;border-left:2px solid var(--ambar);padding:2px 0 2px 12px;max-width:72ch}
+.ag-coment-de{font-size:.72rem;font-weight:600;color:var(--texto-tenue);margin-bottom:2px}
+.ag-coment-txt{font-size:.88rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
+.ag-entregable-tit{margin:24px 0 8px;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-entregable{background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;font-size:.88rem;line-height:1.65;color:var(--texto);white-space:pre-wrap;overflow-wrap:anywhere;max-width:80ch}
+.ag-entregable.vacio{color:var(--texto-tenue);font-style:italic}
+.ag-det-pie{flex:none;border-top:1px solid var(--borde);padding:12px 30px 14px;display:flex;flex-direction:column;gap:8px;background:var(--superficie)}
+.ag-det-pie textarea{background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font:inherit;font-size:.84rem;padding:8px 10px;min-height:40px;resize:vertical}
+.ag-det-acc{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ag-det-acc .ag-esp{flex:1}
+.ag-vacio{height:100%;display:grid;place-items:center;text-align:center;padding:30px;color:var(--texto-tenue);font-size:.88rem}
+.ag-vacio b{display:block;color:var(--texto-fuerte);font-size:.95rem;margin-bottom:4px}
+.ag-volver{display:none}
+@media (max-width:900px){
+  .ag-bandeja{grid-template-columns:1fr;height:auto;min-height:0}
+  .ag-lista{border-right:0}
+  .ag-bandeja.con-detalle .ag-lista{display:none}
+  .ag-bandeja:not(.con-detalle) .ag-detalle{display:none}
+  .ag-volver{display:inline-flex;margin-bottom:10px}
+  .ag-det-cuerpo{padding:18px 16px}
+  .ag-det-pie{padding:12px 16px}
+}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -6080,23 +6129,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= FIN OFICINA PANEL ======= -->
 
   <!-- ======= AGENTES PANEL ======= -->
-  <!-- Lo que cargan por MCP las tareas programadas de Claude del equipo
-       (services/agentes.py, docs/agentes-rutina.md). Acá solo se revisa. -->
+  <!-- Bandeja de lo que cargan por MCP las tareas programadas de Claude del
+       equipo (services/agentes.py, docs/agentes-rutina.md). Acá solo se revisa. -->
   <div id="agentes-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Agentes</h1>
-        <div class="page-date">Lo que hicieron las tareas de Claude del equipo. El comentario que dejes lo leen en la próxima corrida.</div>
+        <div class="page-date">Lo que hicieron de noche las tareas de Claude del equipo. Tu comentario lo leen en la próxima corrida.</div>
       </div>
     </div>
     <div class="ag-brujula">
-      <label for="ag-brujula-txt">Brújula: lo que los agentes leen antes de elegir qué hacer</label>
-      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Este mes: cerrar los presupuestos enviados. No hace falta: más demos de apps de puntos. Nos gustan: cosas que ahorren horas de entrega."></textarea>
-      <div class="ag-brujula-pie"><button type="button" class="of-btn prim" id="ag-brujula-guardar">Guardar brújula</button><span id="ag-brujula-estado" class="of-ayuda" role="status" aria-live="polite"></span></div>
+      <div class="ag-brujula-ic" aria-hidden="true"><i data-lucide="compass"></i></div>
+      <div class="ag-brujula-txt">
+        <div class="ag-brujula-tit">Brújula</div>
+        <div class="ag-brujula-res" id="ag-brujula-res"></div>
+      </div>
+      <button type="button" class="ag-b" id="ag-brujula-editar" aria-expanded="false" aria-controls="ag-brujula-ed">Editar</button>
     </div>
-    <div class="ag-filtros" id="ag-filtros" role="group" aria-label="Filtrar por estado"></div>
+    <div class="ag-brujula-ed" id="ag-brujula-ed">
+      <label class="ag-brujula-tit" for="ag-brujula-txt">Lo que los agentes leen antes de elegir qué hacer</label>
+      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Este mes: cerrar los presupuestos enviados.&#10;No hace falta: más demos de apps de puntos.&#10;Nos gustan: cosas que ahorren horas de entrega."></textarea>
+      <div class="ag-brujula-pie">
+        <button type="button" class="ag-b prim" id="ag-brujula-guardar">Guardar</button>
+        <button type="button" class="ag-b" id="ag-brujula-cancelar">Cancelar</button>
+        <span id="ag-brujula-estado" class="of-ayuda" role="status" aria-live="polite"></span>
+      </div>
+    </div>
     <div class="cr-nota" id="ag-nota" role="status" aria-live="polite"></div>
-    <div class="ag-lista" id="ag-lista" aria-live="polite"></div>
+    <div class="ag-bandeja" id="ag-bandeja">
+      <nav class="ag-lista" id="ag-lista" aria-label="Propuestas"></nav>
+      <section class="ag-detalle" id="ag-detalle" aria-live="polite"></section>
+    </div>
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
@@ -17110,81 +17173,77 @@ async function ofRecAccion(e) {
 // ========== FIN Oficina ==========
 
 // ========== Agentes ==========
-// Lo que proponen las tareas programadas de Claude del equipo. Los agentes
-// cargan por MCP; acá una persona acepta, descarta o marca como hecho. Todo
-// texto viene de un agente que leyó datos de terceros: se escapa siempre y
-// el detalle va como texto plano, sin renderizar markdown.
-const AG_FILTROS = [['propuesta', 'Para revisar'], ['aceptada', 'Aceptadas'], ['hecha', 'Hechas'],
-                    ['descartada', 'Descartadas'], ['', 'Todas']];
+// Bandeja de lo que proponen las tareas programadas de Claude del equipo: lista
+// a la izquierda, detalle a la derecha. Los agentes cargan por MCP; acá una
+// persona acepta, descarta o marca como hecho. Todo texto viene de un agente
+// que leyó datos de terceros: se escapa siempre y el entregable va como texto
+// plano, sin renderizar markdown.
+const AG_GRUPOS = [['propuesta', 'Para revisar', false], ['aceptada', 'Aceptadas', false],
+                   ['hecha', 'Hechas', true], ['descartada', 'Descartadas', true]];
 const AG_TIPOS = {codigo: 'Código', contenido: 'Contenido', ventas: 'Ventas',
                   investigacion: 'Investigación', operacion: 'Operación', otro: 'Otro'};
-let agFiltro = 'propuesta';
+const AG_ESTADOS = {propuesta: 'Para revisar', aceptada: 'Aceptada', hecha: 'Hecha', descartada: 'Descartada'};
 let agDatos = [];
+let agSel = null;
+let agBrujula = '';
 
-function agFecha(utc) {
+function agHace(utc) {
   if (!utc) return '';
   const d = new Date(String(utc).replace(' ', 'T') + 'Z');
-  return isNaN(d) ? '' : d.toLocaleString('es-UY', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 24) return 'hace ' + h + ' h';
+  const dias = Math.round(h / 24);
+  if (dias < 7) return 'hace ' + dias + (dias === 1 ? ' día' : ' días');
+  return d.toLocaleDateString('es-UY', {day: 'numeric', month: 'short'});
 }
 
 function agUrlSegura(url) {
   return /^https?:[/][/]/i.test(String(url || '')) ? url : null;
 }
 
-function agHtml(p) {
-  const id = Number(p.id);
-  const enlaces = (p.enlaces || []).map(e => {
-    const u = agUrlSegura(e.url);
-    return u ? '<a href="' + crEsc(u) + '" target="_blank" rel="noopener noreferrer">' + crEsc(e.etiqueta || u) + '</a>' : '';
-  }).join('');
-  const coment = p.comentario
-    ? '<div class="ag-coment">' + crEsc(p.revisado_por || '') + ': ' + crEsc(p.comentario) + '</div>' : '';
-  const botones = [];
-  if (p.estado !== 'aceptada') botones.push('<button type="button" class="of-btn prim" data-ag="aceptar" data-id="' + id + '">Aceptar</button>');
-  if (p.estado !== 'hecha') botones.push('<button type="button" class="of-btn" data-ag="hecha" data-id="' + id + '">Ya está hecha</button>');
-  if (p.estado !== 'descartada') botones.push('<button type="button" class="of-btn" data-ag="descartar" data-id="' + id + '">Descartar</button>');
-  if (p.estado !== 'propuesta') botones.push('<button type="button" class="of-btn" data-ag="reabrir" data-id="' + id + '">Volver a revisar</button>');
-  return '<div class="ag-prop" id="ag-prop-' + id + '">'
-    + '<div class="ag-cab"><span class="ag-pill ' + crEsc(p.estado) + '">' + crEsc(p.estado) + '</span>'
-    + '<span class="ag-pill">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + '</span>'
-    + '<span>de ' + crEsc(p.autor_nombre) + ' · ' + crEsc(agFecha(p.creado_en)) + '</span></div>'
-    + '<div class="ag-titulo">' + crEsc(p.titulo) + '</div>'
-    + '<div class="ag-resumen">' + crEsc(p.resumen) + '</div>'
-    + (enlaces ? '<div class="ag-enlaces">' + enlaces + '</div>' : '')
-    + coment
-    + '<div><button type="button" class="of-btn" data-ag-detalle="' + id + '" aria-expanded="false">Ver detalle</button></div>'
-    + '<div class="ag-detalle" id="ag-detalle-' + id + '" hidden></div>'
-    + '<div class="ag-acc"><textarea id="ag-com-' + id + '" maxlength="2000" aria-label="Comentario para el agente"'
-    + ' placeholder="Comentario para el agente (opcional): qué cambiar, por qué no"></textarea>' + botones.join('') + '</div>'
-    + '</div>';
+function agIconos(nodo) {
+  if (nodo && typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons({nodes: [nodo]});
 }
 
-function agPintarFiltros(conteos) {
-  const box = document.getElementById('ag-filtros');
-  if (!box) return;
-  box.innerHTML = AG_FILTROS.map(([e, txt]) => {
-    const n = e ? (conteos[e] || 0) : Object.values(conteos).reduce((a, b) => a + b, 0);
-    return '<button type="button" class="ag-filtro" data-ag-filtro="' + e + '" aria-pressed="' + (e === agFiltro) + '">'
-      + txt + ' (' + n + ')</button>';
-  }).join('');
-  const badge = document.getElementById('ag-badge');
-  if (badge) {
-    badge.textContent = conteos.propuesta || '';
-    badge.style.display = conteos.propuesta ? 'inline' : 'none';
+// ── brújula ──
+function agPintarBrujula() {
+  const res = document.getElementById('ag-brujula-res');
+  if (!res) return;
+  const primera = agBrujula.split(/[\\r\\n]+/).map(x => x.trim()).filter(Boolean).join(' · ');
+  res.textContent = primera || 'Sin escribir: los agentes eligen solos qué hacer.';
+  res.classList.toggle('vacia', !primera);
+  res.title = agBrujula;
+}
+
+function agAbrirBrujula(abrir) {
+  const ed = document.getElementById('ag-brujula-ed');
+  const b = document.getElementById('ag-brujula-editar');
+  ed.classList.toggle('abierta', abrir);
+  b.setAttribute('aria-expanded', String(abrir));
+  b.style.display = abrir ? 'none' : '';
+  if (abrir) {
+    const txt = document.getElementById('ag-brujula-txt');
+    txt.value = agBrujula;
+    document.getElementById('ag-brujula-estado').textContent = '';
+    txt.focus();
   }
 }
 
 async function agCargarBrujula() {
-  const txt = document.getElementById('ag-brujula-txt');
-  const estado = document.getElementById('ag-brujula-estado');
-  if (!txt) return;
   try {
     const d = await ofPedir('/api/agentes/brujula');
-    txt.value = d.texto || '';
-    estado.textContent = d.editado_por ? 'Última edición: ' + d.editado_por + ', ' + agFecha(d.actualizado_en) : '';
+    agBrujula = d.texto || '';
   } catch (e) {
-    estado.textContent = e.message;
+    agBrujula = '';
   }
+  agPintarBrujula();
+  agIconos(document.querySelector('.ag-brujula'));
+  document.getElementById('ag-brujula-editar').onclick = () => agAbrirBrujula(true);
+  document.getElementById('ag-brujula-cancelar').onclick = () => agAbrirBrujula(false);
   document.getElementById('ag-brujula-guardar').onclick = agGuardarBrujula;
 }
 
@@ -17194,74 +17253,151 @@ async function agGuardarBrujula() {
   b.disabled = true;
   try {
     const d = await ofPedir('/api/agentes/brujula', 'PUT', {texto: document.getElementById('ag-brujula-txt').value});
-    estado.textContent = 'Guardada. Los agentes la leen en la próxima corrida.';
-    document.getElementById('ag-brujula-txt').value = d.texto;
+    agBrujula = d.texto || '';
+    agPintarBrujula();
+    agAbrirBrujula(false);
   } catch (e) {
     estado.textContent = e.message;
   }
   b.disabled = false;
 }
 
+// ── lista ──
+function agFila(p) {
+  const id = Number(p.id);
+  return '<button type="button" class="ag-fila' + (p.estado === 'propuesta' ? ' nueva' : '') + '" data-ag-id="' + id + '"'
+    + ' aria-current="' + (id === agSel) + '"><span class="ag-punto" aria-hidden="true"></span><span>'
+    + '<span class="ag-fila-tit">' + crEsc(p.titulo) + '</span>'
+    + '<span class="ag-fila-meta" style="display:block">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + ' · '
+    + crEsc(p.autor_nombre) + ' · ' + crEsc(agHace(p.actualizado_en)) + '</span></span></button>';
+}
+
+function agPintarLista() {
+  const lista = document.getElementById('ag-lista');
+  lista.innerHTML = AG_GRUPOS.map(([estado, nombre, plegado]) => {
+    const items = agDatos.filter(p => p.estado === estado);
+    if (!items.length && estado !== 'propuesta') return '';
+    const cab = '<div class="ag-grupo"><span>' + nombre + '</span><span>' + items.length + '</span></div>';
+    const filas = items.length ? items.map(agFila).join('')
+      : '<div class="ag-fila-meta" style="padding:4px 16px 10px 32px">Nada para revisar.</div>';
+    if (!plegado) return cab + filas;
+    const abierto = items.some(p => Number(p.id) === agSel);
+    return '<details class="ag-plegado"' + (abierto ? ' open' : '') + '><summary>' + cab + '</summary>' + filas + '</details>';
+  }).join('');
+  const pendientes = agDatos.filter(p => p.estado === 'propuesta').length;
+  const badge = document.getElementById('ag-badge');
+  if (badge) {
+    badge.textContent = pendientes || '';
+    badge.style.display = pendientes ? 'inline' : 'none';
+  }
+}
+
+// ── detalle ──
+function agBotones(p) {
+  const b = [];
+  if (p.estado !== 'aceptada') b.push(['aceptar', 'Aceptar', 'prim', 'check']);
+  if (p.estado !== 'hecha') b.push(['hecha', 'Ya está hecha', '', 'check-check']);
+  if (p.estado !== 'propuesta') b.push(['reabrir', 'Volver a revisar', '', 'rotate-ccw']);
+  const descartar = p.estado !== 'descartada'
+    ? '<span class="ag-esp"></span><button type="button" class="ag-b peligro" data-ag="descartar"><i data-lucide="x"></i>Descartar</button>' : '';
+  return b.map(([acc, txt, cls, ic]) => '<button type="button" class="ag-b ' + cls + '" data-ag="' + acc + '"><i data-lucide="' + ic + '"></i>' + txt + '</button>').join('') + descartar;
+}
+
+async function agPintarDetalle() {
+  const det = document.getElementById('ag-detalle');
+  const bandeja = document.getElementById('ag-bandeja');
+  const p = agDatos.find(x => Number(x.id) === agSel);
+  bandeja.classList.toggle('con-detalle', !!p);
+  if (!p) {
+    const hay = agDatos.some(x => x.estado === 'propuesta');
+    det.innerHTML = '<div class="ag-vacio"><div><b>' + (agDatos.length ? (hay ? 'Elegí una propuesta' : 'Estás al día') : 'Todavía no hay propuestas')
+      + '</b>' + (agDatos.length ? (hay ? 'Está a la izquierda, en Para revisar.' : 'No queda nada para revisar. Los agentes cargan lo nuevo de noche.')
+      : 'Los agentes cargan lo que hacen de noche. Mientras tanto, escribí la brújula.') + '</div></div>';
+    return;
+  }
+  const enlaces = (p.enlaces || []).map(e => {
+    const u = agUrlSegura(e.url);
+    return u ? '<a class="ag-enlace" href="' + crEsc(u) + '" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>' + crEsc(e.etiqueta || u) + '</a>' : '';
+  }).join('');
+  const coment = p.comentario
+    ? '<div class="ag-coment"><div class="ag-coment-de">Comentario de ' + crEsc(p.revisado_por || 'alguien') + '</div><div class="ag-coment-txt">' + crEsc(p.comentario) + '</div></div>' : '';
+  det.innerHTML = '<div class="ag-det-cuerpo">'
+    + '<button type="button" class="ag-b ag-volver" data-ag-volver><i data-lucide="arrow-left"></i>Volver</button>'
+    + '<div class="ag-det-cab"><span class="ag-pill ' + crEsc(p.estado) + '">' + crEsc(AG_ESTADOS[p.estado] || p.estado) + '</span>'
+    + '<span class="ag-pill">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + '</span>'
+    + '<span>' + crEsc(p.autor_nombre) + ' · ' + crEsc(agHace(p.creado_en)) + '</span></div>'
+    + '<h2 class="ag-det-tit">' + crEsc(p.titulo) + '</h2>'
+    + '<div class="ag-det-res">' + crEsc(p.resumen) + '</div>'
+    + (enlaces ? '<div class="ag-enlaces">' + enlaces + '</div>' : '')
+    + coment
+    + '<div class="ag-entregable-tit">Entregable</div><div class="ag-entregable" id="ag-entregable">Cargando…</div>'
+    + '</div>'
+    + '<div class="ag-det-pie"><textarea id="ag-com" maxlength="2000" rows="1" aria-label="Comentario para el agente"'
+    + ' placeholder="Comentario para el agente (opcional): qué cambiar o por qué no"></textarea>'
+    + '<div class="ag-det-acc">' + agBotones(p) + '</div></div>';
+  agIconos(det);
+  const caja = document.getElementById('ag-entregable');
+  try {
+    const d = await ofPedir('/api/agentes/' + Number(p.id));
+    if (agSel !== Number(p.id)) return;
+    caja.textContent = d.propuesta.detalle || 'El agente no dejó detalle: está todo en el resumen y los enlaces.';
+    caja.classList.toggle('vacio', !d.propuesta.detalle);
+  } catch (e) {
+    caja.textContent = e.message;
+  }
+}
+
+function agElegir(id) {
+  agSel = id;
+  document.querySelectorAll('#ag-lista .ag-fila').forEach(f =>
+    f.setAttribute('aria-current', String(Number(f.dataset.agId) === id)));
+  agPintarDetalle();
+}
+
 async function agCargar() {
-  const box = document.getElementById('ag-lista');
   const nota = document.getElementById('ag-nota');
-  if (!box) return;
+  if (!document.getElementById('ag-lista')) return;
   if (nota) nota.textContent = '';
   let d;
   try {
-    d = await ofPedir('/api/agentes' + (agFiltro ? '?estado=' + encodeURIComponent(agFiltro) : ''));
+    d = await ofPedir('/api/agentes');
   } catch (e) {
-    box.innerHTML = '';
     if (nota) nota.textContent = e.message;
     return;
   }
   agDatos = d.propuestas;
-  agPintarFiltros(d.conteos);
-  box.innerHTML = agDatos.length ? agDatos.map(agHtml).join('')
-    : '<div class="of-vacio">' + (agFiltro === 'propuesta'
-      ? 'No hay nada para revisar. Los agentes cargan lo que hacen de noche.'
-      : 'No hay propuestas en este estado.') + '</div>';
-  document.getElementById('ag-filtros').onclick = agClickFiltro;
-  box.onclick = agAccion;
-}
-
-function agClickFiltro(e) {
-  const b = e.target.closest('[data-ag-filtro]');
-  if (!b) return;
-  agFiltro = b.dataset.agFiltro;
-  agCargar();
+  if (!agDatos.some(p => Number(p.id) === agSel)) {
+    const primera = agDatos.find(p => p.estado === 'propuesta');
+    // En el celular no se abre sola: ahí la lista es la pantalla de entrada.
+    agSel = primera && window.innerWidth > 900 ? Number(primera.id) : null;
+  }
+  agPintarLista();
+  agPintarDetalle();
+  document.getElementById('ag-lista').onclick = e => {
+    const f = e.target.closest('[data-ag-id]');
+    if (f) agElegir(Number(f.dataset.agId));
+  };
+  document.getElementById('ag-detalle').onclick = agAccion;
 }
 
 async function agAccion(e) {
-  const nota = document.getElementById('ag-nota');
-  const det = e.target.closest('[data-ag-detalle]');
-  if (det) {
-    const id = Number(det.dataset.agDetalle);
-    const caja = document.getElementById('ag-detalle-' + id);
-    if (!caja.hidden) { caja.hidden = true; det.textContent = 'Ver detalle'; det.setAttribute('aria-expanded', 'false'); return; }
-    try {
-      const d = await ofPedir('/api/agentes/' + id);
-      caja.textContent = d.propuesta.detalle || 'Sin detalle.';
-    } catch (ex) {
-      caja.textContent = ex.message;
-    }
-    caja.hidden = false;
-    det.textContent = 'Ocultar detalle';
-    det.setAttribute('aria-expanded', 'true');
-    return;
-  }
+  if (e.target.closest('[data-ag-volver]')) { agElegir(null); return; }
   const b = e.target.closest('[data-ag]');
   if (!b) return;
-  const id = Number(b.dataset.id);
-  const com = document.getElementById('ag-com-' + id);
-  b.disabled = true;
+  const id = agSel;
+  const nota = document.getElementById('ag-nota');
+  const com = document.getElementById('ag-com');
+  document.querySelectorAll('#ag-detalle [data-ag]').forEach(x => { x.disabled = true; });
   try {
     await ofPedir('/api/agentes/' + id + '/' + b.dataset.ag, 'POST', {comentario: com ? com.value : ''});
   } catch (ex) {
-    b.disabled = false;
+    document.querySelectorAll('#ag-detalle [data-ag]').forEach(x => { x.disabled = false; });
     if (nota) nota.textContent = ex.message;
     return;
   }
+  // Como una bandeja de mail: al resolver una, pasa a la siguiente sin revisar.
+  const pendientes = agDatos.filter(p => p.estado === 'propuesta' && Number(p.id) !== id);
+  agSel = pendientes.length ? Number(pendientes[0].id) : id;
   await agCargar();
 }
 // ========== FIN Agentes ==========
