@@ -3705,11 +3705,36 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .plx-hist span{margin-right:10px}
 .plx-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
 .plx-vacio{color:var(--texto-debil);font-size:.8rem;padding:6px 0}
-/* ======= Oficina: los recordatorios que arma Bruno (22/10: quedó solo él) ======= */
+/* ======= Recordatorios wpp (id interno oficina; 20/10 Oficina, solo este agente desde el 22/10) ======= */
+.of-cab{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.of-cab img{width:72px;height:72px;flex:none}
+.of-cab h2{font-size:1.1rem;color:var(--texto-fuerte);margin:0}
+.of-cab p{margin:2px 0 0;font-size:.84rem;color:var(--texto-tenue)}
+.of-ficha{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.of-ficha{grid-template-columns:1fr}}
+.of-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.of-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.of-card h3{font-size:.95rem;color:var(--texto-fuerte);margin:0}
 .of-ayuda{font-size:.78rem;color:var(--texto-tenue)}
+.of-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:460px;overflow-y:auto;padding:2px}
+.of-msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:.88rem;white-space:pre-line;line-height:1.5;overflow-wrap:anywhere}
+.of-msg.yo{align-self:flex-end;background:var(--azul);color:#fff;border-bottom-right-radius:4px}
+.of-msg.ag{align-self:flex-start;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);border-bottom-left-radius:4px}
+.of-msg.espera{align-self:flex-start;font-style:italic;color:var(--texto-tenue);font-size:.8rem;padding:2px 4px}
+.of-fuente{display:block;margin-top:6px;font-size:.72rem;color:var(--texto-tenue)}
+.of-op{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;white-space:normal}
+.of-op span{font-size:.74rem;color:var(--verde-texto)}
 .of-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 10px;font-size:.76rem;font-family:inherit;cursor:pointer}
 .of-btn:hover{background:var(--hover)}
 .of-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.of-form{display:flex;gap:8px;width:100%}
+.of-form input{flex:1;min-width:0;background:var(--fondo);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 11px;font-size:.86rem;font-family:inherit}
+.of-error{font-size:.76rem;color:var(--rojo-texto)}
+.of-error:empty{display:none}
+.of-li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.85rem;color:var(--texto)}
+.of-li:first-child{border-top:0}
+.of-li .t{flex:1;min-width:0}
+.of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
 .of-vacio{font-size:.8rem;color:var(--texto-tenue)}
 .of-recs{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .of-recs-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -4865,11 +4890,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
   <div class="nav-section-label">CALENDARIO</div>
   <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
-  <!-- Oficina (20/10; desde el 22/10 solo los recordatorios de Bruno). Va debajo del Calendario (que es lo primero, pedido de Juan del 14/9).
+  <!-- Recordatorios wpp (id interno `oficina`; 20/10 era el equipo de agentes, desde el 22/10 solo el de WhatsApp).
+       Va debajo del Calendario (que es lo primero, pedido de Juan del 14/9).
        Solo admin, como Contraseñas:
        se muestra desde el bloque de /api/me. -->
-  <div class="nav-section-label">OFICINA</div>
-  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="users-round" class="nav-icon"></i> Oficina</div>
+  <div class="nav-section-label">WHATSAPP</div>
+  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="message-circle" class="nav-icon"></i> Recordatorios wpp</div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6206,18 +6232,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
   <!-- ======= OFICINA PANEL ======= -->
-  <!-- Los recordatorios que arma Bruno leyendo el WhatsApp de Juan
-       (services/oficina.py). Solo admin, igual que Contraseñas: no se reparte
-       por rol. El 22/10 Juan sacó a los otros cuatro agentes y el chat. -->
+  <!-- Recordatorios wpp (services/oficina.py): el agente que lee el WhatsApp
+       Business de Juan. Solo admin, igual que Contraseñas: no se reparte por rol. -->
   <div id="oficina-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Oficina</h1>
-        <div class="page-date">Lo que Bruno encontró en tus chats de WhatsApp para que no se te pase</div>
+        <h1>Recordatorios wpp</h1>
+        <div class="page-date">Lo que encontró en tus chats de WhatsApp. Abajo le podés preguntar y dejarle indicaciones</div>
       </div>
     </div>
     <div class="cr-nota" id="of-nota" role="status" aria-live="polite"></div>
     <div class="of-recs" id="of-recs" aria-live="polite"></div>
+    <div id="of-ficha"></div>
   </div>
   <!-- ======= FIN OFICINA PANEL ======= -->
 
@@ -17164,8 +17190,16 @@ async function crBorrar(id) {
 // ========== FIN Credenciales ==========
 
 // ========== Oficina ==========
-// Solo admin, igual que Contraseñas. Desde el 22/10 es solo Bruno: los
-// recordatorios que arma leyendo los chats de WhatsApp de Juan.
+// Recordatorios wpp (id interno oficina): desde el 22/10 queda un solo agente,
+// el de WhatsApp (clave 'bruno'). Solo admin, igual que Contraseñas.
+// Las respuestas las escribe una sesión de Claude Code que corre en la compu
+// (scripts/oficina_responder.py), sin modelo pago: tardan unos minutos. Mientras
+// haya una pregunta esperando, la conversación se recarga sola cada 30 segundos.
+const OF_AGENTE = 'bruno';
+let ofSel = OF_AGENTE;
+let ofFicha = null;
+let ofTimer = null;
+
 async function ofPedir(url, metodo, cuerpo) {
   const opts = {method: metodo || 'GET'};
   if (cuerpo !== undefined) {
@@ -17179,13 +17213,180 @@ async function ofPedir(url, metodo, cuerpo) {
   return d;
 }
 
-function ofCargar() {
-  const nota = document.getElementById('of-nota');
-  if (nota) nota.textContent = '';
-  return ofCargarRecs();
+function ofFecha(s) {
+  const d = new Date(String(s || '').replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit'});
 }
 
-// Recordatorios: los arma Bruno leyendo los chats de WhatsApp de Juan, que
+async function ofCargar() {
+  const nota = document.getElementById('of-nota');
+  if (nota) nota.textContent = '';
+  ofCargarRecs();
+  await ofAbrir(OF_AGENTE);
+}
+
+async function ofAbrir(id) {
+  ofSel = id;
+  const nota = document.getElementById('of-nota');
+  try {
+    ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(id));
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  if (nota) nota.textContent = '';
+  ofPintarFicha();
+}
+
+function ofMensajesHtml(f) {
+  const a = f.agente;
+  if (!f.mensajes.length) {
+    return '<div class="of-msg ag">Hola Juan. ' + crEsc(a.descripcion) + ' Preguntame lo que quieras de tus chats.</div>';
+  }
+  return f.mensajes.map(m => {
+    if (m.autor === 'juan') {
+      return '<div class="of-msg yo">' + crEsc(m.texto) + '</div>'
+        + (m.estado === 'pendiente'
+          ? '<div class="of-msg espera">' + crEsc(a.nombre) + ' está pensando… te responde en hasta 15 minutos.</div>' : '');
+    }
+    let op;
+    if (m.feedback === 'ok') op = '<span>Te sirvió</span>';
+    else if (m.feedback === 'corregido') op = '<span>Corregida: lo aprendió</span>';
+    else op = '<button type="button" class="of-btn" data-op="ok" data-id="' + Number(m.id) + '">Me sirvió</button>'
+      + '<button type="button" class="of-btn" data-op="fix" data-id="' + Number(m.id) + '">Corregir</button>';
+    return '<div class="of-msg ag">' + crEsc(m.texto)
+      + (m.fuente ? '<span class="of-fuente">Fuente: ' + crEsc(m.fuente) + '</span>' : '')
+      + '<div class="of-op" id="of-op-' + Number(m.id) + '">' + op + '</div></div>';
+  }).join('');
+}
+
+function ofListaHtml(items, tipo) {
+  if (!items.length) {
+    return '<div class="of-vacio">' + (tipo === 'apr'
+      ? 'Todavía no aprendió nada. Cuando corrijas una respuesta, aparece acá.'
+      : 'Todavía no le diste indicaciones.') + '</div>';
+  }
+  return items.map(x => '<div class="of-li"><span class="t">' + crEsc(x.texto)
+    + '<small>' + (tipo === 'apr' ? crEsc(x.origen) + ' · ' : 'Desde el ') + ofFecha(x.creado_en) + '</small></span>'
+    + '<button type="button" class="of-btn" data-borrar="' + tipo + '" data-id="' + Number(x.id) + '">'
+    + (tipo === 'apr' ? 'Olvidar' : 'Borrar') + '</button></div>').join('');
+}
+
+function ofPintarFicha() {
+  const f = ofFicha;
+  const a = f.agente;
+  const box = document.getElementById('of-ficha');
+  if (!box) return;
+  box.innerHTML = '<div class="of-cab"><img src="/static/oficina/' + encodeURIComponent(a.id) + '.svg" alt="">'
+    + '<div><h2>' + crEsc(a.rol) + '</h2><p>' + crEsc(a.descripcion) + '</p>'
+    + '<p>Mira: ' + crEsc(a.mira) + '</p></div></div>'
+    + '<div class="of-ficha">'
+    + '<div class="of-card"><h3>Conversación</h3>'
+    + '<div class="of-msgs" id="of-msgs" aria-live="polite">' + ofMensajesHtml(f) + '</div>'
+    + '<form class="of-form" id="of-f-msg"><input id="of-in-msg" maxlength="2000" autocomplete="off" placeholder="Preguntale algo a ' + crEsc(a.nombre) + '">'
+    + '<button type="submit" class="of-btn prim">Enviar</button></form>'
+    + '<div class="of-error" id="of-err-msg" role="alert"></div>'
+    + '<div class="of-ayuda">Te responde en hasta 15 minutos: lo escribe Claude desde la compu, sin costo.</div></div>'
+    + '<div class="of-col">'
+    + '<div class="of-card"><h3>Indicaciones</h3>'
+    + '<div class="of-ayuda">Lo que le pedís a ' + crEsc(a.nombre) + ' queda fijo hasta que lo borres.</div>'
+    + '<div id="of-ind">' + ofListaHtml(f.indicaciones, 'ind') + '</div>'
+    + '<form class="of-form" id="of-f-ind"><input id="of-in-ind" maxlength="300" autocomplete="off" placeholder="De ahora en más…">'
+    + '<button type="submit" class="of-btn">Agregar</button></form>'
+    + '<div class="of-error" id="of-err-ind" role="alert"></div></div>'
+    + '<div class="of-card"><h3>Lo que fue aprendiendo</h3>'
+    + '<div class="of-ayuda">Sale de tus correcciones. Si algo está mal, lo hacés olvidar.</div>'
+    + '<div id="of-apr">' + ofListaHtml(f.aprendizajes, 'apr') + '</div></div>'
+    + '</div></div>';
+  ofEnviarCon('of-f-msg', 'of-in-msg', 'of-err-msg', 'Escribí algo antes de enviar.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/mensajes', 'POST', {texto: texto}));
+  ofEnviarCon('of-f-ind', 'of-in-ind', 'of-err-ind', 'Escribí la indicación antes de agregarla.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/indicaciones', 'POST', {texto: texto}));
+  box.querySelector('.of-col').onclick = ofBorrar;
+  const msgs = document.getElementById('of-msgs');
+  msgs.onclick = ofOpinar;
+  msgs.scrollTop = msgs.scrollHeight;
+  ofProgramarRecarga();
+}
+
+function ofEnviarCon(formId, inputId, errId, falta, enviar) {
+  const form = document.getElementById(formId);
+  const input = document.getElementById(inputId);
+  const err = document.getElementById(errId);
+  input.oninput = () => { err.textContent = ''; };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = falta; input.focus(); return; }
+    try {
+      await enviar(texto);
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+async function ofBorrar(e) {
+  const b = e.target.closest('[data-borrar]');
+  if (!b) return;
+  const url = b.dataset.borrar === 'apr' ? '/api/oficina/aprendizajes/' : '/api/oficina/indicaciones/';
+  try {
+    await ofPedir(url + Number(b.dataset.id), 'DELETE');
+  } catch (ex) {
+    const nota = document.getElementById('of-nota');
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  await ofCargar();
+}
+
+async function ofOpinar(e) {
+  const b = e.target.closest('[data-op]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const caja = document.getElementById('of-op-' + id);
+  if (b.dataset.op === 'ok') {
+    try { await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'ok'}); } catch (ex) { return; }
+    caja.innerHTML = '<span>Anotado: lo va a seguir haciendo así.</span>';
+    return;
+  }
+  caja.innerHTML = '<form class="of-form"><input maxlength="300" autocomplete="off" placeholder="¿Qué tendría que haber hecho?">'
+    + '<button type="submit" class="of-btn prim">Guardar</button></form><div class="of-error" role="alert"></div>';
+  const input = caja.querySelector('input');
+  const err = caja.querySelector('.of-error');
+  input.focus();
+  caja.querySelector('form').onsubmit = async ev => {
+    ev.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = 'Escribí la corrección.'; return; }
+    try {
+      await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'corregir', correccion: texto});
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+function ofProgramarRecarga() {
+  clearTimeout(ofTimer);
+  const esperando = ofFicha && ofFicha.mensajes.some(m => m.autor === 'juan' && m.estado === 'pendiente');
+  if (!esperando) return;
+  ofTimer = setTimeout(async () => {
+    if (activePanel !== 'oficina' || !ofSel) return;
+    try {
+      ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(ofSel));
+    } catch (e) { ofProgramarRecarga(); return; }
+    const msgs = document.getElementById('of-msgs');
+    if (msgs) { msgs.innerHTML = ofMensajesHtml(ofFicha); msgs.scrollTop = msgs.scrollHeight; }
+    ofProgramarRecarga();
+  }, 30000);
+}
+// Recordatorios: los arma el agente leyendo los chats de WhatsApp de Juan, que
 // viven en su notebook (wa-lector/). Acá llega solo el recordatorio.
 let ofRecs = [];
 let ofHoy = '';
@@ -17213,7 +17414,7 @@ function ofRecHtml(r) {
     borrador = '<div class="of-rec-borrador"><div class="of-rec-btxt">' + crEsc(r.borrador) + '</div>'
       + '<button type="button" class="of-btn" data-copiar="' + id + '">Copiar mensaje</button></div>';
   } else if (r.borrador_pedido) {
-    borrador = '<div class="of-ayuda">Bruno te está armando el mensaje… aparece acá en la próxima hora.</div>';
+    borrador = '<div class="of-ayuda">Te estoy armando el mensaje… aparece acá en hasta 15 minutos.</div>';
   }
   return '<div class="of-rec"><div class="of-rec-cuando ' + c.cls + '">' + crEsc(c.txt) + '</div>'
     + '<div class="of-rec-cuerpo"><div class="of-rec-que">' + crEsc(r.que) + '</div>' + origen + borrador
@@ -17238,9 +17439,9 @@ async function ofCargarRecs() {
   ofRecs = d.recordatorios;
   ofHoy = d.hoy;
   box.innerHTML = '<div class="of-recs-cab"><h2>Recordatorios</h2>'
-    + '<span class="of-ayuda"><img src="/static/oficina/bruno.svg" alt="">Los arma Bruno leyendo tus chats de WhatsApp</span></div>'
+    + '<span class="of-ayuda"><img src="/static/oficina/bruno.svg" alt="">Salen de tus chats de WhatsApp</span></div>'
     + (ofRecs.length ? ofRecs.map(ofRecHtml).join('')
-      : '<div class="of-vacio">No tenés recordatorios pendientes. Bruno revisa tus chats cada hora.</div>');
+      : '<div class="of-vacio">No tenés recordatorios pendientes. Reviso tus chats cada hora.</div>');
   box.onclick = ofRecAccion;
 }
 

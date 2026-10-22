@@ -1,4 +1,7 @@
-"""Oficina: los recordatorios que arma Bruno (services/oficina.py)."""
+"""Recordatorios wpp (id interno oficina, services/oficina.py).
+
+El 20/10 eran cinco agentes; el 22/10 Juan dejó solo el de WhatsApp (clave
+`bruno`) con su chat, indicaciones y recordatorios, y le cambió el nombre."""
 
 import json
 import re
@@ -52,59 +55,134 @@ def _cli(app, email, paneles=None):
     return c
 
 
-# ── solo queda Bruno (22/10) ─────────────────────────────────────────────────
-# Juan sacó a Sofía, Tomás, Lucía y Mateo, y el chat con indicaciones y
-# aprendizajes. La tarea que contestaba abría una sesión de Claude cada 3
-# minutos y trababa la notebook. Queda Bruno con los recordatorios.
+# ── servicio ─────────────────────────────────────────────────────────────────
 
-def test_quedo_solo_la_cara_de_bruno():
+def test_queda_un_solo_agente_y_se_llama_recordatorios_wpp():
     import os
+    assert list(of.AGENTES) == ["bruno"]
+    assert of.AGENTES["bruno"]["nombre"] == "Recordatorios wpp"
     assert os.listdir(os.path.join("static", "oficina")) == ["bruno.svg"]
 
 
-def test_no_quedan_rutas_del_chat_con_los_agentes(app):
-    jefe = _cli(app, "jefe@scalerics.com")
-    for metodo, url in [("get", "/api/oficina/agentes"), ("get", "/api/oficina/agentes/bruno"),
-                        ("post", "/api/oficina/agentes/bruno/mensajes"),
-                        ("post", "/api/oficina/agentes/bruno/indicaciones"),
-                        ("delete", "/api/oficina/indicaciones/1"), ("delete", "/api/oficina/aprendizajes/1"),
-                        ("post", "/api/oficina/mensajes/1/opinion")]:
-        assert getattr(jefe, metodo)(url, json={}).status_code in (404, 405), url
-    bot = app.test_client()
-    h = {"x-oficina-token": TOKEN}
-    for metodo, url in [("get", "/api/oficina-bot/pendientes"), ("post", "/api/oficina-bot/mensajes/1/responder"),
-                        ("get", "/api/oficina-bot/esquema"), ("post", "/api/oficina-bot/consulta")]:
-        assert getattr(bot, metodo)(url, headers=h, json={}).status_code in (404, 405), url
+def test_pregunta_queda_pendiente_hasta_que_el_bot_responde(db):
+    pid = of.preguntar(db, "bruno", "  ¿Qué clientes me deben plata?  ")
+    pend = of.pendientes(db)
+    assert [p["id"] for p in pend] == [pid]
+    assert pend[0]["pregunta"] == "¿Qué clientes me deben plata?"
+    assert pend[0]["agente"]["nombre"] == "Recordatorios wpp"
+    assert of.listar_agentes(db)[0]["pendientes"] == 1
+
+    rid = of.responder(db, pid, "Dos abonos vencidos.", "Finanzas")
+    assert of.pendientes(db) == []
+    mensajes = of.ficha(db, "bruno")["mensajes"]
+    assert [(m["autor"], m["estado"]) for m in mensajes] == [("juan", "respondido"), ("agente", None)]
+    assert mensajes[1]["id"] == rid and mensajes[1]["fuente"] == "Finanzas"
+    with pytest.raises(of.NoSePuede):
+        of.responder(db, pid, "otra vez")
 
 
-def test_el_script_de_bruno_ya_no_tiene_los_comandos_del_chat():
-    with open("scripts/oficina_responder.py", encoding="utf-8") as f:
-        script = f.read()
-    for cmd in ("recordatorios", "crear-recordatorio", "borrador", "hecho"):
-        assert '"%s"' % cmd in script
-    for cmd in ("pendientes", "responder", "esquema", "consulta"):
-        assert 'cmd == "%s"' % cmd not in script
+def test_el_bot_recibe_indicaciones_aprendizajes_y_lo_anterior(db):
+    of.agregar_indicacion(db, "bruno", "Los lunes decime qué leads se enfriaron")
+    borrada = of.agregar_indicacion(db, "bruno", "Esto ya no")
+    of.borrar_indicacion(db, borrada)
+    p1 = of.preguntar(db, "bruno", "¿Cómo viene Lucas?")
+    r1 = of.responder(db, p1, "Bien.")
+    of.opinar(db, r1, "corregir", "Dame números, no adjetivos")
+    of.preguntar(db, "bruno", "¿Y los leads?")
+
+    [p] = of.pendientes(db)
+    assert p["indicaciones"] == ["Los lunes decime qué leads se enfriaron"]
+    assert p["aprendizajes"] == ["Dame números, no adjetivos"]
+    assert [m["texto"] for m in p["conversacion_previa"]] == ["¿Cómo viene Lucas?", "Bien."]
+
+
+def test_corregir_crea_un_aprendizaje_y_olvidar_lo_saca(db):
+    rid = of.responder(db, of.preguntar(db, "bruno", "¿Qué mails hay?"), "Tres.")
+    of.opinar(db, rid, "corregir", "Decime de quién son")
+    f = of.ficha(db, "bruno")
+    assert f["mensajes"][-1]["feedback"] == "corregido"
+    [apr] = f["aprendizajes"]
+    assert apr["texto"] == "Decime de quién son" and "corregiste" in apr["origen"]
+    of.olvidar(db, apr["id"])
+    assert of.ficha(db, "bruno")["aprendizajes"] == []
+    with pytest.raises(of.NoSePuede):
+        of.olvidar(db, apr["id"])
+
+
+def test_me_sirvio_no_crea_aprendizaje(db):
+    rid = of.responder(db, of.preguntar(db, "bruno", "¿Qué decido hoy?"), "Nada.")
+    of.opinar(db, rid, "ok")
+    f = of.ficha(db, "bruno")
+    assert f["mensajes"][-1]["feedback"] == "ok" and f["aprendizajes"] == []
+
+
+@pytest.mark.parametrize("llamada", [
+    lambda db: of.preguntar(db, "nadie", "hola"),
+    lambda db: of.preguntar(db, "bruno", "   "),
+    lambda db: of.preguntar(db, "bruno", "x" * (of.LARGO_MENSAJE + 1)),
+    lambda db: of.agregar_indicacion(db, "bruno", ""),
+    lambda db: of.borrar_indicacion(db, 999),
+    lambda db: of.opinar(db, 999, "ok"),
+    lambda db: of.opinar(db, of.preguntar(db, "bruno", "hola"), "ok"),
+    lambda db: of.opinar(db, 1, "cualquiera"),
+])
+def test_rechaza_lo_que_no_corresponde(db, llamada):
+    with pytest.raises(of.NoSePuede):
+        llamada(db)
 
 
 def test_init_es_idempotente(db):
     init_db(db)
-    assert of.recordatorios(db)["recordatorios"] == []
+    assert of.listar_agentes(db)[0]["id"] == "bruno"
 
 
 # ── rutas ────────────────────────────────────────────────────────────────────
 
+def test_el_panel_es_solo_para_admin(app):
+    otro = _cli(app, "otro@scalerics.com", paneles=["oficina", "finanzas"])
+    assert otro.get("/api/oficina/agentes").status_code == 403
+    assert otro.post("/api/oficina/agentes/bruno/mensajes", json={"texto": "hola"}).status_code == 403
+    jefe = _cli(app, "jefe@scalerics.com")
+    r = jefe.get("/api/oficina/agentes")
+    assert r.status_code == 200 and len(r.get_json()["agentes"]) == 1
+    assert jefe.get("/api/oficina/agentes/sofia").status_code == 404
+
+
+def test_flujo_completo_por_la_api(app):
+    jefe = _cli(app, "jefe@scalerics.com")
+    assert jefe.post("/api/oficina/agentes/bruno/mensajes", json={"texto": "¿Llegamos?"}).get_json()["ok"]
+    assert jefe.post("/api/oficina/agentes/bruno/indicaciones", json={"texto": "Avisame 3 días antes"}).get_json()["ok"]
+    assert jefe.post("/api/oficina/agentes/bruno/mensajes", json={"texto": ""}).status_code == 400
+    assert jefe.get("/api/oficina/agentes/nadie").status_code == 404
+
+    bot = app.test_client()
+    pend = bot.get("/api/oficina-bot/pendientes", headers={"x-oficina-token": TOKEN}).get_json()["pendientes"]
+    assert pend[0]["indicaciones"] == ["Avisame 3 días antes"]
+    r = bot.post(f"/api/oficina-bot/mensajes/{pend[0]['id']}/responder",
+                 headers={"x-oficina-token": TOKEN}, json={"texto": "Sí, justo.", "fuente": "Finanzas"})
+    rid = r.get_json()["id"]
+
+    assert jefe.post(f"/api/oficina/mensajes/{rid}/opinion",
+                     json={"tipo": "corregir", "correccion": "Decime el saldo"}).get_json()["ok"]
+    f = jefe.get("/api/oficina/agentes/bruno").get_json()
+    assert f["aprendizajes"][0]["texto"] == "Decime el saldo"
+    assert jefe.delete(f"/api/oficina/aprendizajes/{f['aprendizajes'][0]['id']}").get_json()["ok"]
+    assert jefe.delete(f"/api/oficina/indicaciones/{f['indicaciones'][0]['id']}").get_json()["ok"]
+    f = jefe.get("/api/oficina/agentes/bruno").get_json()
+    assert f["aprendizajes"] == [] and f["indicaciones"] == []
+
+
 def test_el_bot_necesita_su_token(app, monkeypatch):
     bot = app.test_client()
-    url = "/api/oficina-bot/recordatorios"
-    assert bot.get(url).status_code == 403
-    assert bot.get(url, headers={"x-oficina-token": "malo"}).status_code == 403
+    assert bot.get("/api/oficina-bot/pendientes").status_code == 403
+    assert bot.get("/api/oficina-bot/pendientes", headers={"x-oficina-token": "malo"}).status_code == 403
     monkeypatch.setenv("OFICINA_BOT_TOKEN", "corto")
-    assert bot.get(url, headers={"x-oficina-token": "corto"}).status_code == 403
+    assert bot.get("/api/oficina-bot/pendientes", headers={"x-oficina-token": "corto"}).status_code == 403
 
 
 def test_el_token_del_bot_no_abre_el_resto(app):
     bot = app.test_client()
-    r = bot.get("/api/oficina/recordatorios", headers={"x-oficina-token": TOKEN})
+    r = bot.get("/api/oficina/agentes", headers={"x-oficina-token": TOKEN})
     assert r.status_code in (302, 401, 403)
 
 
@@ -190,14 +268,23 @@ def test_la_pantalla_tiene_los_recordatorios():
     assert 'id="of-recs"' in HTML and "function ofCargarRecs()" in HTML
 
 
-def test_la_pantalla_no_tiene_mas_el_equipo_ni_el_chat():
-    for resto in ('id="of-equipo"', 'id="of-ficha"', "/api/oficina/agentes", "ofAgentes",
-                  "of-msg", ".of-equipo{", "/static/oficina/sofia.svg"):
+def test_no_vuelve_la_consulta_libre_del_crm(app):
+    """El agente lee WhatsApp, no el CRM: las rutas de consulta se fueron el 22/10."""
+    bot = app.test_client()
+    h = {"x-oficina-token": TOKEN}
+    assert bot.get("/api/oficina-bot/esquema", headers=h).status_code == 404
+    assert bot.post("/api/oficina-bot/consulta", headers=h, json={"sql": "SELECT 1"}).status_code == 404
+
+
+def test_la_pantalla_se_llama_recordatorios_wpp_y_no_tiene_el_equipo():
+    assert "<h1>Recordatorios wpp</h1>" in HTML
+    assert re.search(r'id="nav-oficina"[^>]*>.*Recordatorios wpp</div>', HTML)
+    for resto in ('id="of-equipo"', ".of-equipo{", "ofPintarEquipo", "Bruno"):
         assert resto not in HTML, resto
+    assert 'id="of-f-msg"' in HTML and 'id="of-f-ind"' in HTML
 
 
 def test_si_fallan_los_recordatorios_se_avisa():
-    """Ahora es lo único del panel: un error no puede quedar como pantalla vacía."""
     cuerpo = HTML[HTML.index("async function ofCargarRecs()"):HTML.index("async function ofRecAccion(")]
     catch = cuerpo[cuerpo.index("} catch (e) {"):]
     assert "nota.textContent = e.message" in catch[:300]
