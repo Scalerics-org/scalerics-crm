@@ -1,4 +1,4 @@
-"""Lo que usa la tarea de Claude Code de Bruno y el lector de WhatsApp de Juan.
+"""Lo que usan las tareas de Claude Code de Recordatorios wpp y el lector de WhatsApp de Juan.
 
 Va sin sesión y se valida con OFICINA_BOT_TOKEN (header x-oficina-token), que
 solo abre estas rutas. Mismo criterio que /api/linkedin-bot/: no lo mezcles con
@@ -31,6 +31,21 @@ def _candado_bot():
     if not _bot_ok():
         return jsonify({"ok": False, "error": "No autorizado"}), 403
     return None
+
+
+@oficina_bot_bp.route("/api/oficina-bot/pendientes")
+def bot_pendientes():
+    return jsonify({"ok": True, "pendientes": of.pendientes(_db())})
+
+
+@oficina_bot_bp.route("/api/oficina-bot/mensajes/<int:msj_id>/responder", methods=["POST"])
+def bot_responder(msj_id):
+    datos = request.get_json(silent=True) or {}
+    try:
+        nuevo = of.responder(_db(), msj_id, datos.get("texto"), datos.get("fuente"))
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": nuevo})
 
 
 @oficina_bot_bp.route("/api/oficina-bot/recordatorios")
