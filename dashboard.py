@@ -32,6 +32,7 @@ from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
+from routes.agentes import agentes_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1697,6 +1698,7 @@ const GB_PALABRAS = {
   horarios: 'horas', cola: 'outbound fidelidad restaurantes peluquerias comercios llamar captacion pipeline agenda visitas',
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
+  agentes: 'agentes claude propuestas ideas ia',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -3076,6 +3078,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-horarios .nav-icon{stroke:#fbbf24}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
+#nav-agentes .nav-icon{stroke:#22d3ee}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3111,6 +3114,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
+#nav-agentes.active .nav-icon{stroke:#a5f3fc}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3142,6 +3146,7 @@ body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
+body.light #nav-agentes .nav-icon{stroke:#0e7490}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3564,6 +3569,26 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .of-rec-acc{display:flex;gap:6px;flex-wrap:wrap}
 .of-rec-borrador{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .of-rec-btxt{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
+/* Agentes (22/10): lo que proponen las tareas programadas del equipo. */
+.ag-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.ag-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.ag-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.ag-lista{display:flex;flex-direction:column;gap:10px}
+.ag-prop{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.ag-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.74rem;color:var(--texto-tenue)}
+.ag-pill{border-radius:999px;padding:2px 9px;font-weight:600;background:var(--relleno);color:var(--texto)}
+.ag-pill.propuesta{background:var(--azul-tinte);color:var(--azul-claro)}
+.ag-pill.aceptada{background:var(--ambar-tinte);color:var(--ambar)}
+.ag-pill.hecha{background:var(--verde-tinte);color:var(--verde-texto)}
+.ag-pill.descartada{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ag-titulo{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.ag-resumen{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
+.ag-enlaces{display:flex;gap:10px;flex-wrap:wrap;font-size:.8rem}
+.ag-enlaces a{color:var(--azul-claro);overflow-wrap:anywhere}
+.ag-detalle{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;font-size:.84rem;color:var(--texto);white-space:pre-wrap;overflow-wrap:anywhere;max-height:480px;overflow-y:auto;font-family:ui-monospace,Consolas,monospace}
+.ag-coment{font-size:.82rem;color:var(--texto-tenue);border-left:2px solid var(--ambar);padding-left:10px;white-space:pre-line;overflow-wrap:anywhere}
+.ag-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start}
+.ag-acc textarea{flex:1 1 260px;min-height:38px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font-family:inherit;font-size:.82rem;padding:7px 9px;resize:vertical}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -4708,6 +4733,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
        se muestra desde el bloque de /api/me. -->
   <div class="nav-section-label">OFICINA</div>
   <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="users-round" class="nav-icon"></i> Oficina</div>
+  <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
+  <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6048,6 +6075,22 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN OFICINA PANEL ======= -->
 
+  <!-- ======= AGENTES PANEL ======= -->
+  <!-- Lo que cargan por MCP las tareas programadas de Claude del equipo
+       (services/agentes.py, docs/agentes-rutina.md). Acá solo se revisa. -->
+  <div id="agentes-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Agentes</h1>
+        <div class="page-date">Lo que hicieron las tareas de Claude del equipo. El comentario que dejes lo leen en la próxima corrida.</div>
+      </div>
+    </div>
+    <div class="ag-filtros" id="ag-filtros" role="group" aria-label="Filtrar por estado"></div>
+    <div class="cr-nota" id="ag-nota" role="status" aria-live="polite"></div>
+    <div class="ag-lista" id="ag-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN AGENTES PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7238,6 +7281,7 @@ function showPanel(name) {
   if (name === 'sombra') soCargar();
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
+  if (name === 'agentes') agCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12399,7 +12443,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -17055,6 +17099,135 @@ async function ofRecAccion(e) {
   await ofCargarRecs();
 }
 // ========== FIN Oficina ==========
+
+// ========== Agentes ==========
+// Lo que proponen las tareas programadas de Claude del equipo. Los agentes
+// cargan por MCP; acá una persona acepta, descarta o marca como hecho. Todo
+// texto viene de un agente que leyó datos de terceros: se escapa siempre y
+// el detalle va como texto plano, sin renderizar markdown.
+const AG_FILTROS = [['propuesta', 'Para revisar'], ['aceptada', 'Aceptadas'], ['hecha', 'Hechas'],
+                    ['descartada', 'Descartadas'], ['', 'Todas']];
+const AG_TIPOS = {codigo: 'Código', contenido: 'Contenido', ventas: 'Ventas',
+                  investigacion: 'Investigación', operacion: 'Operación', otro: 'Otro'};
+let agFiltro = 'propuesta';
+let agDatos = [];
+
+function agFecha(utc) {
+  if (!utc) return '';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  return isNaN(d) ? '' : d.toLocaleString('es-UY', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+}
+
+function agUrlSegura(url) {
+  return /^https?:[/][/]/i.test(String(url || '')) ? url : null;
+}
+
+function agHtml(p) {
+  const id = Number(p.id);
+  const enlaces = (p.enlaces || []).map(e => {
+    const u = agUrlSegura(e.url);
+    return u ? '<a href="' + crEsc(u) + '" target="_blank" rel="noopener noreferrer">' + crEsc(e.etiqueta || u) + '</a>' : '';
+  }).join('');
+  const coment = p.comentario
+    ? '<div class="ag-coment">' + crEsc(p.revisado_por || '') + ': ' + crEsc(p.comentario) + '</div>' : '';
+  const botones = [];
+  if (p.estado !== 'aceptada') botones.push('<button type="button" class="of-btn prim" data-ag="aceptar" data-id="' + id + '">Aceptar</button>');
+  if (p.estado !== 'hecha') botones.push('<button type="button" class="of-btn" data-ag="hecha" data-id="' + id + '">Ya está hecha</button>');
+  if (p.estado !== 'descartada') botones.push('<button type="button" class="of-btn" data-ag="descartar" data-id="' + id + '">Descartar</button>');
+  if (p.estado !== 'propuesta') botones.push('<button type="button" class="of-btn" data-ag="reabrir" data-id="' + id + '">Volver a revisar</button>');
+  return '<div class="ag-prop" id="ag-prop-' + id + '">'
+    + '<div class="ag-cab"><span class="ag-pill ' + crEsc(p.estado) + '">' + crEsc(p.estado) + '</span>'
+    + '<span class="ag-pill">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + '</span>'
+    + '<span>de ' + crEsc(p.autor_nombre) + ' · ' + crEsc(agFecha(p.creado_en)) + '</span></div>'
+    + '<div class="ag-titulo">' + crEsc(p.titulo) + '</div>'
+    + '<div class="ag-resumen">' + crEsc(p.resumen) + '</div>'
+    + (enlaces ? '<div class="ag-enlaces">' + enlaces + '</div>' : '')
+    + coment
+    + '<div><button type="button" class="of-btn" data-ag-detalle="' + id + '" aria-expanded="false">Ver detalle</button></div>'
+    + '<div class="ag-detalle" id="ag-detalle-' + id + '" hidden></div>'
+    + '<div class="ag-acc"><textarea id="ag-com-' + id + '" maxlength="2000" aria-label="Comentario para el agente"'
+    + ' placeholder="Comentario para el agente (opcional): qué cambiar, por qué no"></textarea>' + botones.join('') + '</div>'
+    + '</div>';
+}
+
+function agPintarFiltros(conteos) {
+  const box = document.getElementById('ag-filtros');
+  if (!box) return;
+  box.innerHTML = AG_FILTROS.map(([e, txt]) => {
+    const n = e ? (conteos[e] || 0) : Object.values(conteos).reduce((a, b) => a + b, 0);
+    return '<button type="button" class="ag-filtro" data-ag-filtro="' + e + '" aria-pressed="' + (e === agFiltro) + '">'
+      + txt + ' (' + n + ')</button>';
+  }).join('');
+  const badge = document.getElementById('ag-badge');
+  if (badge) {
+    badge.textContent = conteos.propuesta || '';
+    badge.style.display = conteos.propuesta ? 'inline' : 'none';
+  }
+}
+
+async function agCargar() {
+  const box = document.getElementById('ag-lista');
+  const nota = document.getElementById('ag-nota');
+  if (!box) return;
+  if (nota) nota.textContent = '';
+  let d;
+  try {
+    d = await ofPedir('/api/agentes' + (agFiltro ? '?estado=' + encodeURIComponent(agFiltro) : ''));
+  } catch (e) {
+    box.innerHTML = '';
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  agDatos = d.propuestas;
+  agPintarFiltros(d.conteos);
+  box.innerHTML = agDatos.length ? agDatos.map(agHtml).join('')
+    : '<div class="of-vacio">' + (agFiltro === 'propuesta'
+      ? 'No hay nada para revisar. Los agentes cargan lo que hacen de noche.'
+      : 'No hay propuestas en este estado.') + '</div>';
+  document.getElementById('ag-filtros').onclick = agClickFiltro;
+  box.onclick = agAccion;
+}
+
+function agClickFiltro(e) {
+  const b = e.target.closest('[data-ag-filtro]');
+  if (!b) return;
+  agFiltro = b.dataset.agFiltro;
+  agCargar();
+}
+
+async function agAccion(e) {
+  const nota = document.getElementById('ag-nota');
+  const det = e.target.closest('[data-ag-detalle]');
+  if (det) {
+    const id = Number(det.dataset.agDetalle);
+    const caja = document.getElementById('ag-detalle-' + id);
+    if (!caja.hidden) { caja.hidden = true; det.textContent = 'Ver detalle'; det.setAttribute('aria-expanded', 'false'); return; }
+    try {
+      const d = await ofPedir('/api/agentes/' + id);
+      caja.textContent = d.propuesta.detalle || 'Sin detalle.';
+    } catch (ex) {
+      caja.textContent = ex.message;
+    }
+    caja.hidden = false;
+    det.textContent = 'Ocultar detalle';
+    det.setAttribute('aria-expanded', 'true');
+    return;
+  }
+  const b = e.target.closest('[data-ag]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const com = document.getElementById('ag-com-' + id);
+  b.disabled = true;
+  try {
+    await ofPedir('/api/agentes/' + id + '/' + b.dataset.ag, 'POST', {comentario: com ? com.value : ''});
+  } catch (ex) {
+    b.disabled = false;
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  await agCargar();
+}
+// ========== FIN Agentes ==========
 
 
 // ========== Instagram ==========
@@ -22276,7 +22449,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23330,8 +23503,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

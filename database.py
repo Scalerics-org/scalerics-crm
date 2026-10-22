@@ -2228,6 +2228,10 @@ def init_db(db_path: str) -> None:
         from services.mcp_tools import init_mcp
         init_oauth(conn)
         init_mcp(conn)
+        # Agentes (22/10): lo que proponen las tareas programadas del equipo
+        # por el conector MCP (services/agentes.py).
+        from services.agentes import init_agentes
+        init_agentes(conn)
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
