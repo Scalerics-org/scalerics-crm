@@ -1072,6 +1072,38 @@ def api_esencial_borrar(eid):
 
 
 
+# ── Ventas del mes (Juan, 22/10) ─────────────────────────────────────────────
+# Lo vendido en el mes, no lo cobrado (eso es Movimientos). El candado del
+# blueprint cubre todo, igual que con los esenciales.
+
+@finanzas_bp.route("/api/finanzas/ventas")
+def api_ventas():
+    from services.finanzas import ventas_del_mes
+    periodo = request.args.get("periodo") or date.today().strftime("%Y-%m")
+    if not _periodo_valido(periodo):
+        return jsonify({"ok": False, "error": "periodo tiene que ser 'YYYY-MM'"}), 400
+    return jsonify(ventas_del_mes(_db(), periodo))
+
+
+@finanzas_bp.route("/api/finanzas/ventas", methods=["POST"])
+@finanzas_bp.route("/api/finanzas/ventas/<int:vid>", methods=["PUT"])
+def api_venta_guardar(vid=None):
+    from services.finanzas import guardar_venta
+    _, quien = _quien()
+    nuevo, error = guardar_venta(_db(), request.get_json(silent=True) or {}, quien, vid)
+    if error:
+        return jsonify({"ok": False, "error": error}), 404 if error == "la venta no existe" else 400
+    return jsonify({"ok": True, "id": nuevo}), 200 if vid else 201
+
+
+@finanzas_bp.route("/api/finanzas/ventas/<int:vid>", methods=["DELETE"])
+def api_venta_borrar(vid):
+    from services.finanzas import borrar_venta
+    if not borrar_venta(_db(), vid):
+        return jsonify({"ok": False, "error": "la venta no existe"}), 404
+    return jsonify({"ok": True})
+
+
 @finanzas_bp.route("/api/finanzas/aportes")
 def api_aportes():
     """Lo aportado por los socios hasta la fecha (Juan, 1/10)."""

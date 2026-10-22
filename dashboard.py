@@ -1676,6 +1676,168 @@ async function borrarEsencial(id) {
   if (!r.ok) { alert('No se pudo borrar'); return; }
   loadEsenciales();
 }
+
+// ── Ventas del mes (Juan, 22/10) ─────────────────────────────────────────────
+// Movimientos muestra lo cobrado; acá va lo vendido, mes a mes con las flechas
+// de arriba (o deslizando en el celular). Los cierres salen solos; una venta a
+// mano de un cliente reemplaza su cierre (services/finanzas.py).
+let _finVentas = [];
+
+function _finMontoVenta(v) {
+  return v.moneda === 'UYU'
+    ? 'UYU ' + Math.round(v.monto).toLocaleString('es-UY') + ' <span style="color:var(--texto-debil)">(' + _finUsd(v.monto_usd) + ')</span>'
+    : _finUsd(v.monto_usd);
+}
+
+async function loadVentas() {
+  const cont = document.getElementById('fin-ventas');
+  const tot = document.getElementById('fin-ventas-totales');
+  const periodo = _finPeriodoVisible();
+  document.getElementById('fin-ventas-titulo').textContent = 'Ventas de ' + _finNombreMes(periodo);
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/ventas?periodo=' + periodo);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) { cont.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>'; return; }
+  // Si mientras cargaba se movió de mes, esta respuesta ya no es la que se mira.
+  if (periodo !== _finPeriodoVisible()) return;
+  _finVentas = d.ventas;
+  const lectura = _finSoloLectura();
+  tot.innerHTML = '<div class="fin-kpi"><div class="fin-kpi-label">Vendido</div>'
+    + '<div class="fin-kpi-valor fin-verde">' + _finUsd(d.total_usd) + '</div>'
+    + '<div class="fin-kpi-var">' + (d.total_uyu ? 'Incluye UYU ' + Math.round(d.total_uyu).toLocaleString('es-UY') + ' en pesos' : 'Sin IVA') + '</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Ventas</div><div class="fin-kpi-valor">' + d.cantidad + '</div>'
+    + '<div class="fin-kpi-var">En ' + esc(_finNombreMes(periodo)) + '</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Ticket promedio</div><div class="fin-kpi-valor">' + (d.promedio_usd === null ? '—' : _finUsd(d.promedio_usd)) + '</div>'
+    + '<div class="fin-kpi-var">Por venta</div></div>';
+  if (!d.ventas.length) {
+    cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">No hubo ventas en ' + esc(_finNombreMes(periodo)) + '.'
+      + (lectura ? '' : ' Si vendiste algo que no figura, cargalo con “+ Venta”.') + '</div>';
+    return;
+  }
+  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendido</th><th>Cobrado</th><th>Falta cobrar</th><th>Origen</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
+    + d.ventas.map((v, i) => '<tr><td>' + esc(v.fecha.split('-').reverse().join('/')) + '</td>'
+      + '<td><b>' + esc(v.cliente || '') + '</b>' + (v.concepto ? '<div style="color:var(--texto-debil);font-size:.72rem">' + esc(v.concepto) + '</div>' : '') + '</td>'
+      + '<td class="fin-verde"><b>' + (v.origen === 'cierre' && !v.monto_usd ? '<span style="color:var(--texto-debil);font-weight:400">Sin monto</span>' : _finMontoVenta(v)) + '</b></td>'
+      + '<td>' + (v.cobrado_usd === null ? '—' : _finUsd(v.cobrado_usd)) + '</td>'
+      + '<td>' + (v.pendiente_usd === null ? '—' : _finUsd(v.pendiente_usd)) + '</td>'
+      + '<td>' + (v.origen === 'cierre' ? '<span title="Pasó a cliente este mes; el monto es lo cobrado más lo que falta cobrar">Cierre</span>' : 'A mano') + '</td>'
+      + (lectura ? '' : '<td style="white-space:nowrap">' + (v.origen === 'cierre'
+          ? '<button class="cal-today-btn" onclick="abrirVenta(null, ' + i + ')">Corregir monto</button>'
+          : '<button class="cal-today-btn" onclick="abrirVenta(' + v.id + ')">Editar</button> <button class="cal-today-btn" onclick="borrarVenta(' + v.id + ')">Borrar</button>') + '</td>')
+      + '</tr>').join('')
+    + '</tbody></table></div>';
+}
+
+async function _finVentaClientes(seleccionado, nombre) {
+  const sel = document.getElementById('fin-venta-cliente');
+  if (sel.dataset.cargado !== '1') {
+    try {
+      const r = await fetch('/api/leads?crm_group=clientes');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      sel.innerHTML = '<option value="">Otro (escribir el nombre)</option>'
+        + leads.map(b => '<option value="' + b.id + '">' + esc(b.name) + '</option>').join('');
+      sel.dataset.cargado = '1';
+    } catch (e) { /* queda "Otro": se puede cargar igual escribiendo el nombre */ }
+  }
+  // Un cliente que hoy no está en Clientes (cambió de etapa) no tiene <option>:
+  // sin agregarla, el select quedaría en "Otro" y la venta perdería el cliente.
+  sel.querySelectorAll('option[data-sintetico]').forEach(o => o.remove());
+  if (seleccionado && !sel.querySelector('option[value="' + seleccionado + '"]')) {
+    const opt = document.createElement('option');
+    opt.value = seleccionado;
+    opt.dataset.sintetico = '1';
+    opt.textContent = nombre || ('Cliente #' + seleccionado);
+    sel.appendChild(opt);
+  }
+  sel.value = seleccionado ? String(seleccionado) : '';
+  _finVentaClienteCambio();
+}
+
+function _finVentaClienteCambio() {
+  document.getElementById('fin-venta-otro-row').style.display =
+    document.getElementById('fin-venta-cliente').value ? 'none' : '';
+}
+
+function _finVentaMoneda() {
+  document.getElementById('fin-venta-tc-row').style.display =
+    document.getElementById('fin-venta-moneda').value === 'UYU' ? '' : 'none';
+}
+
+// abrirVenta(id) edita una venta a mano; abrirVenta(null, i) corrige el monto
+// de un cierre (fila i): arranca con su cliente y su fecha, y al guardar queda
+// una venta a mano que lo reemplaza.
+async function abrirVenta(id, desdeCierre) {
+  const cierre = desdeCierre !== undefined ? _finVentas[desdeCierre] : null;
+  const v = cierre || _finVentas.find(x => x.origen === 'manual' && x.id === id) || {};
+  const periodo = _finPeriodoVisible();
+  const hoy = new Date();
+  const hoyIso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  document.getElementById('fin-venta-titulo').textContent =
+    cierre ? 'Corregir el monto de la venta' : (v.id ? 'Editar venta' : 'Nueva venta');
+  document.getElementById('fin-venta-id').value = cierre ? '' : (v.id || '');
+  document.getElementById('fin-venta-fecha').value = v.fecha || (hoyIso.slice(0, 7) === periodo ? hoyIso : periodo + '-01');
+  document.getElementById('fin-venta-otro').value = (v.client_id ? '' : (v.cliente || ''));
+  document.getElementById('fin-venta-concepto').value = v.concepto || '';
+  document.getElementById('fin-venta-monto').value = v.monto ? v.monto : '';
+  document.getElementById('fin-venta-moneda').value = v.moneda || 'USD';
+  document.getElementById('fin-venta-tc').value = v.tipo_cambio || '';
+  document.getElementById('fin-venta-notas').value = v.notas || '';
+  document.getElementById('fin-venta-error').textContent = '';
+  _finVentaMoneda();
+  document.getElementById('fin-venta-modal').classList.add('open');
+  await _finVentaClientes(v.client_id, v.cliente);
+}
+
+function cerrarVenta() { document.getElementById('fin-venta-modal').classList.remove('open'); }
+
+async function guardarVenta() {
+  const id = document.getElementById('fin-venta-id').value;
+  const body = {client_id: document.getElementById('fin-venta-cliente').value || null,
+                cliente: document.getElementById('fin-venta-otro').value};
+  ['fecha', 'concepto', 'monto', 'moneda', 'notas'].forEach(k => { body[k] = document.getElementById('fin-venta-' + k).value; });
+  body.tipo_cambio = document.getElementById('fin-venta-tc').value;
+  const err = document.getElementById('fin-venta-error');
+  if (!body.client_id && !body.cliente.trim()) { err.textContent = 'Elegí el cliente o escribí a quién se le vendió.'; return; }
+  if (body.monto === '') { err.textContent = 'Poné el monto.'; return; }
+  try {
+    const r = await fetch('/api/finanzas/ventas' + (id ? '/' + id : ''), {
+      method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) { err.textContent = e.message; return; }
+  cerrarVenta();
+  loadVentas();
+}
+
+async function borrarVenta(id) {
+  const v = _finVentas.find(x => x.origen === 'manual' && x.id === id);
+  if (!v || !confirm('¿Borrar la venta a ' + v.cliente + '?')) return;
+  const r = await fetch('/api/finanzas/ventas/' + id, {method: 'DELETE'});
+  if (!r.ok) { alert('No se pudo borrar'); return; }
+  loadVentas();
+}
+
+// Deslizar sobre la lista cambia de mes, como en el calendario.
+(function () {
+  const zona = document.getElementById('fin-vista-ventas');
+  if (!zona) return;
+  let toque = null;
+  zona.addEventListener('touchstart', e => {
+    toque = (e.touches && e.touches.length === 1) ? {x: e.touches[0].clientX, y: e.touches[0].clientY} : null;
+  }, {passive: true});
+  zona.addEventListener('touchend', e => {
+    const inicio = toque;
+    toque = null;
+    if (!inicio || !e.changedTouches || !e.changedTouches.length) return;
+    const fin = e.changedTouches[0];
+    const dir = _calDireccionSwipe(fin.clientX - inicio.x, fin.clientY - inicio.y);
+    if (dir) finMes(dir);
+  }, {passive: true});
+  zona.addEventListener('touchcancel', () => { toque = null; }, {passive: true});
+})();
 """
 
 BUSCAR_JS = r"""// ========== Buscador de arriba (1/10) ==========
@@ -3548,11 +3710,36 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .plx-hist span{margin-right:10px}
 .plx-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
 .plx-vacio{color:var(--texto-debil);font-size:.8rem;padding:6px 0}
-/* ======= Oficina: los recordatorios que arma Bruno (22/10: quedó solo él) ======= */
+/* ======= Recordatorios wpp (id interno oficina; 20/10 Oficina, solo este agente desde el 22/10) ======= */
+.of-cab{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.of-cab img{width:72px;height:72px;flex:none}
+.of-cab h2{font-size:1.1rem;color:var(--texto-fuerte);margin:0}
+.of-cab p{margin:2px 0 0;font-size:.84rem;color:var(--texto-tenue)}
+.of-ficha{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.of-ficha{grid-template-columns:1fr}}
+.of-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.of-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.of-card h3{font-size:.95rem;color:var(--texto-fuerte);margin:0}
 .of-ayuda{font-size:.78rem;color:var(--texto-tenue)}
+.of-msgs{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:460px;overflow-y:auto;padding:2px}
+.of-msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:.88rem;white-space:pre-line;line-height:1.5;overflow-wrap:anywhere}
+.of-msg.yo{align-self:flex-end;background:var(--azul);color:#fff;border-bottom-right-radius:4px}
+.of-msg.ag{align-self:flex-start;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);border-bottom-left-radius:4px}
+.of-msg.espera{align-self:flex-start;font-style:italic;color:var(--texto-tenue);font-size:.8rem;padding:2px 4px}
+.of-fuente{display:block;margin-top:6px;font-size:.72rem;color:var(--texto-tenue)}
+.of-op{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;white-space:normal}
+.of-op span{font-size:.74rem;color:var(--verde-texto)}
 .of-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 10px;font-size:.76rem;font-family:inherit;cursor:pointer}
 .of-btn:hover{background:var(--hover)}
 .of-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.of-form{display:flex;gap:8px;width:100%}
+.of-form input{flex:1;min-width:0;background:var(--fondo);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 11px;font-size:.86rem;font-family:inherit}
+.of-error{font-size:.76rem;color:var(--rojo-texto)}
+.of-error:empty{display:none}
+.of-li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.85rem;color:var(--texto)}
+.of-li:first-child{border-top:0}
+.of-li .t{flex:1;min-width:0}
+.of-li small{display:block;font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
 .of-vacio{font-size:.8rem;color:var(--texto-tenue)}
 .of-recs{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
 .of-recs-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -4785,12 +4972,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
   <div class="nav-section-label">CALENDARIO</div>
   <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
-  <!-- Oficina (20/10; desde el 22/10 solo los recordatorios de Bruno). Va debajo del Calendario (que es lo primero, pedido de Juan del 14/9).
+  <!-- Recordatorios wpp (id interno `oficina`; 20/10 era el equipo de agentes, desde el 22/10 solo el de WhatsApp).
+       Va debajo del Calendario (que es lo primero, pedido de Juan del 14/9).
        Solo admin, como Contraseñas:
        se muestra desde el bloque de /api/me. -->
-  <div class="nav-section-label">OFICINA</div>
-  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="users-round" class="nav-icon"></i> Oficina</div>
+  <div class="nav-section-label">WHATSAPP</div>
+  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="message-circle" class="nav-icon"></i> Recordatorios wpp</div>
   <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
+  <div class="nav-section-label">AGENTES</div>
   <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
@@ -5245,6 +5434,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </select>
       <div class="fin-toggle">
         <button class="pill active" id="fin-tab-movs" onclick="finVista('movimientos')">Movimientos</button>
+        <button class="pill" id="fin-tab-ventas" onclick="finVista('ventas')">Ventas</button>
         <button class="pill" id="fin-tab-cobrar" onclick="finVista('cobrar')">Por cobrar</button>
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
@@ -5271,6 +5461,16 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <div class="fin-card"><div class="fin-card-title">Movimientos</div>
         <div id="fin-tabla"></div></div>
+    </div>
+
+    <div id="fin-vista-ventas" style="display:none">
+      <div class="fin-kpis" id="fin-ventas-totales"></div>
+      <div class="fin-card">
+        <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
+          <span id="fin-ventas-titulo">Ventas</span>
+          <button class="cal-today-btn" id="fin-btn-venta" onclick="abrirVenta()">+ Venta</button>
+        </div>
+        <div id="fin-ventas"></div></div>
     </div>
 
     <div id="fin-vista-cobrar" style="display:none">
@@ -6117,18 +6317,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
   <!-- ======= OFICINA PANEL ======= -->
-  <!-- Los recordatorios que arma Bruno leyendo el WhatsApp de Juan
-       (services/oficina.py). Solo admin, igual que Contraseñas: no se reparte
-       por rol. El 22/10 Juan sacó a los otros cuatro agentes y el chat. -->
+  <!-- Recordatorios wpp (services/oficina.py): el agente que lee el WhatsApp
+       Business de Juan. Solo admin, igual que Contraseñas: no se reparte por rol. -->
   <div id="oficina-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Oficina</h1>
-        <div class="page-date">Lo que Bruno encontró en tus chats de WhatsApp para que no se te pase</div>
+        <h1>Recordatorios wpp</h1>
+        <div class="page-date">Lo que encontró en tus chats de WhatsApp. Abajo le podés preguntar y dejarle indicaciones</div>
       </div>
     </div>
     <div class="cr-nota" id="of-nota" role="status" aria-live="polite"></div>
     <div class="of-recs" id="of-recs" aria-live="polite"></div>
+    <div id="of-ficha"></div>
   </div>
   <!-- ======= FIN OFICINA PANEL ======= -->
 
@@ -6764,6 +6964,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="btn-ghost" onclick="cerrarEsencial()">Cancelar</button>
       <button class="btn-primary" onclick="guardarEsencial()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fin-venta-modal" onclick="if(event.target===this)cerrarVenta()">
+  <div class="modal" style="width:440px">
+    <h3 id="fin-venta-titulo">Nueva venta</h3>
+    <input type="hidden" id="fin-venta-id">
+    <label class="modal-label" for="fin-venta-cliente">Cliente</label>
+    <select id="fin-venta-cliente" class="modal-input" onchange="_finVentaClienteCambio()"><option value="">Otro (escribir el nombre)</option></select>
+    <div id="fin-venta-otro-row"><label class="modal-label" for="fin-venta-otro">A quién se le vendió</label>
+      <input type="text" id="fin-venta-otro" class="modal-input" maxlength="120" placeholder="Nombre del cliente"></div>
+    <label class="modal-label" for="fin-venta-concepto">Qué se vendió</label>
+    <input type="text" id="fin-venta-concepto" class="modal-input" maxlength="200" placeholder="Página web, software a medida…">
+    <label class="modal-label" for="fin-venta-fecha">Fecha de la venta</label>
+    <input type="date" id="fin-venta-fecha" class="modal-input">
+    <div style="display:grid;grid-template-columns:1fr 110px;gap:10px">
+      <div><label class="modal-label" for="fin-venta-monto">Monto total vendido</label>
+        <input type="number" id="fin-venta-monto" class="modal-input" min="0" step="any" inputmode="decimal"></div>
+      <div><label class="modal-label" for="fin-venta-moneda">Moneda</label>
+        <select id="fin-venta-moneda" class="modal-input" onchange="_finVentaMoneda()"><option>USD</option><option>UYU</option></select></div>
+    </div>
+    <div id="fin-venta-tc-row" style="display:none"><label class="modal-label" for="fin-venta-tc">Tipo de cambio</label>
+      <input type="number" id="fin-venta-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
+    <label class="modal-label" for="fin-venta-notas">Notas</label>
+    <input type="text" id="fin-venta-notas" class="modal-input" maxlength="1000" placeholder="50% al empezar, el resto a la entrega…">
+    <div style="color:var(--texto-debil);font-size:.75rem;margin-top:8px">Solo queda anotada como venta: no crea ningún movimiento ni cobro.</div>
+    <div id="fin-venta-error" style="color:#f87171;font-size:.8rem;min-height:1em;margin-top:8px"></div>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn-ghost" onclick="cerrarVenta()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarVenta()">Guardar</button>
     </div>
   </div>
 </div>
@@ -13416,7 +13647,7 @@ function _funnelBars(items, stateLabels, stateColors) {
 
 // ========== Finanzas panel ==========
 // Pauta salió de Finanzas el 1/10 (Juan); en su lugar van Gastos esenciales y Aportes.
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'esenciales', 'aportes', 'iva', 'tarjeta', 'cobros', 'balance'];
+const FIN_VISTAS = ['movimientos', 'ventas', 'cobrar', 'fijos', 'esenciales', 'aportes', 'iva', 'tarjeta', 'cobros', 'balance'];
 
 // ── Finanzas en solo lectura (el Contador) ──
 // No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
@@ -13430,7 +13661,7 @@ function _finSoloLectura() {
 
 function _finAplicarSoloLectura() {
   const solo = _finSoloLectura();
-  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente'].forEach(id => {
+  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente', 'fin-btn-venta'].forEach(id => {
     const b = document.getElementById(id);
     if (b) b.style.display = solo ? 'none' : '';
   });
@@ -13454,17 +13685,19 @@ let _finVistaActual = 'movimientos';
 function _finBotonNuevo() {
   if (_finVistaActual === 'esenciales') abrirEsencial();
   else if (_finVistaActual === 'fijos') abrirFijo();
+  else if (_finVistaActual === 'ventas') abrirVenta();
   else abrirMovimiento();
 }
 
 function finVista(cual) {
   _finVistaActual = cual;
   document.getElementById('fin-btn-movimiento-txt').textContent =
-    cual === 'esenciales' ? 'Gasto esencial' : cual === 'fijos' ? 'Fijo' : 'Movimiento';
+    cual === 'esenciales' ? 'Gasto esencial' : cual === 'ventas' ? 'Venta' : cual === 'fijos' ? 'Fijo' : 'Movimiento';
   FIN_VISTAS.forEach(v => {
     document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
   });
   document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
+  document.getElementById('fin-tab-ventas').classList.toggle('active', cual === 'ventas');
   document.getElementById('fin-tab-cobrar').classList.toggle('active', cual === 'cobrar');
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-esenciales').classList.toggle('active', cual === 'esenciales');
@@ -13482,7 +13715,10 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar' || cual === 'balance' || cual === 'tarjeta' || cual === 'esenciales' || cual === 'aportes') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance' || cual === 'tarjeta' || cual === 'esenciales' || cual === 'aportes' || cual === 'ventas') ? 'none' : '';
+  // Ventas es siempre de a un mes: usa las flechas aunque el rango diga otra cosa.
+  _finPintarNavegador();
+  if (cual === 'ventas') loadVentas();
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'esenciales') loadEsenciales();
@@ -13557,7 +13793,8 @@ async function _finCargarMeses() {
 // "ultimos 12 meses" la ventana pisa meses abiertos y cerrados a la vez y la
 // etiqueta no significaria nada.
 function _finPintarNavegador() {
-  const mirandoUnMes = document.getElementById('fin-rango').value === 'mes';
+  const enVentas = _finVistaActual === 'ventas';
+  const mirandoUnMes = enVentas || document.getElementById('fin-rango').value === 'mes';
   const nav = document.getElementById('fin-nav-mes');
   const cartel = document.getElementById('fin-cerrado');
   nav.style.display = mirandoUnMes ? '' : 'none';
@@ -13565,6 +13802,8 @@ function _finPintarNavegador() {
 
   const periodo = _finPeriodoVisible();
   document.getElementById('fin-mes-label').textContent = _finNombreMes(periodo);
+  // Las ventas son de referencia, no tocan la caja: el mes cerrado no las traba.
+  if (enVentas) { cartel.style.display = 'none'; return; }
   const esElActual = periodo >= (_finMeses.mes_actual || '');
   const reabierto = (_finMeses.abiertos || []).indexOf(periodo) >= 0;
   cartel.style.display = (esElActual || reabierto) ? 'none' : 'flex';
@@ -13743,6 +13982,7 @@ async function loadFinanzas() {
     if (_finVistaActual === 'iva') loadIva();
     if (_finVistaActual === 'fijos') loadFijos();
     if (_finVistaActual === 'cobros') loadCobrosPagos();
+    if (_finVistaActual === 'ventas') loadVentas();
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     kpisEl.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
@@ -17071,8 +17311,16 @@ async function crBorrar(id) {
 // ========== FIN Credenciales ==========
 
 // ========== Oficina ==========
-// Solo admin, igual que Contraseñas. Desde el 22/10 es solo Bruno: los
-// recordatorios que arma leyendo los chats de WhatsApp de Juan.
+// Recordatorios wpp (id interno oficina): desde el 22/10 queda un solo agente,
+// el de WhatsApp (clave 'bruno'). Solo admin, igual que Contraseñas.
+// Las respuestas las escribe una sesión de Claude Code que corre en la compu
+// (scripts/oficina_responder.py), sin modelo pago: tardan unos minutos. Mientras
+// haya una pregunta esperando, la conversación se recarga sola cada 30 segundos.
+const OF_AGENTE = 'bruno';
+let ofSel = OF_AGENTE;
+let ofFicha = null;
+let ofTimer = null;
+
 async function ofPedir(url, metodo, cuerpo) {
   const opts = {method: metodo || 'GET'};
   if (cuerpo !== undefined) {
@@ -17086,13 +17334,180 @@ async function ofPedir(url, metodo, cuerpo) {
   return d;
 }
 
-function ofCargar() {
-  const nota = document.getElementById('of-nota');
-  if (nota) nota.textContent = '';
-  return ofCargarRecs();
+function ofFecha(s) {
+  const d = new Date(String(s || '').replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit'});
 }
 
-// Recordatorios: los arma Bruno leyendo los chats de WhatsApp de Juan, que
+async function ofCargar() {
+  const nota = document.getElementById('of-nota');
+  if (nota) nota.textContent = '';
+  ofCargarRecs();
+  await ofAbrir(OF_AGENTE);
+}
+
+async function ofAbrir(id) {
+  ofSel = id;
+  const nota = document.getElementById('of-nota');
+  try {
+    ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(id));
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  if (nota) nota.textContent = '';
+  ofPintarFicha();
+}
+
+function ofMensajesHtml(f) {
+  const a = f.agente;
+  if (!f.mensajes.length) {
+    return '<div class="of-msg ag">Hola Juan. ' + crEsc(a.descripcion) + ' Preguntame lo que quieras de tus chats.</div>';
+  }
+  return f.mensajes.map(m => {
+    if (m.autor === 'juan') {
+      return '<div class="of-msg yo">' + crEsc(m.texto) + '</div>'
+        + (m.estado === 'pendiente'
+          ? '<div class="of-msg espera">' + crEsc(a.nombre) + ' está pensando… te responde en hasta 15 minutos.</div>' : '');
+    }
+    let op;
+    if (m.feedback === 'ok') op = '<span>Te sirvió</span>';
+    else if (m.feedback === 'corregido') op = '<span>Corregida: lo aprendió</span>';
+    else op = '<button type="button" class="of-btn" data-op="ok" data-id="' + Number(m.id) + '">Me sirvió</button>'
+      + '<button type="button" class="of-btn" data-op="fix" data-id="' + Number(m.id) + '">Corregir</button>';
+    return '<div class="of-msg ag">' + crEsc(m.texto)
+      + (m.fuente ? '<span class="of-fuente">Fuente: ' + crEsc(m.fuente) + '</span>' : '')
+      + '<div class="of-op" id="of-op-' + Number(m.id) + '">' + op + '</div></div>';
+  }).join('');
+}
+
+function ofListaHtml(items, tipo) {
+  if (!items.length) {
+    return '<div class="of-vacio">' + (tipo === 'apr'
+      ? 'Todavía no aprendió nada. Cuando corrijas una respuesta, aparece acá.'
+      : 'Todavía no le diste indicaciones.') + '</div>';
+  }
+  return items.map(x => '<div class="of-li"><span class="t">' + crEsc(x.texto)
+    + '<small>' + (tipo === 'apr' ? crEsc(x.origen) + ' · ' : 'Desde el ') + ofFecha(x.creado_en) + '</small></span>'
+    + '<button type="button" class="of-btn" data-borrar="' + tipo + '" data-id="' + Number(x.id) + '">'
+    + (tipo === 'apr' ? 'Olvidar' : 'Borrar') + '</button></div>').join('');
+}
+
+function ofPintarFicha() {
+  const f = ofFicha;
+  const a = f.agente;
+  const box = document.getElementById('of-ficha');
+  if (!box) return;
+  box.innerHTML = '<div class="of-cab"><img src="/static/oficina/' + encodeURIComponent(a.id) + '.svg" alt="">'
+    + '<div><h2>' + crEsc(a.rol) + '</h2><p>' + crEsc(a.descripcion) + '</p>'
+    + '<p>Mira: ' + crEsc(a.mira) + '</p></div></div>'
+    + '<div class="of-ficha">'
+    + '<div class="of-card"><h3>Conversación</h3>'
+    + '<div class="of-msgs" id="of-msgs" aria-live="polite">' + ofMensajesHtml(f) + '</div>'
+    + '<form class="of-form" id="of-f-msg"><input id="of-in-msg" maxlength="2000" autocomplete="off" placeholder="Preguntale algo a ' + crEsc(a.nombre) + '">'
+    + '<button type="submit" class="of-btn prim">Enviar</button></form>'
+    + '<div class="of-error" id="of-err-msg" role="alert"></div>'
+    + '<div class="of-ayuda">Te responde en hasta 15 minutos: lo escribe Claude desde la compu, sin costo.</div></div>'
+    + '<div class="of-col">'
+    + '<div class="of-card"><h3>Indicaciones</h3>'
+    + '<div class="of-ayuda">Lo que le pedís a ' + crEsc(a.nombre) + ' queda fijo hasta que lo borres.</div>'
+    + '<div id="of-ind">' + ofListaHtml(f.indicaciones, 'ind') + '</div>'
+    + '<form class="of-form" id="of-f-ind"><input id="of-in-ind" maxlength="300" autocomplete="off" placeholder="De ahora en más…">'
+    + '<button type="submit" class="of-btn">Agregar</button></form>'
+    + '<div class="of-error" id="of-err-ind" role="alert"></div></div>'
+    + '<div class="of-card"><h3>Lo que fue aprendiendo</h3>'
+    + '<div class="of-ayuda">Sale de tus correcciones. Si algo está mal, lo hacés olvidar.</div>'
+    + '<div id="of-apr">' + ofListaHtml(f.aprendizajes, 'apr') + '</div></div>'
+    + '</div></div>';
+  ofEnviarCon('of-f-msg', 'of-in-msg', 'of-err-msg', 'Escribí algo antes de enviar.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/mensajes', 'POST', {texto: texto}));
+  ofEnviarCon('of-f-ind', 'of-in-ind', 'of-err-ind', 'Escribí la indicación antes de agregarla.',
+    texto => ofPedir('/api/oficina/agentes/' + encodeURIComponent(a.id) + '/indicaciones', 'POST', {texto: texto}));
+  box.querySelector('.of-col').onclick = ofBorrar;
+  const msgs = document.getElementById('of-msgs');
+  msgs.onclick = ofOpinar;
+  msgs.scrollTop = msgs.scrollHeight;
+  ofProgramarRecarga();
+}
+
+function ofEnviarCon(formId, inputId, errId, falta, enviar) {
+  const form = document.getElementById(formId);
+  const input = document.getElementById(inputId);
+  const err = document.getElementById(errId);
+  input.oninput = () => { err.textContent = ''; };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = falta; input.focus(); return; }
+    try {
+      await enviar(texto);
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+async function ofBorrar(e) {
+  const b = e.target.closest('[data-borrar]');
+  if (!b) return;
+  const url = b.dataset.borrar === 'apr' ? '/api/oficina/aprendizajes/' : '/api/oficina/indicaciones/';
+  try {
+    await ofPedir(url + Number(b.dataset.id), 'DELETE');
+  } catch (ex) {
+    const nota = document.getElementById('of-nota');
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  await ofCargar();
+}
+
+async function ofOpinar(e) {
+  const b = e.target.closest('[data-op]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const caja = document.getElementById('of-op-' + id);
+  if (b.dataset.op === 'ok') {
+    try { await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'ok'}); } catch (ex) { return; }
+    caja.innerHTML = '<span>Anotado: lo va a seguir haciendo así.</span>';
+    return;
+  }
+  caja.innerHTML = '<form class="of-form"><input maxlength="300" autocomplete="off" placeholder="¿Qué tendría que haber hecho?">'
+    + '<button type="submit" class="of-btn prim">Guardar</button></form><div class="of-error" role="alert"></div>';
+  const input = caja.querySelector('input');
+  const err = caja.querySelector('.of-error');
+  input.focus();
+  caja.querySelector('form').onsubmit = async ev => {
+    ev.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) { err.textContent = 'Escribí la corrección.'; return; }
+    try {
+      await ofPedir('/api/oficina/mensajes/' + id + '/opinion', 'POST', {tipo: 'corregir', correccion: texto});
+    } catch (ex) {
+      err.textContent = ex.message;
+      return;
+    }
+    await ofCargar();
+  };
+}
+
+function ofProgramarRecarga() {
+  clearTimeout(ofTimer);
+  const esperando = ofFicha && ofFicha.mensajes.some(m => m.autor === 'juan' && m.estado === 'pendiente');
+  if (!esperando) return;
+  ofTimer = setTimeout(async () => {
+    if (activePanel !== 'oficina' || !ofSel) return;
+    try {
+      ofFicha = await ofPedir('/api/oficina/agentes/' + encodeURIComponent(ofSel));
+    } catch (e) { ofProgramarRecarga(); return; }
+    const msgs = document.getElementById('of-msgs');
+    if (msgs) { msgs.innerHTML = ofMensajesHtml(ofFicha); msgs.scrollTop = msgs.scrollHeight; }
+    ofProgramarRecarga();
+  }, 30000);
+}
+// Recordatorios: los arma el agente leyendo los chats de WhatsApp de Juan, que
 // viven en su notebook (wa-lector/). Acá llega solo el recordatorio.
 let ofRecs = [];
 let ofHoy = '';
@@ -17120,7 +17535,7 @@ function ofRecHtml(r) {
     borrador = '<div class="of-rec-borrador"><div class="of-rec-btxt">' + crEsc(r.borrador) + '</div>'
       + '<button type="button" class="of-btn" data-copiar="' + id + '">Copiar mensaje</button></div>';
   } else if (r.borrador_pedido) {
-    borrador = '<div class="of-ayuda">Bruno te está armando el mensaje… aparece acá en la próxima hora.</div>';
+    borrador = '<div class="of-ayuda">Te estoy armando el mensaje… aparece acá en hasta 15 minutos.</div>';
   }
   return '<div class="of-rec"><div class="of-rec-cuando ' + c.cls + '">' + crEsc(c.txt) + '</div>'
     + '<div class="of-rec-cuerpo"><div class="of-rec-que">' + crEsc(r.que) + '</div>' + origen + borrador
@@ -17145,9 +17560,9 @@ async function ofCargarRecs() {
   ofRecs = d.recordatorios;
   ofHoy = d.hoy;
   box.innerHTML = '<div class="of-recs-cab"><h2>Recordatorios</h2>'
-    + '<span class="of-ayuda"><img src="/static/oficina/bruno.svg" alt="">Los arma Bruno leyendo tus chats de WhatsApp</span></div>'
+    + '<span class="of-ayuda"><img src="/static/oficina/bruno.svg" alt="">Salen de tus chats de WhatsApp</span></div>'
     + (ofRecs.length ? ofRecs.map(ofRecHtml).join('')
-      : '<div class="of-vacio">No tenés recordatorios pendientes. Bruno revisa tus chats cada hora.</div>');
+      : '<div class="of-vacio">No tenés recordatorios pendientes. Reviso tus chats cada hora.</div>');
   box.onclick = ofRecAccion;
 }
 
