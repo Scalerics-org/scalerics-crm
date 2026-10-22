@@ -32,7 +32,7 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 ORDEN = [
     ("CALENDARIO", ["cal"]),
-    ("OFICINA", ["oficina"]),   # el equipo de agentes de Juan, 20/10
+    ("OFICINA", ["oficina"]),   # los recordatorios de Bruno (20/10; solo él desde el 22/10)
     ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "sombra"]),
     ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
     ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
