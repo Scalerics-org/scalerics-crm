@@ -38,6 +38,24 @@ def api_listar():
     return jsonify({"ok": True, "conteos": ag.conteos(_db()), "propuestas": propuestas})
 
 
+@agentes_bp.route("/api/agentes/brujula")
+def api_brujula():
+    return jsonify({"ok": True, **ag.leer_brujula(_db())})
+
+
+@agentes_bp.route("/api/agentes/brujula", methods=["PUT"])
+def api_guardar_brujula():
+    datos = request.get_json(silent=True) or {}
+    quien = session.get("user_name", "sistema")
+    try:
+        b = ag.guardar_brujula(_db(), datos.get("texto"), quien)
+    except ag.NoSePuede as e:
+        return _error(e)
+    log_activity(_db(), quien, "agentes_brujula", "agentes_brujula", 1, "", "",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, **b})
+
+
 @agentes_bp.route("/api/agentes/<int:pid>")
 def api_ver(pid):
     try:

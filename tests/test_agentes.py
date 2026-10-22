@@ -266,4 +266,42 @@ def test_el_html_tiene_el_panel(db):
     c = _cliente(db, "jefe@scalerics.com")
     html = c.get("/").get_data(as_text=True)
     assert 'id="agentes-panel"' in html and 'id="nav-agentes"' in html
-    assert "if (name === 'agentes') agCargar();" in html
+    assert "if (name === 'agentes') { agCargarBrujula(); agCargar(); }" in html
+    assert 'id="ag-brujula-txt"' in html
+
+
+# ── brújula ──────────────────────────────────────────────────────────────────
+
+def test_brujula_vacia_al_principio(db):
+    assert ag.leer_brujula(db) == {"texto": "", "editado_por": None, "actualizado_en": None}
+
+
+def test_brujula_se_pisa_entera(db):
+    ag.guardar_brujula(db, "  Este mes: cerrar presupuestos  ", "Juan")
+    b = ag.guardar_brujula(db, "Este mes: tiendas del interior", "Javier")
+    assert b["texto"] == "Este mes: tiendas del interior" and b["editado_por"] == "Javier"
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM agentes_brujula").fetchone()[0] == 1
+    conn.close()
+    assert ag.guardar_brujula(db, "", "Juan")["texto"] == ""
+
+
+@pytest.mark.parametrize("texto", [None, 5, "x" * (ag.LARGO_BRUJULA + 1)])
+def test_brujula_rechaza(db, texto):
+    with pytest.raises(ag.NoSePuede):
+        ag.guardar_brujula(db, texto, "Juan")
+
+
+def test_brujula_por_mcp(db, juan):
+    ag.guardar_brujula(db, "Prioridad: Bozza", "Javier")
+    assert _texto_resultado(mt.ejecutar(db, juan, "brujula", {}))["texto"] == "Prioridad: Bozza"
+
+
+def test_brujula_por_el_panel(db):
+    c = _cliente(db, "socio@scalerics.com", paneles=["agentes"])
+    r = c.put("/api/agentes/brujula", json={"texto": "Nada de demos nuevas"})
+    assert r.get_json()["texto"] == "Nada de demos nuevas" and r.get_json()["editado_por"] == "socio"
+    assert c.get("/api/agentes/brujula").get_json()["texto"] == "Nada de demos nuevas"
+    assert c.put("/api/agentes/brujula", json={}).status_code == 400
+    otro = _cliente(db, "vende@scalerics.com", paneles=["cola"])
+    assert otro.put("/api/agentes/brujula", json={"texto": "x"}).status_code == 403

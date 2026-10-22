@@ -6,6 +6,10 @@ qué puede sumarle a Scalerics, lo hace (una PR, un borrador, una
 investigación) y lo carga acá por el conector MCP (services/mcp_tools.py).
 Una persona lo acepta, lo descarta o lo marca como hecho desde el panel Agentes.
 
+La brújula es el texto que el equipo escribe arriba del panel: las prioridades
+del momento, lo que no hace falta, lo que gusta. El agente la lee antes de
+elegir qué hacer; sin ella elige solo con lo que ve en el CRM y los repos.
+
 El agente nunca cambia el estado: eso es de las personas. Puede completar su
 propia propuesta (detalle, enlaces) mientras siga propuesta o aceptada, que es
 como entrega lo que le pidieron en el comentario de la revisión.
@@ -31,6 +35,7 @@ LARGO_TITULO = 120
 LARGO_RESUMEN = 600
 LARGO_DETALLE = 20000
 LARGO_COMENTARIO = 2000
+LARGO_BRUJULA = 3000
 LARGO_CLAVE = 100
 LARGO_ETIQUETA = 60
 LARGO_URL = 500
@@ -65,6 +70,15 @@ def init_agentes(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agentes_estado "
                  "ON agentes_propuestas (estado, actualizado_en)")
+    # Una sola fila (id = 1): se pisa entera cada vez que alguien la guarda.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agentes_brujula (
+            id             INTEGER PRIMARY KEY CHECK (id = 1),
+            texto          TEXT NOT NULL,
+            editado_por    TEXT NOT NULL,
+            actualizado_en TEXT NOT NULL
+        )
+    """)
 
 
 def _ahora() -> str:
@@ -237,3 +251,32 @@ def revisar(db: str, pid: int, accion: str, quien: str, comentario=None) -> dict
     finally:
         conn.close()
     return {"id": pid, "estado": estado}
+
+
+def leer_brujula(db: str) -> dict:
+    conn = _connect(db)
+    try:
+        f = conn.execute("SELECT texto, editado_por, actualizado_en FROM agentes_brujula "
+                         "WHERE id = 1").fetchone()
+    finally:
+        conn.close()
+    return dict(f) if f else {"texto": "", "editado_por": None, "actualizado_en": None}
+
+
+def guardar_brujula(db: str, texto, quien: str) -> dict:
+    """Vacía se puede guardar: es volver a que el agente elija solo."""
+    if not isinstance(texto, str):
+        raise NoSePuede("Falta el texto")
+    texto = texto.strip()
+    if len(texto) > LARGO_BRUJULA:
+        raise NoSePuede(f"Es muy largo: máximo {LARGO_BRUJULA} caracteres")
+    conn = _connect(db)
+    try:
+        conn.execute("INSERT INTO agentes_brujula (id, texto, editado_por, actualizado_en) "
+                     "VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET texto = excluded.texto, "
+                     "editado_por = excluded.editado_por, actualizado_en = excluded.actualizado_en",
+                     (texto, quien, _ahora()))
+        conn.commit()
+    finally:
+        conn.close()
+    return leer_brujula(db)

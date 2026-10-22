@@ -372,6 +372,15 @@ _ENLACES = {
 
 HERRAMIENTAS += [
     {
+        "name": "brujula",
+        "description": ("Las prioridades que escribió el equipo de Scalerics para los agentes: qué "
+                        "importa este mes, qué no hace falta, qué ideas gustan. Leela PRIMERO, antes "
+                        "de elegir qué hacer, y elegí según ella. Si está vacía, elegí con tu criterio."),
+        "inputSchema": {"type": "object", "properties": {}, "required": [],
+                        "additionalProperties": False},
+        "fn": lambda db, a: agentes.leer_brujula(db),
+    },
+    {
         "name": "ver_propuestas_agentes",
         "description": ("Lo que ya propusieron los agentes del equipo, lo más reciente primero, con "
                         "el estado y el comentario de quien lo revisó. Leelo ANTES de proponer: "

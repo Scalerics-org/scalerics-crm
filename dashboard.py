@@ -3570,6 +3570,10 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .of-rec-borrador{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .of-rec-btxt{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
 /* Agentes (22/10): lo que proponen las tareas programadas del equipo. */
+.ag-brujula{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.ag-brujula label{font-size:.8rem;font-weight:600;color:var(--texto-fuerte)}
+.ag-brujula textarea{min-height:90px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font-family:inherit;font-size:.85rem;padding:8px 10px;resize:vertical}
+.ag-brujula-pie{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .ag-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .ag-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
 .ag-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
@@ -6085,6 +6089,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div class="page-date">Lo que hicieron las tareas de Claude del equipo. El comentario que dejes lo leen en la próxima corrida.</div>
       </div>
     </div>
+    <div class="ag-brujula">
+      <label for="ag-brujula-txt">Brújula: lo que los agentes leen antes de elegir qué hacer</label>
+      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Este mes: cerrar los presupuestos enviados. No hace falta: más demos de apps de puntos. Nos gustan: cosas que ahorren horas de entrega."></textarea>
+      <div class="ag-brujula-pie"><button type="button" class="of-btn prim" id="ag-brujula-guardar">Guardar brújula</button><span id="ag-brujula-estado" class="of-ayuda" role="status" aria-live="polite"></span></div>
+    </div>
     <div class="ag-filtros" id="ag-filtros" role="group" aria-label="Filtrar por estado"></div>
     <div class="cr-nota" id="ag-nota" role="status" aria-live="polite"></div>
     <div class="ag-lista" id="ag-lista" aria-live="polite"></div>
@@ -7281,7 +7290,7 @@ function showPanel(name) {
   if (name === 'sombra') soCargar();
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
-  if (name === 'agentes') agCargar();
+  if (name === 'agentes') { agCargarBrujula(); agCargar(); }
 }
 
 // ========== Leads / Cola panel ==========
@@ -17163,6 +17172,34 @@ function agPintarFiltros(conteos) {
     badge.textContent = conteos.propuesta || '';
     badge.style.display = conteos.propuesta ? 'inline' : 'none';
   }
+}
+
+async function agCargarBrujula() {
+  const txt = document.getElementById('ag-brujula-txt');
+  const estado = document.getElementById('ag-brujula-estado');
+  if (!txt) return;
+  try {
+    const d = await ofPedir('/api/agentes/brujula');
+    txt.value = d.texto || '';
+    estado.textContent = d.editado_por ? 'Última edición: ' + d.editado_por + ', ' + agFecha(d.actualizado_en) : '';
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+  document.getElementById('ag-brujula-guardar').onclick = agGuardarBrujula;
+}
+
+async function agGuardarBrujula() {
+  const b = document.getElementById('ag-brujula-guardar');
+  const estado = document.getElementById('ag-brujula-estado');
+  b.disabled = true;
+  try {
+    const d = await ofPedir('/api/agentes/brujula', 'PUT', {texto: document.getElementById('ag-brujula-txt').value});
+    estado.textContent = 'Guardada. Los agentes la leen en la próxima corrida.';
+    document.getElementById('ag-brujula-txt').value = d.texto;
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+  b.disabled = false;
 }
 
 async function agCargar() {
