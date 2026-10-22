@@ -1,0 +1,33 @@
+# Vista previa de una PR: una app scalerics-crm-pr-<N> por PR, que crea y
+# borra .github/workflows/preview.yml. El nombre de la app lo pasa el
+# workflow con --app; el de abajo es solo para que flyctl no se queje.
+#
+# Sin volumen y sin la base de producción: scripts/preview_start.sh siembra
+# datos inventados. Se duerme sola cuando nadie la mira, así que una PR
+# abierta sin visitas casi no cuesta.
+app = "scalerics-crm-preview"
+primary_region = "iad"
+
+[env]
+  PORT = "8080"
+
+[processes]
+  app = "/bin/sh /app/scripts/preview_start.sh"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+# 256 MB + swap, como scalerics-wa: sin procesos de fondo alcanza, y la
+# mitad de memoria es la mitad de costo mientras alguien la está mirando.
+# Fly perdona la factura de la org personal solo si queda debajo de USD 5.
+swap_size_mb = 512
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

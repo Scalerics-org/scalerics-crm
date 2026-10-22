@@ -32,6 +32,7 @@ from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
+from routes.agentes import agentes_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1859,6 +1860,7 @@ const GB_PALABRAS = {
   horarios: 'horas', cola: 'outbound fidelidad restaurantes peluquerias comercios llamar captacion pipeline agenda visitas',
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
+  agentes: 'agentes claude propuestas ideas ia',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -3238,6 +3240,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-horarios .nav-icon{stroke:#fbbf24}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
+#nav-agentes .nav-icon{stroke:#22d3ee}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3273,6 +3276,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
+#nav-agentes.active .nav-icon{stroke:#a5f3fc}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3304,6 +3308,7 @@ body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
+body.light #nav-agentes .nav-icon{stroke:#0e7490}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3751,6 +3756,83 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .of-rec-acc{display:flex;gap:6px;flex-wrap:wrap}
 .of-rec-borrador{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .of-rec-btxt{font-size:.86rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
+/* Agentes (22/10): bandeja de lo que proponen las tareas nocturnas del equipo.
+   Se usa todos los días: casi sin movimiento, solo respuesta al apretar. */
+.ag-brujula{display:flex;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:10px 12px 10px 14px;margin-bottom:14px}
+.ag-brujula-ic{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--azul-tinte);color:var(--azul-claro)}
+.ag-brujula-ic svg{width:16px;height:16px}
+.ag-brujula-txt{flex:1;min-width:0}
+.ag-brujula-tit{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-brujula-res{font-size:.86rem;color:var(--texto-fuerte);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-brujula-res.vacia{color:var(--texto-tenue);font-style:italic}
+.ag-brujula-ed{display:none;flex-direction:column;gap:8px;margin:-6px 0 14px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px}
+.ag-brujula-ed.abierta{display:flex}
+.ag-brujula-ed textarea{min-height:110px;background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font:inherit;font-size:.86rem;line-height:1.55;padding:10px 12px;resize:vertical}
+.ag-brujula-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ag-b{appearance:none;border:1px solid var(--borde-fuerte);background:var(--relleno);color:var(--texto);border-radius:8px;padding:7px 12px;font:inherit;font-size:.8rem;font-weight:500;cursor:pointer;transition:transform 140ms cubic-bezier(.23,1,.32,1),background-color 140ms ease}
+.ag-b:active{transform:scale(.97)}
+.ag-b:disabled{opacity:.5;cursor:default}
+.ag-b.prim{background:var(--azul);border-color:var(--azul);color:#fff}
+.ag-b.peligro{background:transparent;border-color:transparent;color:var(--rojo-texto)}
+.ag-b svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px}
+@media (hover:hover) and (pointer:fine){.ag-b:hover{background:var(--hover)}.ag-b.prim:hover{background:var(--azul-claro)}.ag-b.peligro:hover{background:var(--rojo-tinte)}}
+.ag-bandeja{display:grid;grid-template-columns:minmax(260px,340px) 1fr;height:calc(100vh - 285px);min-height:440px;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
+.ag-lista{border-right:1px solid var(--borde);overflow-y:auto;padding:6px 0}
+.ag-grupo{padding:14px 16px 6px;display:flex;justify-content:space-between;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-grupo span:last-child{font-variant-numeric:tabular-nums}
+details.ag-plegado>summary{list-style:none;cursor:pointer}
+details.ag-plegado>summary::-webkit-details-marker{display:none}
+details.ag-plegado>summary .ag-grupo span:first-child::before{content:'›';display:inline-block;margin-right:6px;transition:transform 140ms ease}
+details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:rotate(90deg)}
+.ag-fila{all:unset;box-sizing:border-box;display:grid;grid-template-columns:8px 1fr;gap:10px;width:100%;padding:10px 16px 10px 14px;cursor:pointer;border-left:2px solid transparent}
+.ag-fila:focus-visible{outline:2px solid var(--azul);outline-offset:-2px}
+.ag-fila[aria-current="true"]{background:var(--hover);border-left-color:var(--azul)}
+@media (hover:hover) and (pointer:fine){.ag-fila:hover{background:var(--hover)}}
+.ag-punto{width:7px;height:7px;border-radius:50%;margin-top:6px;background:transparent}
+.ag-fila.nueva .ag-punto{background:var(--azul)}
+.ag-fila-tit{font-size:.86rem;font-weight:600;color:var(--texto-fuerte);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.ag-fila:not(.nueva) .ag-fila-tit{font-weight:500;color:var(--texto)}
+.ag-fila-meta{font-size:.74rem;color:var(--texto-tenue);margin-top:3px}
+.ag-detalle{display:flex;flex-direction:column;min-width:0;min-height:0}
+.ag-det-cuerpo{flex:1;overflow-y:auto;padding:26px 30px 20px}
+.ag-det-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.76rem;color:var(--texto-tenue)}
+.ag-pill{border-radius:999px;padding:2px 9px;font-size:.72rem;font-weight:600;background:var(--relleno);color:var(--texto)}
+.ag-pill.propuesta{background:var(--azul-tinte);color:var(--azul-claro)}
+.ag-pill.aceptada{background:var(--ambar-tinte);color:var(--ambar)}
+.ag-pill.hecha{background:var(--verde-tinte);color:var(--verde-texto)}
+.ag-pill.descartada{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ag-det-tit{font-size:1.3rem;line-height:1.3;font-weight:700;color:var(--texto-fuerte);margin:10px 0 8px;overflow-wrap:anywhere;text-wrap:balance}
+.ag-det-res{font-size:.95rem;line-height:1.6;color:var(--texto);max-width:72ch;white-space:pre-line;overflow-wrap:anywhere}
+.ag-inspi{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:.82rem;color:var(--texto-tenue)}
+.ag-inspi svg{width:14px;height:14px;color:var(--ambar);flex:none}
+.ag-enlaces{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.ag-enlace{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borde-fuerte);border-radius:8px;padding:6px 10px;font-size:.8rem;font-weight:500;color:var(--azul-claro);text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-enlace svg{width:13px;height:13px;flex:none}
+.ag-enlace.previa{background:var(--azul);border-color:var(--azul);color:#fff}
+.ag-sin-previa{align-self:center;font-size:.78rem;color:var(--texto-tenue)}
+@media (hover:hover) and (pointer:fine){.ag-enlace:hover{background:var(--hover)}.ag-enlace.previa:hover{background:var(--azul-claro)}}
+.ag-coment{margin-top:18px;border-left:2px solid var(--ambar);padding:2px 0 2px 12px;max-width:72ch}
+.ag-coment-de{font-size:.72rem;font-weight:600;color:var(--texto-tenue);margin-bottom:2px}
+.ag-coment-txt{font-size:.88rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
+.ag-entregable-tit{margin:24px 0 8px;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--texto-tenue)}
+.ag-entregable{background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;font-size:.88rem;line-height:1.65;color:var(--texto);white-space:pre-wrap;overflow-wrap:anywhere;max-width:80ch}
+.ag-entregable.vacio{color:var(--texto-tenue);font-style:italic}
+.ag-det-pie{flex:none;border-top:1px solid var(--borde);padding:12px 30px 14px;display:flex;flex-direction:column;gap:8px;background:var(--superficie)}
+.ag-det-pie textarea{background:var(--fondo);border:1px solid var(--borde-fuerte);border-radius:8px;color:var(--texto);font:inherit;font-size:.84rem;padding:8px 10px;min-height:40px;resize:vertical}
+.ag-det-acc{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ag-det-acc .ag-esp{flex:1}
+.ag-vacio{height:100%;display:grid;place-items:center;text-align:center;padding:30px;color:var(--texto-tenue);font-size:.88rem}
+.ag-vacio b{display:block;color:var(--texto-fuerte);font-size:.95rem;margin-bottom:4px}
+.ag-volver{display:none}
+@media (max-width:900px){
+  .ag-bandeja{grid-template-columns:1fr;height:auto;min-height:0}
+  .ag-lista{border-right:0}
+  .ag-bandeja.con-detalle .ag-lista{display:none}
+  .ag-bandeja:not(.con-detalle) .ag-detalle{display:none}
+  .ag-volver{display:inline-flex;margin-bottom:10px}
+  .ag-det-cuerpo{padding:18px 16px}
+  .ag-det-pie{padding:12px 16px}
+}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -4896,6 +4978,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
        se muestra desde el bloque de /api/me. -->
   <div class="nav-section-label">WHATSAPP</div>
   <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="message-circle" class="nav-icon"></i> Recordatorios wpp</div>
+  <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
+  <div class="nav-section-label">AGENTES</div>
+  <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6247,6 +6332,41 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN OFICINA PANEL ======= -->
 
+  <!-- ======= AGENTES PANEL ======= -->
+  <!-- Bandeja de lo que cargan por MCP las tareas programadas de Claude del
+       equipo (services/agentes.py, docs/agentes-rutina.md). Acá solo se revisa. -->
+  <div id="agentes-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Agentes</h1>
+        <div class="page-date">Lo que hicieron de noche las tareas de Claude del equipo. Tu comentario lo leen en la próxima corrida.</div>
+      </div>
+    </div>
+    <div class="ag-brujula">
+      <div class="ag-brujula-ic" aria-hidden="true"><i data-lucide="compass"></i></div>
+      <div class="ag-brujula-txt">
+        <div class="ag-brujula-tit">Brújula</div>
+        <div class="ag-brujula-res" id="ag-brujula-res"></div>
+      </div>
+      <button type="button" class="ag-b" id="ag-brujula-editar" aria-expanded="false" aria-controls="ag-brujula-ed">Editar</button>
+    </div>
+    <div class="ag-brujula-ed" id="ag-brujula-ed">
+      <label class="ag-brujula-tit" for="ag-brujula-txt">Lo que los agentes leen antes de elegir qué hacer</label>
+      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Hacia dónde vamos: ser la agencia que entrega en la mitad de tiempo.&#10;Nos interesa: agentes de IA para comercios, automatizar la entrega, un portal para clientes.&#10;No hace falta: más demos de apps de puntos."></textarea>
+      <div class="ag-brujula-pie">
+        <button type="button" class="ag-b prim" id="ag-brujula-guardar">Guardar</button>
+        <button type="button" class="ag-b" id="ag-brujula-cancelar">Cancelar</button>
+        <span id="ag-brujula-estado" class="of-ayuda" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="cr-nota" id="ag-nota" role="status" aria-live="polite"></div>
+    <div class="ag-bandeja" id="ag-bandeja">
+      <nav class="ag-lista" id="ag-lista" aria-label="Propuestas"></nav>
+      <section class="ag-detalle" id="ag-detalle" aria-live="polite"></section>
+    </div>
+  </div>
+  <!-- ======= FIN AGENTES PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7468,6 +7588,7 @@ function showPanel(name) {
   if (name === 'sombra') soCargar();
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
+  if (name === 'agentes') { agCargarBrujula(); agCargar(); }
 }
 
 // ========== Leads / Cola panel ==========
@@ -12629,7 +12750,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -17469,6 +17590,243 @@ async function ofRecAccion(e) {
   await ofCargarRecs();
 }
 // ========== FIN Oficina ==========
+
+// ========== Agentes ==========
+// Bandeja de lo que proponen las tareas programadas de Claude del equipo: lista
+// a la izquierda, detalle a la derecha. Los agentes cargan por MCP; acá una
+// persona acepta, descarta o marca como hecho. Todo texto viene de un agente
+// que leyó datos de terceros: se escapa siempre y el entregable va como texto
+// plano, sin renderizar markdown.
+const AG_GRUPOS = [['propuesta', 'Para revisar', false], ['aceptada', 'Aceptadas', false],
+                   ['hecha', 'Hechas', true], ['descartada', 'Descartadas', true]];
+const AG_TIPOS = {crm: 'CRM', producto: 'Producto', tecnologia: 'Tecnología',
+                  proceso: 'Proceso', otro: 'Otro'};
+const AG_ESTADOS = {propuesta: 'Para revisar', aceptada: 'Aceptada', hecha: 'Hecha', descartada: 'Descartada'};
+let agDatos = [];
+let agSel = null;
+let agBrujula = '';
+
+function agHace(utc) {
+  if (!utc) return '';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 24) return 'hace ' + h + ' h';
+  const dias = Math.round(h / 24);
+  if (dias < 7) return 'hace ' + dias + (dias === 1 ? ' día' : ' días');
+  return d.toLocaleDateString('es-UY', {day: 'numeric', month: 'short'});
+}
+
+function agUrlSegura(url) {
+  return /^https?:[/][/]/i.test(String(url || '')) ? url : null;
+}
+
+function agIconos(nodo) {
+  if (nodo && typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons({nodes: [nodo]});
+}
+
+// ── brújula ──
+function agPintarBrujula() {
+  const res = document.getElementById('ag-brujula-res');
+  if (!res) return;
+  const primera = agBrujula.split(/[\\r\\n]+/).map(x => x.trim()).filter(Boolean).join(' · ');
+  res.textContent = primera || 'Sin escribir: los agentes eligen solos qué hacer.';
+  res.classList.toggle('vacia', !primera);
+  res.title = agBrujula;
+}
+
+function agAbrirBrujula(abrir) {
+  const ed = document.getElementById('ag-brujula-ed');
+  const b = document.getElementById('ag-brujula-editar');
+  ed.classList.toggle('abierta', abrir);
+  b.setAttribute('aria-expanded', String(abrir));
+  b.style.display = abrir ? 'none' : '';
+  if (abrir) {
+    const txt = document.getElementById('ag-brujula-txt');
+    txt.value = agBrujula;
+    document.getElementById('ag-brujula-estado').textContent = '';
+    txt.focus();
+  }
+}
+
+async function agCargarBrujula() {
+  try {
+    const d = await ofPedir('/api/agentes/brujula');
+    agBrujula = d.texto || '';
+  } catch (e) {
+    agBrujula = '';
+  }
+  agPintarBrujula();
+  agIconos(document.querySelector('.ag-brujula'));
+  document.getElementById('ag-brujula-editar').onclick = () => agAbrirBrujula(true);
+  document.getElementById('ag-brujula-cancelar').onclick = () => agAbrirBrujula(false);
+  document.getElementById('ag-brujula-guardar').onclick = agGuardarBrujula;
+}
+
+async function agGuardarBrujula() {
+  const b = document.getElementById('ag-brujula-guardar');
+  const estado = document.getElementById('ag-brujula-estado');
+  b.disabled = true;
+  try {
+    const d = await ofPedir('/api/agentes/brujula', 'PUT', {texto: document.getElementById('ag-brujula-txt').value});
+    agBrujula = d.texto || '';
+    agPintarBrujula();
+    agAbrirBrujula(false);
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+  b.disabled = false;
+}
+
+// ── lista ──
+function agFila(p) {
+  const id = Number(p.id);
+  return '<button type="button" class="ag-fila' + (p.estado === 'propuesta' ? ' nueva' : '') + '" data-ag-id="' + id + '"'
+    + ' aria-current="' + (id === agSel) + '"><span class="ag-punto" aria-hidden="true"></span><span>'
+    + '<span class="ag-fila-tit">' + crEsc(p.titulo) + '</span>'
+    + '<span class="ag-fila-meta" style="display:block">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + ' · '
+    + crEsc(p.autor_nombre) + ' · ' + crEsc(agHace(p.actualizado_en)) + '</span></span></button>';
+}
+
+function agPintarLista() {
+  const lista = document.getElementById('ag-lista');
+  lista.innerHTML = AG_GRUPOS.map(([estado, nombre, plegado]) => {
+    const items = agDatos.filter(p => p.estado === estado);
+    if (!items.length && estado !== 'propuesta') return '';
+    const cab = '<div class="ag-grupo"><span>' + nombre + '</span><span>' + items.length + '</span></div>';
+    const filas = items.length ? items.map(agFila).join('')
+      : '<div class="ag-fila-meta" style="padding:4px 16px 10px 32px">Nada para revisar.</div>';
+    if (!plegado) return cab + filas;
+    const abierto = items.some(p => Number(p.id) === agSel);
+    return '<details class="ag-plegado"' + (abierto ? ' open' : '') + '><summary>' + cab + '</summary>' + filas + '</details>';
+  }).join('');
+  const pendientes = agDatos.filter(p => p.estado === 'propuesta').length;
+  const badge = document.getElementById('ag-badge');
+  if (badge) {
+    badge.textContent = pendientes || '';
+    badge.style.display = pendientes ? 'inline' : 'none';
+  }
+}
+
+// ── detalle ──
+function agBotones(p) {
+  const b = [];
+  if (p.estado !== 'aceptada') b.push(['aceptar', 'Aceptar', 'prim', 'check']);
+  if (p.estado !== 'hecha') b.push(['hecha', 'Ya está hecha', '', 'check-check']);
+  if (p.estado !== 'propuesta') b.push(['reabrir', 'Volver a revisar', '', 'rotate-ccw']);
+  const descartar = p.estado !== 'descartada'
+    ? '<span class="ag-esp"></span><button type="button" class="ag-b peligro" data-ag="descartar"><i data-lucide="x"></i>Descartar</button>' : '';
+  return b.map(([acc, txt, cls, ic]) => '<button type="button" class="ag-b ' + cls + '" data-ag="' + acc + '"><i data-lucide="' + ic + '"></i>' + txt + '</button>').join('') + descartar;
+}
+
+async function agPintarDetalle() {
+  const det = document.getElementById('ag-detalle');
+  const bandeja = document.getElementById('ag-bandeja');
+  const p = agDatos.find(x => Number(x.id) === agSel);
+  bandeja.classList.toggle('con-detalle', !!p);
+  if (!p) {
+    const hay = agDatos.some(x => x.estado === 'propuesta');
+    det.innerHTML = '<div class="ag-vacio"><div><b>' + (agDatos.length ? (hay ? 'Elegí una propuesta' : 'Estás al día') : 'Todavía no hay propuestas')
+      + '</b>' + (agDatos.length ? (hay ? 'Está a la izquierda, en Para revisar.' : 'No queda nada para revisar. Los agentes cargan lo nuevo de noche.')
+      : 'Los agentes cargan lo que hacen de noche. Mientras tanto, escribí la brújula.') + '</div></div>';
+    return;
+  }
+  // La vista previa va primero y como botón principal: es lo que hay que mirar
+  // antes de mergear. Si no hay, se avisa.
+  const esPrevia = e => /vista previa|preview/i.test(e.etiqueta || '');
+  const lista = (p.enlaces || []).filter(e => agUrlSegura(e.url));
+  const ordenados = lista.filter(esPrevia).concat(lista.filter(e => !esPrevia(e)));
+  const enlaces = ordenados.map(e => {
+    const previa = esPrevia(e);
+    return '<a class="ag-enlace' + (previa ? ' previa' : '') + '" href="' + crEsc(e.url) + '" target="_blank" rel="noopener noreferrer">'
+      + '<i data-lucide="' + (previa ? 'monitor-play' : 'external-link') + '"></i>' + crEsc(e.etiqueta || e.url) + '</a>';
+  }).join('') + (lista.some(esPrevia) ? '' : '<span class="ag-sin-previa">Sin vista previa todavía</span>');
+  const coment = p.comentario
+    ? '<div class="ag-coment"><div class="ag-coment-de">Comentario de ' + crEsc(p.revisado_por || 'alguien') + '</div><div class="ag-coment-txt">' + crEsc(p.comentario) + '</div></div>' : '';
+  det.innerHTML = '<div class="ag-det-cuerpo">'
+    + '<button type="button" class="ag-b ag-volver" data-ag-volver><i data-lucide="arrow-left"></i>Volver</button>'
+    + '<div class="ag-det-cab"><span class="ag-pill ' + crEsc(p.estado) + '">' + crEsc(AG_ESTADOS[p.estado] || p.estado) + '</span>'
+    + '<span class="ag-pill">' + crEsc(AG_TIPOS[p.tipo] || p.tipo) + '</span>'
+    + '<span>' + crEsc(p.autor_nombre) + ' · ' + crEsc(agHace(p.creado_en)) + '</span></div>'
+    + '<h2 class="ag-det-tit">' + crEsc(p.titulo) + '</h2>'
+    + '<div class="ag-det-res">' + crEsc(p.resumen) + '</div>'
+    + (p.inspiracion ? '<div class="ag-inspi"><i data-lucide="sparkles"></i>Inspirado en ' + crEsc(p.inspiracion) + '</div>' : '')
+    + (enlaces ? '<div class="ag-enlaces">' + enlaces + '</div>' : '')
+    + coment
+    + '<div class="ag-entregable-tit">Entregable</div><div class="ag-entregable" id="ag-entregable">Cargando…</div>'
+    + '</div>'
+    + '<div class="ag-det-pie"><textarea id="ag-com" maxlength="2000" rows="1" aria-label="Comentario para el agente"'
+    + ' placeholder="Comentario para el agente (opcional): qué cambiar o por qué no"></textarea>'
+    + '<div class="ag-det-acc">' + agBotones(p) + '</div></div>';
+  agIconos(det);
+  const caja = document.getElementById('ag-entregable');
+  try {
+    const d = await ofPedir('/api/agentes/' + Number(p.id));
+    if (agSel !== Number(p.id)) return;
+    caja.textContent = d.propuesta.detalle || 'El agente no dejó detalle: está todo en el resumen y los enlaces.';
+    caja.classList.toggle('vacio', !d.propuesta.detalle);
+  } catch (e) {
+    caja.textContent = e.message;
+  }
+}
+
+function agElegir(id) {
+  agSel = id;
+  document.querySelectorAll('#ag-lista .ag-fila').forEach(f =>
+    f.setAttribute('aria-current', String(Number(f.dataset.agId) === id)));
+  agPintarDetalle();
+}
+
+async function agCargar() {
+  const nota = document.getElementById('ag-nota');
+  if (!document.getElementById('ag-lista')) return;
+  if (nota) nota.textContent = '';
+  let d;
+  try {
+    d = await ofPedir('/api/agentes');
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  agDatos = d.propuestas;
+  if (!agDatos.some(p => Number(p.id) === agSel)) {
+    const primera = agDatos.find(p => p.estado === 'propuesta');
+    // En el celular no se abre sola: ahí la lista es la pantalla de entrada.
+    agSel = primera && window.innerWidth > 900 ? Number(primera.id) : null;
+  }
+  agPintarLista();
+  agPintarDetalle();
+  document.getElementById('ag-lista').onclick = e => {
+    const f = e.target.closest('[data-ag-id]');
+    if (f) agElegir(Number(f.dataset.agId));
+  };
+  document.getElementById('ag-detalle').onclick = agAccion;
+}
+
+async function agAccion(e) {
+  if (e.target.closest('[data-ag-volver]')) { agElegir(null); return; }
+  const b = e.target.closest('[data-ag]');
+  if (!b) return;
+  const id = agSel;
+  const nota = document.getElementById('ag-nota');
+  const com = document.getElementById('ag-com');
+  document.querySelectorAll('#ag-detalle [data-ag]').forEach(x => { x.disabled = true; });
+  try {
+    await ofPedir('/api/agentes/' + id + '/' + b.dataset.ag, 'POST', {comentario: com ? com.value : ''});
+  } catch (ex) {
+    document.querySelectorAll('#ag-detalle [data-ag]').forEach(x => { x.disabled = false; });
+    if (nota) nota.textContent = ex.message;
+    return;
+  }
+  // Como una bandeja de mail: al resolver una, pasa a la siguiente sin revisar.
+  const pendientes = agDatos.filter(p => p.estado === 'propuesta' && Number(p.id) !== id);
+  agSel = pendientes.length ? Number(pendientes[0].id) : id;
+  await agCargar();
+}
+// ========== FIN Agentes ==========
 
 
 // ========== Instagram ==========
@@ -22690,7 +23048,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23744,8 +24102,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

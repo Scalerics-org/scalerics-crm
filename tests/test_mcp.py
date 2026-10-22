@@ -76,9 +76,10 @@ def test_init_db_crea_mcp_llamadas(db):
     conn.close()
 
 
-def test_listar_herramientas_tiene_las_tres_con_schema():
+def test_listar_herramientas_tiene_todas_con_schema():
     hs = {h["name"]: h for h in mt.listar_herramientas()}
-    assert set(hs) == {"buscar_leads", "ver_lead", "pipeline"}
+    assert set(hs) == {"buscar_leads", "ver_lead", "pipeline", "brujula", "ver_propuestas_agentes",
+                       "ver_propuesta_agente", "proponer", "completar_propuesta"}
     for h in hs.values():
         assert h["description"]
         assert h["inputSchema"]["type"] == "object"
@@ -500,7 +501,8 @@ def test_ping(claude):
 def test_tools_list(claude):
     r = claude(_rpc("tools/list"))
     nombres = [t["name"] for t in r.get_json()["result"]["tools"]]
-    assert nombres == ["buscar_leads", "ver_lead", "pipeline"]
+    assert nombres == ["buscar_leads", "ver_lead", "pipeline", "brujula", "ver_propuestas_agentes",
+                       "ver_propuesta_agente", "proponer", "completar_propuesta"]
 
 
 def test_tools_call(claude):
@@ -562,7 +564,7 @@ def test_excepcion_inesperada_vuelve_como_json_rpc_32603(claude, monkeypatch, ca
 
 
 def test_cuerpo_demasiado_grande_es_413_json(claude):
-    grande = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"x": "a" * 9000}})
+    grande = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"x": "a" * (130 * 1024)}})
     r = claude(None, raw=grande)
     assert r.status_code == 413 and r.get_json()["error"]["code"] == -32600
 
@@ -613,7 +615,7 @@ def test_cuerpo_chunked_demasiado_grande_es_413_json(app, sembrada, ana):
     from werkzeug.test import EnvironBuilder, run_wsgi_app
     token = _token_de(sembrada, ana)
     cuerpo = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping",
-                         "params": {"relleno": "x" * (20 * 1024)}}).encode()
+                         "params": {"relleno": "x" * (140 * 1024)}}).encode()
     b = EnvironBuilder(path="/mcp", method="POST", input_stream=io.BytesIO(cuerpo),
                        content_type="application/json",
                        headers={"Authorization": f"Bearer {token}",

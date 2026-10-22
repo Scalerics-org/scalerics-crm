@@ -1,6 +1,9 @@
 """Las herramientas que el CRM le ofrece a Claude por MCP.
 
-Solo lectura, leads y pipeline. Cada herramienta es un dict con `name`,
+Leads y pipeline, de solo lectura. Las de agentes (22/10) son la única
+escritura: las tareas programadas del equipo cargan lo que proponen y hacen en
+`agentes_propuestas` (services/agentes.py), y una persona lo revisa en el panel
+Agentes. No tocan leads ni nada que salga del CRM. Cada herramienta es un dict con `name`,
 `description`, `inputSchema` (JSON Schema) y `fn`. La validación de argumentos
 es propia y chica: tipos básicos, requeridos, rangos, enum y
 `additionalProperties: false`. No vale la pena una librería para tres schemas.
@@ -31,6 +34,8 @@ from typing import Optional
 
 from database import (ETAPAS_CLIENTE, ETAPAS_PRECLIENTE, _connect, get_business,
                       get_client_info, get_lead_events)
+
+from services import agentes
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +81,9 @@ def init_mcp(conn: sqlite3.Connection) -> None:
 
 # ── validación ───────────────────────────────────────────────────────────────
 
-_TIPOS = {"string": str, "integer": int, "boolean": bool}
+# Los elementos de un array no se validan acá: el único array son los enlaces
+# de una propuesta, y services/agentes.py los revisa uno por uno.
+_TIPOS = {"string": str, "integer": int, "boolean": bool, "array": list}
 
 
 def validar_argumentos(schema: dict, args) -> dict:
@@ -123,6 +130,8 @@ def validar_argumentos(schema: dict, args) -> dict:
         if tipo is int and ("minimum" in prop and valor < prop["minimum"]
                             or "maximum" in prop and valor > prop["maximum"]):
             raise ArgumentosInvalidos(f"'{nombre}' tiene que estar entre {prop.get('minimum')} y {prop.get('maximum')}")
+        if tipo is list and "maxItems" in prop and len(valor) > prop["maxItems"]:
+            raise ArgumentosInvalidos(f"'{nombre}' tiene como mucho {prop['maxItems']} elementos")
         if "enum" in prop and valor not in prop["enum"]:
             raise ArgumentosInvalidos(f"'{nombre}' tiene que ser una de: {', '.join(prop['enum'])}")
         salida[nombre] = valor
@@ -352,12 +361,117 @@ HERRAMIENTAS: list[dict] = [
     },
 ]
 
+# ── agentes (22/10) ──────────────────────────────────────────────────────────
+
+_ENLACES = {
+    "type": "array", "maxItems": agentes.TOPE_ENLACES,
+    "description": ("Hasta 5 enlaces a lo que hiciste: la PR, el preview, el borrador. "
+                    "Cada uno {\"etiqueta\": \"PR #12\", \"url\": \"https://...\"}. Solo http(s). "
+                    "Reemplaza la lista anterior entera."),
+}
+
+HERRAMIENTAS += [
+    {
+        "name": "brujula",
+        "description": ("Las prioridades que escribió el equipo de Scalerics para los agentes: qué "
+                        "importa este mes, qué no hace falta, qué ideas gustan. Leela PRIMERO, antes "
+                        "de elegir qué hacer, y elegí según ella. Si está vacía, elegí con tu criterio."),
+        "inputSchema": {"type": "object", "properties": {}, "required": [],
+                        "additionalProperties": False},
+        "fn": lambda db, a: agentes.leer_brujula(db),
+    },
+    {
+        "name": "ver_propuestas_agentes",
+        "description": ("Lo que ya propusieron los agentes del equipo, lo más reciente primero, con "
+                        "el estado y el comentario de quien lo revisó. Leelo ANTES de proponer: "
+                        "no repitas lo que ya está, seguí lo aceptado y aprendé de lo descartado "
+                        "(el comentario dice por qué). Sin detalle; para eso ver_propuesta_agente."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "estado": {"type": "string", "enum": list(agentes.ESTADOS),
+                           "description": "propuesta (sin revisar), aceptada, descartada o hecha"},
+                "limite": {"type": "integer", "minimum": 1, "maximum": agentes.TOPE_LISTA,
+                           "default": 30},
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        "fn": lambda db, a: {"conteos": agentes.conteos(db),
+                             "propuestas": agentes.listar(db, a.get("estado"), a["limite"])},
+    },
+    {
+        "name": "ver_propuesta_agente",
+        "description": "Una propuesta completa, con el detalle de lo que se hizo.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"propuesta_id": {"type": "integer", "minimum": 1}},
+            "required": ["propuesta_id"],
+            "additionalProperties": False,
+        },
+        "fn": lambda db, a: agentes.ver(db, a["propuesta_id"]),
+    },
+    {
+        "name": "proponer",
+        "description": ("Carga en el panel Agentes del CRM un proyecto que hiciste para Scalerics, "
+                        "para que una persona lo acepte o lo descarte. Proyectos grandes y hechos, "
+                        "no ideas sueltas ni tareas chicas: la PR con el prototipo funcionando y el "
+                        "plan de lo que falta. Con la misma `clave` no se duplica: devuelve la que ya estaba."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tipo": {"type": "string", "enum": list(agentes.TIPOS)},
+                "titulo": {"type": "string", "minLength": 3, "maxLength": agentes.LARGO_TITULO,
+                           "description": "Qué es, en una línea"},
+                "resumen": {"type": "string", "minLength": 10, "maxLength": agentes.LARGO_RESUMEN,
+                            "description": "Qué hiciste y qué cambia para Scalerics, en 2 o 3 frases"},
+                "inspiracion": {"type": "string", "maxLength": agentes.LARGO_INSPIRACION,
+                                "description": "Qué empresas lo hacen así, ej. 'Linear (ciclos), HubSpot (playbooks)'"},
+                "detalle": {"type": "string", "maxLength": agentes.LARGO_DETALLE,
+                            "description": ("El entregable o su explicación: el texto del borrador, "
+                                            "los hallazgos, qué cambia la PR y cómo probarla. Texto plano o markdown.")},
+                "clave": {"type": "string", "minLength": 3, "maxLength": agentes.LARGO_CLAVE,
+                          "description": "Identificador estable del tema, ej. 'seo-titulo-home'"},
+                "enlaces": _ENLACES,
+            },
+            "required": ["tipo", "titulo", "resumen"],
+            "additionalProperties": False,
+        },
+        "con_usuario": True,
+        "fn": lambda db, a, u: agentes.proponer(db, u, a["tipo"], a["titulo"], a["resumen"],
+                                                a.get("detalle"), a.get("enlaces"), a.get("clave"),
+                                                a.get("inspiracion")),
+    },
+    {
+        "name": "completar_propuesta",
+        "description": ("Actualiza una propuesta tuya con lo que avanzaste: otra noche de trabajo "
+                        "sobre el mismo proyecto, lo que pidió el comentario, un enlace nuevo. Solo "
+                        "propuestas tuyas que sigan propuestas o aceptadas. No cambia el estado: eso "
+                        "lo hace una persona."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "propuesta_id": {"type": "integer", "minimum": 1},
+                "titulo": {"type": "string", "minLength": 3, "maxLength": agentes.LARGO_TITULO},
+                "resumen": {"type": "string", "minLength": 10, "maxLength": agentes.LARGO_RESUMEN},
+                "detalle": {"type": "string", "maxLength": agentes.LARGO_DETALLE},
+                "enlaces": _ENLACES,
+            },
+            "required": ["propuesta_id"],
+            "additionalProperties": False,
+        },
+        "con_usuario": True,
+        "fn": lambda db, a, u: agentes.completar(db, u, a["propuesta_id"], a.get("resumen"),
+                                                 a.get("detalle"), a.get("enlaces"), a.get("titulo")),
+    },
+]
+
 _POR_NOMBRE = {h["name"]: h for h in HERRAMIENTAS}
 
 
 def listar_herramientas() -> list[dict]:
     """Lo que va en tools/list: todo menos la función."""
-    return [{k: v for k, v in h.items() if k != "fn"} for h in HERRAMIENTAS]
+    return [{k: v for k, v in h.items() if k not in ("fn", "con_usuario")} for h in HERRAMIENTAS]
 
 
 def ejecutar(db: str, usuario: dict, nombre: str, argumentos) -> dict:
@@ -372,12 +486,12 @@ def ejecutar(db: str, usuario: dict, nombre: str, argumentos) -> dict:
     inicio = time.monotonic()
     ok, error, texto = True, None, ""
     try:
-        resultado = h["fn"](db, args)
+        resultado = h["fn"](db, args, usuario) if h.get("con_usuario") else h["fn"](db, args)
         # json.dumps escapa comillas y llaves del texto de terceros: una nota
         # no puede cerrar `datos` ni inventarse otro `aviso`.
         texto = json.dumps({"aviso": AVISO_DATOS_DE_TERCEROS, "datos": resultado},
                            ensure_ascii=False, default=str)
-    except ErrorHerramienta as e:
+    except (ErrorHerramienta, agentes.NoSePuede) as e:
         ok, error, texto = False, str(e), str(e)
     except Exception:
         # Solo los nombres de los argumentos: un valor enorme o sensible no
