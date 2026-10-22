@@ -1,4 +1,4 @@
-"""Lo que usa la sesión de Claude Code que responde por los agentes de la Oficina.
+"""Lo que usa la tarea de Claude Code de Bruno y el lector de WhatsApp de Juan.
 
 Va sin sesión y se valida con OFICINA_BOT_TOKEN (header x-oficina-token), que
 solo abre estas rutas. Mismo criterio que /api/linkedin-bot/: no lo mezcles con
@@ -11,7 +11,6 @@ import os
 from flask import Blueprint, current_app, jsonify, request
 
 from services import oficina as of
-from services import oficina_datos as datos
 from services import wa_juan
 
 oficina_bot_bp = Blueprint("oficina_bot", __name__)
@@ -32,21 +31,6 @@ def _candado_bot():
     if not _bot_ok():
         return jsonify({"ok": False, "error": "No autorizado"}), 403
     return None
-
-
-@oficina_bot_bp.route("/api/oficina-bot/pendientes")
-def bot_pendientes():
-    return jsonify({"ok": True, "pendientes": of.pendientes(_db())})
-
-
-@oficina_bot_bp.route("/api/oficina-bot/mensajes/<int:msj_id>/responder", methods=["POST"])
-def bot_responder(msj_id):
-    datos = request.get_json(silent=True) or {}
-    try:
-        nuevo = of.responder(_db(), msj_id, datos.get("texto"), datos.get("fuente"))
-    except of.NoSePuede as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-    return jsonify({"ok": True, "id": nuevo})
 
 
 @oficina_bot_bp.route("/api/oficina-bot/recordatorios")
@@ -80,19 +64,6 @@ def bot_hecho(rec_id):
     return jsonify({"ok": True})
 
 
-@oficina_bot_bp.route("/api/oficina-bot/esquema")
-def bot_esquema():
-    return jsonify({"ok": True, "tablas": datos.esquema(_db())})
-
-
-@oficina_bot_bp.route("/api/oficina-bot/consulta", methods=["POST"])
-def bot_consulta():
-    try:
-        return jsonify({"ok": True, **datos.consultar(_db(), (request.get_json(silent=True) or {}).get("sql"))})
-    except datos.ConsultaInvalida as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-
 # Plantillas que Juan mandó desde su WhatsApp: las manda el lector de su notebook.
 @oficina_bot_bp.route("/api/oficina-bot/envios")
 def bot_envios():
@@ -101,9 +72,9 @@ def bot_envios():
 
 @oficina_bot_bp.route("/api/oficina-bot/envios/<int:envio_id>/resultado", methods=["POST"])
 def bot_resultado_envio(envio_id):
-    datos_envio = request.get_json(silent=True) or {}
+    datos = request.get_json(silent=True) or {}
     try:
-        wa_juan.resultado(_db(), envio_id, bool(datos_envio.get("ok")), datos_envio.get("error"))
+        wa_juan.resultado(_db(), envio_id, bool(datos.get("ok")), datos.get("error"))
     except wa_juan.NoSePuede as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True})
