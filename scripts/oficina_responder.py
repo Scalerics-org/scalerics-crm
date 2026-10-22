@@ -1,11 +1,15 @@
-"""Cliente de los recordatorios de Bruno (lo usa la tarea programada de Claude Code).
+"""Cliente de Recordatorios wpp (lo usan las tareas programadas de Claude Code).
 
-La tarea lee los chats nuevos del WhatsApp de Juan, carga los recordatorios y
-arma los mensajes que Juan pidió con "Armame el mensaje". El token sale
+Una tarea contesta las preguntas que Juan le hace desde el CRM (con sus
+indicaciones y aprendizajes) y arma los mensajes de "Armame el mensaje"; la
+otra lee los chats nuevos de WhatsApp y carga los recordatorios. El token sale
 de OFICINA_BOT_TOKEN o de %APPDATA%/Scalerics/oficina_bot_token.txt (lo crea
 "Activar Oficina.bat") y nunca se imprime.
 
 Uso:
+    python scripts/oficina_responder.py pendientes
+    python scripts/oficina_responder.py responder <id> <archivo.json>
+        el JSON: {"texto": "...", "fuente": "de dónde salió el dato"}
     python scripts/oficina_responder.py recordatorios
         los abiertos y los que esperan que Bruno arme el mensaje
     python scripts/oficina_responder.py crear-recordatorio <archivo.json>
@@ -49,7 +53,14 @@ def main(args):
     if not args:
         sys.exit(__doc__)
     cmd = args[0]
-    if cmd == "recordatorios":
+    if cmd == "pendientes":
+        print(json.dumps(_pedir("GET", "/api/oficina-bot/pendientes")["pendientes"],
+                         ensure_ascii=False, indent=2))
+    elif cmd == "responder" and len(args) == 3:
+        cuerpo = json.load(open(args[2], encoding="utf-8"))
+        print(json.dumps(_pedir("POST", f"/api/oficina-bot/mensajes/{int(args[1])}/responder",
+                                json=cuerpo), ensure_ascii=False))
+    elif cmd == "recordatorios":
         datos = _pedir("GET", "/api/oficina-bot/recordatorios")
         datos.pop("ok", None)
         print(json.dumps(datos, ensure_ascii=False, indent=2))
