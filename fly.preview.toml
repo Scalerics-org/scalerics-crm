@@ -22,7 +22,12 @@ primary_region = "iad"
   min_machines_running = 0
   processes = ["app"]
 
+# 256 MB + swap, como scalerics-wa: sin procesos de fondo alcanza, y la
+# mitad de memoria es la mitad de costo mientras alguien la está mirando.
+# Fly perdona la factura de la org personal solo si queda debajo de USD 5.
+swap_size_mb = 512
+
 [[vm]]
-  memory = "512mb"
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1

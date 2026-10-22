@@ -58,3 +58,12 @@ def test_el_workflow_corre_la_version_de_main():
     assert "head.repo.full_name == github.repository" in wf
     assert "persist-credentials: false" in wf
     assert "flyctl apps destroy" in wf
+
+
+def test_la_vista_previa_es_chica_y_se_limpia():
+    toml = (RAIZ / "fly.preview.toml").read_text(encoding="utf-8")
+    assert 'memory = "256mb"' in toml
+    limpieza = (RAIZ / ".github" / "workflows" / "preview-limpieza.yml").read_text(encoding="utf-8")
+    assert "scalerics-crm-pr-" in limpieza and "5 days ago" in limpieza
+    # Nunca puede tocar la app de producción.
+    assert 'startswith("scalerics-crm-pr-")' in limpieza
