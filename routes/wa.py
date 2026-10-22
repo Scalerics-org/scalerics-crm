@@ -229,7 +229,7 @@ def api_lead_by_phone(phone):
 def api_bot_lead_qualified():
     """Receives a push from the bot when a lead qualifies (MEETING_SENT / HUMAN_QUEUED)."""
     from database import (
-        ETAPA_DEMO_AGENDADA,
+        ETAPA_DEMO_AGENDADA, es_cliente,
         get_business_by_phone, insert_business, update_business, upsert_client_info,
     )
 
@@ -263,10 +263,12 @@ def api_bot_lead_qualified():
     biz = get_business_by_phone(db, phone)
     if biz:
         biz_id = biz["id"]
+        # Un cliente que le escribe al bot sigue siendo cliente (ver `es_cliente`).
+        etapa = {} if es_cliente(biz) else {"crm_status": crm_status}
         update_business(
             db, biz_id,
-            crm_status=crm_status,
             name=data.get("business_name") or biz.get("name") or "Sin nombre",
+            **etapa,
         )
     else:
         biz_id = insert_business(db, {
