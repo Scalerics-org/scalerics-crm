@@ -1232,6 +1232,35 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "finanzas_esenciales", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "finanzas_esenciales", "iva_usd", "REAL NOT NULL DEFAULT 0")
 
+        # Ventas cargadas a mano (Juan, 22/10). Las ventas del mes salen solas
+        # de los cierres (services/finanzas.py, `ventas_del_mes`); esta tabla
+        # es para lo que el cierre no dice: una venta sin lead en el CRM, o el
+        # monto acordado de un cliente. Una venta a mano de un cliente
+        # reemplaza su cierre automático. `client_id` NULL es una venta sin
+        # ficha, y entonces el nombre va en `cliente`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_ventas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER REFERENCES businesses(id),
+                cliente         TEXT,
+                concepto        TEXT,
+                fecha           TEXT NOT NULL,
+                periodo         TEXT NOT NULL,
+                monto           REAL NOT NULL CHECK (monto >= 0),
+                moneda          TEXT NOT NULL DEFAULT 'USD',
+                tipo_cambio     REAL,
+                monto_usd       REAL NOT NULL,
+                notas           TEXT,
+                borrado         INTEGER NOT NULL DEFAULT 0,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_finanzas_ventas_periodo
+                ON finanzas_ventas (periodo) WHERE borrado = 0
+        """)
+
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles
         # nuevos se la aplican porque esconder un ítem del menú no es un
