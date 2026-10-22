@@ -413,10 +413,10 @@ HERRAMIENTAS += [
     },
     {
         "name": "proponer",
-        "description": ("Carga en el panel Agentes del CRM algo que hiciste para Scalerics, para "
-                        "que una persona lo acepte o lo descarte. Proponé cosas hechas, no ideas "
-                        "sueltas: la PR abierta, el borrador escrito, la investigación terminada. "
-                        "Con la misma `clave` no se duplica: devuelve la que ya estaba."),
+        "description": ("Carga en el panel Agentes del CRM un proyecto que hiciste para Scalerics, "
+                        "para que una persona lo acepte o lo descarte. Proyectos grandes y hechos, "
+                        "no ideas sueltas ni tareas chicas: la PR con el prototipo funcionando y el "
+                        "plan de lo que falta. Con la misma `clave` no se duplica: devuelve la que ya estaba."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -424,7 +424,9 @@ HERRAMIENTAS += [
                 "titulo": {"type": "string", "minLength": 3, "maxLength": agentes.LARGO_TITULO,
                            "description": "Qué es, en una línea"},
                 "resumen": {"type": "string", "minLength": 10, "maxLength": agentes.LARGO_RESUMEN,
-                            "description": "Qué hiciste y por qué le suma a Scalerics, en 2 o 3 frases"},
+                            "description": "Qué hiciste y qué cambia para Scalerics, en 2 o 3 frases"},
+                "inspiracion": {"type": "string", "maxLength": agentes.LARGO_INSPIRACION,
+                                "description": "Qué empresas lo hacen así, ej. 'Linear (ciclos), HubSpot (playbooks)'"},
                 "detalle": {"type": "string", "maxLength": agentes.LARGO_DETALLE,
                             "description": ("El entregable o su explicación: el texto del borrador, "
                                             "los hallazgos, qué cambia la PR y cómo probarla. Texto plano o markdown.")},
@@ -437,17 +439,20 @@ HERRAMIENTAS += [
         },
         "con_usuario": True,
         "fn": lambda db, a, u: agentes.proponer(db, u, a["tipo"], a["titulo"], a["resumen"],
-                                                a.get("detalle"), a.get("enlaces"), a.get("clave")),
+                                                a.get("detalle"), a.get("enlaces"), a.get("clave"),
+                                                a.get("inspiracion")),
     },
     {
         "name": "completar_propuesta",
-        "description": ("Agrega a una propuesta tuya lo que hiciste después: la PR que pidió el "
-                        "comentario, un enlace nuevo, el detalle corregido. Solo propuestas tuyas "
-                        "que sigan propuestas o aceptadas. No cambia el estado: eso lo hace una persona."),
+        "description": ("Actualiza una propuesta tuya con lo que avanzaste: otra noche de trabajo "
+                        "sobre el mismo proyecto, lo que pidió el comentario, un enlace nuevo. Solo "
+                        "propuestas tuyas que sigan propuestas o aceptadas. No cambia el estado: eso "
+                        "lo hace una persona."),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "propuesta_id": {"type": "integer", "minimum": 1},
+                "titulo": {"type": "string", "minLength": 3, "maxLength": agentes.LARGO_TITULO},
                 "resumen": {"type": "string", "minLength": 10, "maxLength": agentes.LARGO_RESUMEN},
                 "detalle": {"type": "string", "maxLength": agentes.LARGO_DETALLE},
                 "enlaces": _ENLACES,
@@ -457,7 +462,7 @@ HERRAMIENTAS += [
         },
         "con_usuario": True,
         "fn": lambda db, a, u: agentes.completar(db, u, a["propuesta_id"], a.get("resumen"),
-                                                 a.get("detalle"), a.get("enlaces")),
+                                                 a.get("detalle"), a.get("enlaces"), a.get("titulo")),
     },
 ]
 

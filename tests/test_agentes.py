@@ -61,7 +61,7 @@ def test_init_db_crea_la_tabla(db):
 
 
 def test_proponer_y_listar(db, juan):
-    r = ag.proponer(db, juan, "codigo", "  Arreglar el título de la home ", "Le falta la palabra clave",
+    r = ag.proponer(db, juan, "crm", "  Arreglar el título de la home ", "Le falta la palabra clave",
                     detalle="cambia index.html", enlaces=[{"etiqueta": "PR #3", "url": "https://github.com/x/y/pull/3"}])
     assert r == {"id": r["id"], "estado": "propuesta", "repetida": False}
     lista = ag.listar(db)
@@ -75,8 +75,8 @@ def test_proponer_y_listar(db, juan):
 
 
 def test_misma_clave_no_duplica(db, juan, javier):
-    a = ag.proponer(db, juan, "ventas", "Lista de ópticas", "Ópticas sin web en Montevideo", clave="opticas-mvd")
-    b = ag.proponer(db, javier, "ventas", "Otra vez ópticas", "Lo mismo de otro agente", clave="opticas-mvd")
+    a = ag.proponer(db, juan, "producto", "Lista de ópticas", "Ópticas sin web en Montevideo", clave="opticas-mvd")
+    b = ag.proponer(db, javier, "producto", "Otra vez ópticas", "Lo mismo de otro agente", clave="opticas-mvd")
     assert b == {"id": a["id"], "estado": "propuesta", "repetida": True}
     assert len(ag.listar(db)) == 1
 
@@ -114,7 +114,7 @@ def test_proponer_rechaza(db, juan, campos):
 
 
 def test_completar_solo_la_propia_y_sin_tocar_estado(db, juan, javier):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     with pytest.raises(ag.NoSePuede, match="propia"):
         ag.completar(db, javier, pid, detalle="me meto")
     ag.revisar(db, pid, "aceptar", "Javier", "dale, abrí la PR")
@@ -127,20 +127,20 @@ def test_completar_solo_la_propia_y_sin_tocar_estado(db, juan, javier):
 
 @pytest.mark.parametrize("accion", ["descartar", "hecha"])
 def test_completar_cerrada_no_se_puede(db, juan, accion):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     ag.revisar(db, pid, accion, "Javier")
     with pytest.raises(ag.NoSePuede):
         ag.completar(db, juan, pid, detalle="tarde")
 
 
 def test_completar_sin_cambios(db, juan):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     with pytest.raises(ag.NoSePuede, match="nada"):
         ag.completar(db, juan, pid)
 
 
 def test_revisar_comentario_vacio_no_borra_el_anterior(db, juan):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     ag.revisar(db, pid, "aceptar", "Javier", "hacelo con tests")
     ag.revisar(db, pid, "hecha", "Juan", "  ")
     p = ag.ver(db, pid)
@@ -149,14 +149,14 @@ def test_revisar_comentario_vacio_no_borra_el_anterior(db, juan):
 
 
 def test_revisar_accion_desconocida(db, juan):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     with pytest.raises(ag.NoSePuede):
         ag.revisar(db, pid, "borrar", "Javier")
 
 
 def test_listar_filtra_por_estado(db, juan):
-    a = ag.proponer(db, juan, "codigo", "Uno", "Un resumen")["id"]
-    ag.proponer(db, juan, "codigo", "Dos", "Un resumen")
+    a = ag.proponer(db, juan, "crm", "Uno", "Un resumen")["id"]
+    ag.proponer(db, juan, "crm", "Dos", "Un resumen")
     ag.revisar(db, a, "descartar", "Javier", "no suma")
     assert [p["titulo"] for p in ag.listar(db, "descartada")] == ["Uno"]
     assert [p["titulo"] for p in ag.listar(db, "propuesta")] == ["Dos"]
@@ -167,7 +167,7 @@ def test_listar_filtra_por_estado(db, juan):
 # ── herramientas MCP ─────────────────────────────────────────────────────────
 
 def test_proponer_por_mcp_queda_a_nombre_de_quien_llama(db, juan):
-    r = mt.ejecutar(db, juan, "proponer", {"tipo": "contenido", "titulo": "Post sobre bots",
+    r = mt.ejecutar(db, juan, "proponer", {"tipo": "proceso", "titulo": "Post sobre bots",
                                            "resumen": "Borrador de LinkedIn sobre el bot de WhatsApp",
                                            "detalle": "texto del post", "clave": "post-bots"})
     assert r["isError"] is False
@@ -176,7 +176,7 @@ def test_proponer_por_mcp_queda_a_nombre_de_quien_llama(db, juan):
 
 
 def test_ver_propuestas_por_mcp_trae_conteos_y_comentario(db, juan):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     ag.revisar(db, pid, "descartar", "Javier", "ya lo hicimos a mano")
     datos = _texto_resultado(mt.ejecutar(db, juan, "ver_propuestas_agentes", {}))
     assert datos["conteos"]["descartada"] == 1
@@ -184,7 +184,7 @@ def test_ver_propuestas_por_mcp_trae_conteos_y_comentario(db, juan):
 
 
 def test_error_del_servicio_vuelve_como_iserror(db, juan, javier):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen")["id"]
     r = mt.ejecutar(db, javier, "completar_propuesta", {"propuesta_id": pid, "detalle": "x"})
     assert r["isError"] is True and "propia" in r["content"][0]["text"]
     r = mt.ejecutar(db, juan, "ver_propuesta_agente", {"propuesta_id": 999})
@@ -212,7 +212,7 @@ def test_proponer_por_el_endpoint_mcp_con_detalle_largo(db, juan):
     # El peor caso: 20.000 caracteres que json.dumps escapa como \uXXXX.
     detalle = "ñ" * ag.LARGO_DETALLE
     cuerpo = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-        "name": "proponer", "arguments": {"tipo": "investigacion", "titulo": "Competencia",
+        "name": "proponer", "arguments": {"tipo": "tecnologia", "titulo": "Competencia",
                                           "resumen": "Qué cobran las otras agencias", "detalle": detalle}}})
     r = app.test_client().post("/mcp", data=cuerpo, content_type="application/json",
                                headers={"Authorization": f"Bearer {token}"})
@@ -242,7 +242,7 @@ def test_panel_sin_permiso_es_403(db, juan):
 
 
 def test_panel_con_permiso_revisa(db, juan):
-    pid = ag.proponer(db, juan, "codigo", "Título", "Un resumen", detalle="el detalle")["id"]
+    pid = ag.proponer(db, juan, "crm", "Título", "Un resumen", detalle="el detalle")["id"]
     c = _cliente(db, "socio@scalerics.com", paneles=["agentes"])
     d = c.get("/api/agentes?estado=propuesta").get_json()
     assert d["conteos"]["propuesta"] == 1 and d["propuestas"][0]["id"] == pid
@@ -305,3 +305,17 @@ def test_brujula_por_el_panel(db):
     assert c.put("/api/agentes/brujula", json={}).status_code == 400
     otro = _cliente(db, "vende@scalerics.com", paneles=["cola"])
     assert otro.put("/api/agentes/brujula", json={"texto": "x"}).status_code == 403
+
+
+def test_inspiracion_y_titulo_que_se_ajusta(db, juan):
+    pid = ag.proponer(db, juan, "crm", "Portal de clientes", "Cada cliente ve cómo va su proyecto",
+                      inspiracion="Linear (estado público), Vercel (previews)")["id"]
+    assert ag.ver(db, pid)["inspiracion"] == "Linear (estado público), Vercel (previews)"
+    ag.completar(db, juan, pid, titulo="Portal de clientes con previews en vivo")
+    assert ag.ver(db, pid)["titulo"] == "Portal de clientes con previews en vivo"
+    with pytest.raises(ag.NoSePuede):
+        ag.proponer(db, juan, "crm", "Otro", "Un resumen largo", inspiracion="x" * 301)
+
+
+def test_los_tipos_son_de_proyecto_grande():
+    assert ag.TIPOS == ("crm", "producto", "tecnologia", "proceso", "otro")

@@ -24,7 +24,10 @@ from urllib.parse import urlparse
 from database import _connect
 
 FORMATO = "%Y-%m-%d %H:%M:%S"
-TIPOS = ("codigo", "contenido", "ventas", "investigacion", "operacion", "otro")
+# Proyectos grandes, no tareas sueltas (pedido de Juan, 22/10): una sección
+# nueva del CRM, un producto para vender, una tecnología para adoptar, una
+# forma nueva de trabajar.
+TIPOS = ("crm", "producto", "tecnologia", "proceso", "otro")
 ESTADOS = ("propuesta", "aceptada", "descartada", "hecha")
 # Qué estado deja cada acción del panel. Desde cualquier estado: una
 # descartada se puede rescatar y una hecha se puede reabrir.
@@ -33,6 +36,7 @@ ACCIONES = {"aceptar": "aceptada", "descartar": "descartada", "hecha": "hecha",
 EDITABLES_POR_EL_AGENTE = ("propuesta", "aceptada")
 LARGO_TITULO = 120
 LARGO_RESUMEN = 600
+LARGO_INSPIRACION = 300
 LARGO_DETALLE = 20000
 LARGO_COMENTARIO = 2000
 LARGO_BRUJULA = 3000
@@ -59,6 +63,7 @@ def init_agentes(conn: sqlite3.Connection) -> None:
             resumen        TEXT NOT NULL,
             detalle        TEXT,
             enlaces        TEXT NOT NULL DEFAULT '[]',   -- JSON [{etiqueta, url}]
+            inspiracion    TEXT,                         -- qué empresa lo hace así
             clave          TEXT UNIQUE,                  -- la pone el agente, para no repetir
             estado         TEXT NOT NULL DEFAULT 'propuesta',
             comentario     TEXT,                         -- de quien revisa
@@ -128,7 +133,7 @@ def _fila(f, con_detalle: bool) -> dict:
 
 
 def proponer(db: str, autor: dict, tipo, titulo, resumen, detalle=None,
-             enlaces=None, clave=None) -> dict:
+             enlaces=None, clave=None, inspiracion=None) -> dict:
     """Crea la propuesta. Con una `clave` que ya existe no crea otra: devuelve
     la que está, con `repetida`, para que el agente lo sepa y no insista."""
     if tipo not in TIPOS:
@@ -137,6 +142,7 @@ def proponer(db: str, autor: dict, tipo, titulo, resumen, detalle=None,
     resumen = _texto(resumen, LARGO_RESUMEN, "Falta el resumen")
     detalle = _texto(detalle, LARGO_DETALLE, None)
     clave = _texto(clave, LARGO_CLAVE, None)
+    inspiracion = _texto(inspiracion, LARGO_INSPIRACION, None)
     lista = _enlaces(enlaces)
     conn = _connect(db)
     try:
@@ -148,16 +154,18 @@ def proponer(db: str, autor: dict, tipo, titulo, resumen, detalle=None,
         ahora = _ahora()
         pid = conn.execute(
             "INSERT INTO agentes_propuestas (autor_id, autor_nombre, tipo, titulo, resumen, "
-            "detalle, enlaces, clave, creado_en, actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "detalle, enlaces, clave, inspiracion, creado_en, actualizado_en) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (autor.get("id"), autor.get("name") or "sin nombre", tipo, titulo, resumen, detalle,
-             json.dumps(lista, ensure_ascii=False), clave, ahora, ahora)).lastrowid
+             json.dumps(lista, ensure_ascii=False), clave, inspiracion, ahora, ahora)).lastrowid
         conn.commit()
     finally:
         conn.close()
     return {"id": pid, "estado": "propuesta", "repetida": False}
 
 
-def completar(db: str, autor: dict, pid: int, resumen=None, detalle=None, enlaces=None) -> dict:
+def completar(db: str, autor: dict, pid: int, resumen=None, detalle=None, enlaces=None,
+              titulo=None) -> dict:
     """El agente agrega a su propia propuesta lo que hizo. No toca el estado ni
     el comentario de la revisión: si estaba aceptada, sigue aceptada."""
     conn = _connect(db)
@@ -171,6 +179,8 @@ def completar(db: str, autor: dict, pid: int, resumen=None, detalle=None, enlace
         if f["estado"] not in EDITABLES_POR_EL_AGENTE:
             raise NoSePuede(f"La propuesta está {f['estado']}: ya no se completa")
         cambios = {}
+        if titulo is not None:
+            cambios["titulo"] = _texto(titulo, LARGO_TITULO, "El título no puede quedar vacío")
         if resumen is not None:
             cambios["resumen"] = _texto(resumen, LARGO_RESUMEN, "El resumen no puede quedar vacío")
         if detalle is not None:

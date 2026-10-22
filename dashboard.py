@@ -3616,6 +3616,8 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
 .ag-pill.descartada{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .ag-det-tit{font-size:1.3rem;line-height:1.3;font-weight:700;color:var(--texto-fuerte);margin:10px 0 8px;overflow-wrap:anywhere;text-wrap:balance}
 .ag-det-res{font-size:.95rem;line-height:1.6;color:var(--texto);max-width:72ch;white-space:pre-line;overflow-wrap:anywhere}
+.ag-inspi{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:.82rem;color:var(--texto-tenue)}
+.ag-inspi svg{width:14px;height:14px;color:var(--ambar);flex:none}
 .ag-enlaces{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .ag-enlace{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borde-fuerte);border-radius:8px;padding:6px 10px;font-size:.8rem;font-weight:500;color:var(--azul-claro);text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-enlace svg{width:13px;height:13px;flex:none}
@@ -6148,7 +6150,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div class="ag-brujula-ed" id="ag-brujula-ed">
       <label class="ag-brujula-tit" for="ag-brujula-txt">Lo que los agentes leen antes de elegir qué hacer</label>
-      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Este mes: cerrar los presupuestos enviados.&#10;No hace falta: más demos de apps de puntos.&#10;Nos gustan: cosas que ahorren horas de entrega."></textarea>
+      <textarea id="ag-brujula-txt" maxlength="3000" placeholder="Hacia dónde vamos: ser la agencia que entrega en la mitad de tiempo.&#10;Nos interesa: agentes de IA para comercios, automatizar la entrega, un portal para clientes.&#10;No hace falta: más demos de apps de puntos."></textarea>
       <div class="ag-brujula-pie">
         <button type="button" class="ag-b prim" id="ag-brujula-guardar">Guardar</button>
         <button type="button" class="ag-b" id="ag-brujula-cancelar">Cancelar</button>
@@ -17180,8 +17182,8 @@ async function ofRecAccion(e) {
 // plano, sin renderizar markdown.
 const AG_GRUPOS = [['propuesta', 'Para revisar', false], ['aceptada', 'Aceptadas', false],
                    ['hecha', 'Hechas', true], ['descartada', 'Descartadas', true]];
-const AG_TIPOS = {codigo: 'Código', contenido: 'Contenido', ventas: 'Ventas',
-                  investigacion: 'Investigación', operacion: 'Operación', otro: 'Otro'};
+const AG_TIPOS = {crm: 'CRM', producto: 'Producto', tecnologia: 'Tecnología',
+                  proceso: 'Proceso', otro: 'Otro'};
 const AG_ESTADOS = {propuesta: 'Para revisar', aceptada: 'Aceptada', hecha: 'Hecha', descartada: 'Descartada'};
 let agDatos = [];
 let agSel = null;
@@ -17328,6 +17330,7 @@ async function agPintarDetalle() {
     + '<span>' + crEsc(p.autor_nombre) + ' · ' + crEsc(agHace(p.creado_en)) + '</span></div>'
     + '<h2 class="ag-det-tit">' + crEsc(p.titulo) + '</h2>'
     + '<div class="ag-det-res">' + crEsc(p.resumen) + '</div>'
+    + (p.inspiracion ? '<div class="ag-inspi"><i data-lucide="sparkles"></i>Inspirado en ' + crEsc(p.inspiracion) + '</div>' : '')
     + (enlaces ? '<div class="ag-enlaces">' + enlaces + '</div>' : '')
     + coment
     + '<div class="ag-entregable-tit">Entregable</div><div class="ag-entregable" id="ag-entregable">Cargando…</div>'
