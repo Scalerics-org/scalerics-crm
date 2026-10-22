@@ -3621,7 +3621,9 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
 .ag-enlaces{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .ag-enlace{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borde-fuerte);border-radius:8px;padding:6px 10px;font-size:.8rem;font-weight:500;color:var(--azul-claro);text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-enlace svg{width:13px;height:13px;flex:none}
-@media (hover:hover) and (pointer:fine){.ag-enlace:hover{background:var(--hover)}}
+.ag-enlace.previa{background:var(--azul);border-color:var(--azul);color:#fff}
+.ag-sin-previa{align-self:center;font-size:.78rem;color:var(--texto-tenue)}
+@media (hover:hover) and (pointer:fine){.ag-enlace:hover{background:var(--hover)}.ag-enlace.previa:hover{background:var(--azul-claro)}}
 .ag-coment{margin-top:18px;border-left:2px solid var(--ambar);padding:2px 0 2px 12px;max-width:72ch}
 .ag-coment-de{font-size:.72rem;font-weight:600;color:var(--texto-tenue);margin-bottom:2px}
 .ag-coment-txt{font-size:.88rem;color:var(--texto);white-space:pre-line;overflow-wrap:anywhere}
@@ -17317,10 +17319,16 @@ async function agPintarDetalle() {
       : 'Los agentes cargan lo que hacen de noche. Mientras tanto, escribí la brújula.') + '</div></div>';
     return;
   }
-  const enlaces = (p.enlaces || []).map(e => {
-    const u = agUrlSegura(e.url);
-    return u ? '<a class="ag-enlace" href="' + crEsc(u) + '" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>' + crEsc(e.etiqueta || u) + '</a>' : '';
-  }).join('');
+  // La vista previa va primero y como botón principal: es lo que hay que mirar
+  // antes de mergear. Si no hay, se avisa.
+  const esPrevia = e => /vista previa|preview/i.test(e.etiqueta || '');
+  const lista = (p.enlaces || []).filter(e => agUrlSegura(e.url));
+  const ordenados = lista.filter(esPrevia).concat(lista.filter(e => !esPrevia(e)));
+  const enlaces = ordenados.map(e => {
+    const previa = esPrevia(e);
+    return '<a class="ag-enlace' + (previa ? ' previa' : '') + '" href="' + crEsc(e.url) + '" target="_blank" rel="noopener noreferrer">'
+      + '<i data-lucide="' + (previa ? 'monitor-play' : 'external-link') + '"></i>' + crEsc(e.etiqueta || e.url) + '</a>';
+  }).join('') + (lista.some(esPrevia) ? '' : '<span class="ag-sin-previa">Sin vista previa todavía</span>');
   const coment = p.comentario
     ? '<div class="ag-coment"><div class="ag-coment-de">Comentario de ' + crEsc(p.revisado_por || 'alguien') + '</div><div class="ag-coment-txt">' + crEsc(p.comentario) + '</div></div>' : '';
   det.innerHTML = '<div class="ag-det-cuerpo">'
