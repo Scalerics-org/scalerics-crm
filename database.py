@@ -1260,6 +1260,12 @@ def init_db(db_path: str) -> None:
             CREATE INDEX IF NOT EXISTS idx_finanzas_ventas_periodo
                 ON finanzas_ventas (periodo) WHERE borrado = 0
         """)
+        # IVA de la venta (Juan, 22/10), igual que en movimientos y esenciales:
+        # monto_usd es el neto, iva_usd el 22% aparte, e iva_incluido dice si
+        # el monto que se escribió ya lo traía adentro.
+        _add_column(conn, "finanzas_ventas", "facturado", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "finanzas_ventas", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "finanzas_ventas", "iva_usd", "REAL NOT NULL DEFAULT 0")
 
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles

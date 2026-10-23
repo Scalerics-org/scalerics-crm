@@ -1,8 +1,9 @@
 """Finanzas → Ventas (Juan, 22/10).
 
 "En Movimientos solo van a aparecer las cobranzas del mes": acá va lo vendido,
-mes a mes. Los cierres salen solos (el primer paso a una etapa de cliente) y
-se pueden cargar o corregir ventas a mano. Los mantenimientos no son venta.
+mes a mes. Los cierres salen solos (el primer paso a una etapa de cliente), sin
+monto; se cargan, corrigen y eliminan ventas a mano. Es solo para analizar: no
+se vincula con movimientos, por cobrar, fijos ni esenciales.
 """
 
 import json
@@ -16,7 +17,8 @@ from werkzeug.security import generate_password_hash
 
 import dashboard
 from database import create_user, init_db
-from services.finanzas import borrar_venta, guardar_venta, ventas_del_mes
+from services.finanzas import (borrar_cierre, borrar_venta, guardar_venta,
+                               resumen, ventas_del_mes)
 
 HTML = dashboard.DASHBOARD_HTML
 
@@ -60,20 +62,17 @@ def _pendiente(db, bid, monto, cobrado_mov=None):
 
 # ── el cálculo ───────────────────────────────────────────────────────────────
 
-def test_un_cierre_cuenta_en_su_mes_con_lo_cobrado_mas_lo_pendiente(db):
+def test_un_cierre_cuenta_en_su_mes_sin_monto(db):
     bid = _negocio(db, "Cliente A", "en_desarrollo")
     _evento(db, bid, "demo_1", "2026-08-20 15:00:00")
     _evento(db, bid, "cerrado", "2026-09-05 15:00:00")
     _evento(db, bid, "en_desarrollo", "2026-09-10 15:00:00")
-    _ingreso(db, bid, 500)
-    _pendiente(db, bid, 500)
 
     sep = ventas_del_mes(db, "2026-09")
-    assert sep["cantidad"] == 1
+    assert (sep["cantidad"], sep["sin_monto"], sep["total_usd"]) == (1, 1, 0)
+    assert sep["promedio_usd"] is None, "un cierre sin monto no vale cero"
     v = sep["ventas"][0]
-    assert (v["origen"], v["cliente"], v["fecha"]) == ("cierre", "Cliente A", "2026-09-05")
-    assert (v["monto_usd"], v["cobrado_usd"], v["pendiente_usd"]) == (1000, 500, 500)
-    assert sep["total_usd"] == 1000
+    assert (v["origen"], v["cliente"], v["fecha"], v["monto_usd"]) == ("cierre", "Cliente A", "2026-09-05", None)
     # Ni el mes anterior ni el siguiente.
     assert ventas_del_mes(db, "2026-08")["cantidad"] == 0
     assert ventas_del_mes(db, "2026-10")["cantidad"] == 0
@@ -97,17 +96,43 @@ def test_el_mes_es_el_de_montevideo_no_el_de_utc(db):
     assert ventas_del_mes(db, "2026-09")["ventas"][0]["fecha"] == "2026-09-30"
 
 
-def test_mantenimiento_aportes_y_lo_ya_saldado_no_suman(db):
+def test_ventas_no_lee_nada_de_finanzas(db):
+    """Juan (22/10): "no se vincule con movimientos de finanzas ni fijos ni
+    esenciales". Cobros y pendientes del cliente no cambian la venta."""
     bid = _negocio(db, "Cliente A", "finalizado")
     _evento(db, bid, "cerrado", "2026-09-05 15:00:00")
     _ingreso(db, bid, 1000)
-    _ingreso(db, bid, 50, categoria="mantenimiento")
-    _ingreso(db, bid, 70, categoria="aporte")
-    saldo = _ingreso(db, bid, 300)
-    # Un pendiente ya cobrado está en el ingreso que lo saldó: no se cuenta dos veces.
-    _pendiente(db, bid, 300, cobrado_mov=saldo)
+    _pendiente(db, bid, 300)
+    v = ventas_del_mes(db, "2026-09")["ventas"][0]
+    assert v["monto_usd"] is None
+    assert "cobrado_usd" not in v and "pendiente_usd" not in v
 
-    assert ventas_del_mes(db, "2026-09")["ventas"][0]["monto_usd"] == 1300
+
+def test_ventas_no_escribe_nada_en_finanzas(db):
+    """Y al revés: cargar una venta con IVA no aparece en Movimientos ni en el IVA."""
+    antes = resumen(db, "2026-09", "2026-09")
+    guardar_venta(db, {"cliente": "X", "fecha": "2026-09-12", "monto": 1000,
+                       "facturado": True}, "Juan")
+    despues = resumen(db, "2026-09", "2026-09")
+    assert antes["kpis"] == despues["kpis"]
+    c = sqlite3.connect(db)
+    try:
+        for tabla in ("finanzas_movimientos", "finanzas_por_cobrar", "finanzas_recurrentes",
+                      "finanzas_esenciales"):
+            assert c.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0] == 0, tabla
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize("iva, neto, impuesto", [("no", 1000, 0), ("mas", 1000, 220),
+                                                 ("incluido", 819.67, 180.33)])
+def test_iva_de_la_venta(db, iva, neto, impuesto):
+    guardar_venta(db, {"cliente": "X", "fecha": "2026-09-12", "monto": 1000,
+                       "facturado": iva != "no", "iva_incluido": iva == "incluido"}, "Juan")
+    sep = ventas_del_mes(db, "2026-09")
+    v = sep["ventas"][0]
+    assert (v["monto"], v["monto_usd"], v["iva_usd"]) == (1000, neto, impuesto)
+    assert (sep["total_usd"], sep["iva_usd"], sep["total_con_iva_usd"]) == (neto, impuesto, round(neto + impuesto, 2))
 
 
 def test_un_lead_que_no_es_cliente_hoy_no_aparece(db):
@@ -119,7 +144,6 @@ def test_un_lead_que_no_es_cliente_hoy_no_aparece(db):
 def test_la_venta_a_mano_reemplaza_el_cierre_del_cliente(db):
     bid = _negocio(db, "Cliente A", "cerrado")
     _evento(db, bid, "cerrado", "2026-09-05 15:00:00")
-    _ingreso(db, bid, 500)
 
     vid, error = guardar_venta(db, {"client_id": bid, "fecha": "2026-09-05",
                                     "monto": 2000, "moneda": "USD"}, "Juan")
@@ -127,11 +151,28 @@ def test_la_venta_a_mano_reemplaza_el_cierre_del_cliente(db):
     sep = ventas_del_mes(db, "2026-09")
     assert sep["cantidad"] == 1
     v = sep["ventas"][0]
-    assert (v["origen"], v["id"], v["monto_usd"], v["cobrado_usd"]) == ("manual", vid, 2000, 500)
+    assert (v["origen"], v["id"], v["monto_usd"]) == ("manual", vid, 2000)
 
-    # Borrada, vuelve el cierre.
+    # Eliminada, el cierre no vuelve: eliminar es eliminar.
     assert borrar_venta(db, vid)
-    assert ventas_del_mes(db, "2026-09")["ventas"][0]["origen"] == "cierre"
+    assert ventas_del_mes(db, "2026-09")["cantidad"] == 0
+
+
+def test_eliminar_un_cierre_lo_saca_de_ventas_y_no_toca_al_cliente(db):
+    bid = _negocio(db, "Cliente A", "cerrado")
+    _evento(db, bid, "cerrado", "2026-09-05 15:00:00")
+    otro = _negocio(db, "Cliente B", "cerrado")
+    _evento(db, otro, "cerrado", "2026-09-06 15:00:00")
+
+    assert borrar_cierre(db, bid, "Juan")
+    assert [v["cliente"] for v in ventas_del_mes(db, "2026-09")["ventas"]] == ["Cliente B"]
+    c = sqlite3.connect(db)
+    try:
+        assert c.execute("SELECT crm_status FROM businesses WHERE id = ?", (bid,)).fetchone()[0] == "cerrado"
+    finally:
+        c.close()
+    # Un negocio sin cierre no tiene nada que eliminar.
+    assert not borrar_cierre(db, _negocio(db, "Lead", "contactado"), "Juan")
 
 
 def test_venta_a_mano_sin_ficha_y_en_pesos(db):
@@ -142,7 +183,6 @@ def test_venta_a_mano_sin_ficha_y_en_pesos(db):
     sep = ventas_del_mes(db, "2026-09")
     v = sep["ventas"][0]
     assert (v["cliente"], v["monto"], v["moneda"], v["monto_usd"]) == ("Comercio sin ficha", 40000, "UYU", 1000)
-    assert v["cobrado_usd"] is None
     assert (sep["total_usd"], sep["total_uyu"]) == (1000, 40000)
 
 
@@ -207,6 +247,17 @@ def test_las_rutas_cargan_editan_y_borran(app):
     assert c.get("/api/finanzas/ventas?periodo=2026-13").status_code == 400
 
 
+def test_la_ruta_elimina_un_cierre(app):
+    ruta = app.config["_DB"]
+    bid = _negocio(ruta, "Cliente A", "cerrado")
+    _evento(ruta, bid, "cerrado", "2026-09-05 15:00:00")
+    c = _cliente_http(app, "raiz@scalerics.com")
+    assert c.get("/api/finanzas/ventas?periodo=2026-09").get_json()["cantidad"] == 1
+    assert c.delete(f"/api/finanzas/ventas/cierre/{bid}").status_code == 200
+    assert c.get("/api/finanzas/ventas?periodo=2026-09").get_json()["cantidad"] == 0
+    assert c.delete("/api/finanzas/ventas/cierre/99999").status_code == 404
+
+
 def test_sin_finanzas_no_se_ven_las_ventas(app):
     c = _cliente_http(app, "caller@scalerics.com", paneles=["cola"])
     assert c.get("/api/finanzas/ventas?periodo=2026-09").status_code == 403
@@ -242,14 +293,15 @@ def test_dibuja_las_ventas_del_mes(tmp_path):
     """Corre el loadVentas real en node con un DOM y un fetch de mentira."""
     cuerpo = re.search(r"async function loadVentas\(\) \{.*?\n\}", HTML, re.S).group(0)
     monto = re.search(r"function _finMontoVenta\(v\) \{.*?\n\}", HTML, re.S).group(0)
-    datos = {"periodo": "2026-09", "cantidad": 2, "total_usd": 1800, "promedio_usd": 900, "total_uyu": 0,
+    datos = {"periodo": "2026-09", "cantidad": 2, "sin_monto": 1, "total_usd": 800, "iva_usd": 176,
+             "total_con_iva_usd": 976, "promedio_usd": 800, "total_uyu": 0,
              "ventas": [
                  {"origen": "cierre", "id": None, "client_id": 1, "cliente": "Cliente A", "concepto": None,
-                  "fecha": "2026-09-05", "monto": 1000, "moneda": "USD", "monto_usd": 1000,
-                  "cobrado_usd": 500, "pendiente_usd": 500, "notas": None},
+                  "fecha": "2026-09-05", "monto": None, "moneda": "USD", "monto_usd": None,
+                  "facturado": 0, "iva_incluido": 0, "iva_usd": 0, "notas": None},
                  {"origen": "manual", "id": 7, "client_id": None, "cliente": "Comercio", "concepto": "Web",
                   "fecha": "2026-09-02", "monto": 800, "moneda": "USD", "monto_usd": 800,
-                  "cobrado_usd": None, "pendiente_usd": None, "notas": None}]}
+                  "facturado": 1, "iva_incluido": 0, "iva_usd": 176, "notas": None}]}
     script = """
 const els = {};
 const document = {getElementById: id => (els[id] = els[id] || {innerHTML: '', textContent: ''})};
@@ -273,8 +325,12 @@ loadVentas().then(() => console.log(JSON.stringify({
     assert "/api/finanzas/ventas?periodo=2026-09" in r.stderr
     out = json.loads(r.stdout)
     assert out["titulo"] == "Ventas de setiembre 2026"
-    assert "US$ 1800" in out["tot"] and ">2<" in out["tot"]
+    assert "US$ 800" in out["tot"] and "con IVA US$ 976" in out["tot"] and ">2<" in out["tot"]
+    assert "1 sin monto" in out["tot"]
     assert "Cliente A" in out["tabla"] and "Comercio" in out["tabla"]
-    # El cierre se corrige con una venta a mano; la a mano se edita o se borra.
-    assert "abrirVenta(null, 0)" in out["tabla"]
+    assert "Sin monto" in out["tabla"] and "Más IVA" in out["tabla"]
+    # Nada de Finanzas en la tabla.
+    assert "Cobrado" not in out["tabla"] and "Falta cobrar" not in out["tabla"]
+    # Todas se pueden eliminar: el cierre por su fila, la a mano por su id.
+    assert "abrirVenta(null, 0)" in out["tabla"] and "borrarVenta(null, 0)" in out["tabla"]
     assert "abrirVenta(7)" in out["tabla"] and "borrarVenta(7)" in out["tabla"]

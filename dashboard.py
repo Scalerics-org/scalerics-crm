@@ -1678,8 +1678,9 @@ async function borrarEsencial(id) {
 
 // ── Ventas del mes (Juan, 22/10) ─────────────────────────────────────────────
 // Movimientos muestra lo cobrado; acá va lo vendido, mes a mes con las flechas
-// de arriba (o deslizando en el celular). Los cierres salen solos; una venta a
-// mano de un cliente reemplaza su cierre (services/finanzas.py).
+// de arriba (o deslizando en el celular). Los cierres salen solos y sin monto;
+// una venta a mano de un cliente reemplaza su cierre (services/finanzas.py).
+// Es solo para analizar: no tiene nada que ver con movimientos ni cobros.
 let _finVentas = [];
 
 function _finMontoVenta(v) {
@@ -1705,9 +1706,10 @@ async function loadVentas() {
   const lectura = _finSoloLectura();
   tot.innerHTML = '<div class="fin-kpi"><div class="fin-kpi-label">Vendido</div>'
     + '<div class="fin-kpi-valor fin-verde">' + _finUsd(d.total_usd) + '</div>'
-    + '<div class="fin-kpi-var">' + (d.total_uyu ? 'Incluye UYU ' + Math.round(d.total_uyu).toLocaleString('es-UY') + ' en pesos' : 'Sin IVA') + '</div></div>'
+    + (d.iva_usd ? '<div class="fin-kpi-iva">con IVA ' + _finUsd(d.total_con_iva_usd) + '</div>' : '')
+    + '<div class="fin-kpi-var">' + (d.total_uyu ? 'Incluye UYU ' + Math.round(d.total_uyu).toLocaleString('es-UY') + ' en pesos' : (d.iva_usd ? 'Neto, sin el IVA' : 'Sin IVA')) + '</div></div>'
     + '<div class="fin-kpi"><div class="fin-kpi-label">Ventas</div><div class="fin-kpi-valor">' + d.cantidad + '</div>'
-    + '<div class="fin-kpi-var">En ' + esc(_finNombreMes(periodo)) + '</div></div>'
+    + '<div class="fin-kpi-var">' + (d.sin_monto ? d.sin_monto + ' sin monto todavía' : 'En ' + esc(_finNombreMes(periodo))) + '</div></div>'
     + '<div class="fin-kpi"><div class="fin-kpi-label">Ticket promedio</div><div class="fin-kpi-valor">' + (d.promedio_usd === null ? '—' : _finUsd(d.promedio_usd)) + '</div>'
     + '<div class="fin-kpi-var">Por venta</div></div>';
   if (!d.ventas.length) {
@@ -1715,16 +1717,15 @@ async function loadVentas() {
       + (lectura ? '' : ' Si vendiste algo que no figura, cargalo con “+ Venta”.') + '</div>';
     return;
   }
-  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendido</th><th>Cobrado</th><th>Falta cobrar</th><th>Origen</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
+  cont.innerHTML = '<div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendido</th><th>IVA</th><th>Origen</th>' + (lectura ? '' : '<th></th>') + '</tr></thead><tbody>'
     + d.ventas.map((v, i) => '<tr><td>' + esc(v.fecha.split('-').reverse().join('/')) + '</td>'
       + '<td><b>' + esc(v.cliente || '') + '</b>' + (v.concepto ? '<div style="color:var(--texto-debil);font-size:.72rem">' + esc(v.concepto) + '</div>' : '') + '</td>'
-      + '<td class="fin-verde"><b>' + (v.origen === 'cierre' && !v.monto_usd ? '<span style="color:var(--texto-debil);font-weight:400">Sin monto</span>' : _finMontoVenta(v)) + '</b></td>'
-      + '<td>' + (v.cobrado_usd === null ? '—' : _finUsd(v.cobrado_usd)) + '</td>'
-      + '<td>' + (v.pendiente_usd === null ? '—' : _finUsd(v.pendiente_usd)) + '</td>'
-      + '<td>' + (v.origen === 'cierre' ? '<span title="Pasó a cliente este mes; el monto es lo cobrado más lo que falta cobrar">Cierre</span>' : 'A mano') + '</td>'
+      + '<td class="fin-verde"><b>' + (v.monto_usd === null ? '<span style="color:var(--texto-debil);font-weight:400">Sin monto</span>' : _finMontoVenta(v)) + '</b></td>'
+      + '<td>' + (v.facturado ? (v.iva_incluido ? 'Incluido' : 'Más IVA') + ' <span style="color:var(--texto-debil)">(' + _finUsd(v.iva_usd) + ')</span>' : '<span style="color:var(--texto-debil)">Sin IVA</span>') + '</td>'
+      + '<td>' + (v.origen === 'cierre' ? '<span title="Pasó a cliente este mes">Cierre</span>' : 'A mano') + '</td>'
       + (lectura ? '' : '<td style="white-space:nowrap">' + (v.origen === 'cierre'
-          ? '<button class="cal-today-btn" onclick="abrirVenta(null, ' + i + ')">Corregir monto</button>'
-          : '<button class="cal-today-btn" onclick="abrirVenta(' + v.id + ')">Editar</button> <button class="cal-today-btn" onclick="borrarVenta(' + v.id + ')">Borrar</button>') + '</td>')
+          ? '<button class="cal-today-btn" onclick="abrirVenta(null, ' + i + ')">Poner monto</button> <button class="cal-today-btn" onclick="borrarVenta(null, ' + i + ')">Eliminar</button>'
+          : '<button class="cal-today-btn" onclick="abrirVenta(' + v.id + ')">Editar</button> <button class="cal-today-btn" onclick="borrarVenta(' + v.id + ')">Eliminar</button>') + '</td>')
       + '</tr>').join('')
     + '</tbody></table></div>';
 }
@@ -1775,7 +1776,7 @@ async function abrirVenta(id, desdeCierre) {
   const hoy = new Date();
   const hoyIso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
   document.getElementById('fin-venta-titulo').textContent =
-    cierre ? 'Corregir el monto de la venta' : (v.id ? 'Editar venta' : 'Nueva venta');
+    cierre ? 'Ponerle monto a la venta' : (v.id ? 'Editar venta' : 'Nueva venta');
   document.getElementById('fin-venta-id').value = cierre ? '' : (v.id || '');
   document.getElementById('fin-venta-fecha').value = v.fecha || (hoyIso.slice(0, 7) === periodo ? hoyIso : periodo + '-01');
   document.getElementById('fin-venta-otro').value = (v.client_id ? '' : (v.cliente || ''));
@@ -1784,6 +1785,7 @@ async function abrirVenta(id, desdeCierre) {
   document.getElementById('fin-venta-moneda').value = v.moneda || 'USD';
   document.getElementById('fin-venta-tc').value = v.tipo_cambio || '';
   document.getElementById('fin-venta-notas').value = v.notas || '';
+  document.getElementById('fin-venta-iva').value = v.facturado ? (v.iva_incluido ? 'incluido' : 'mas') : 'no';
   document.getElementById('fin-venta-error').textContent = '';
   _finVentaMoneda();
   document.getElementById('fin-venta-modal').classList.add('open');
@@ -1798,6 +1800,9 @@ async function guardarVenta() {
                 cliente: document.getElementById('fin-venta-otro').value};
   ['fecha', 'concepto', 'monto', 'moneda', 'notas'].forEach(k => { body[k] = document.getElementById('fin-venta-' + k).value; });
   body.tipo_cambio = document.getElementById('fin-venta-tc').value;
+  const iva = document.getElementById('fin-venta-iva').value;
+  body.facturado = iva !== 'no';
+  body.iva_incluido = iva === 'incluido';
   const err = document.getElementById('fin-venta-error');
   if (!body.client_id && !body.cliente.trim()) { err.textContent = 'Elegí el cliente o escribí a quién se le vendió.'; return; }
   if (body.monto === '') { err.textContent = 'Poné el monto.'; return; }
@@ -1811,11 +1816,15 @@ async function guardarVenta() {
   loadVentas();
 }
 
-async function borrarVenta(id) {
-  const v = _finVentas.find(x => x.origen === 'manual' && x.id === id);
-  if (!v || !confirm('¿Borrar la venta a ' + v.cliente + '?')) return;
-  const r = await fetch('/api/finanzas/ventas/' + id, {method: 'DELETE'});
-  if (!r.ok) { alert('No se pudo borrar'); return; }
+// borrarVenta(id) elimina una venta a mano; borrarVenta(null, i) saca el cierre
+// de la fila i. Ninguna de las dos toca al cliente ni a Finanzas.
+async function borrarVenta(id, desdeCierre) {
+  const v = desdeCierre !== undefined ? _finVentas[desdeCierre]
+    : _finVentas.find(x => x.origen === 'manual' && x.id === id);
+  if (!v || !confirm('¿Eliminar la venta a ' + v.cliente + '? Solo se saca de Ventas: el cliente y Finanzas quedan como están.')) return;
+  const url = v.origen === 'cierre' ? '/api/finanzas/ventas/cierre/' + v.client_id : '/api/finanzas/ventas/' + v.id;
+  const r = await fetch(url, {method: 'DELETE'});
+  if (!r.ok) { alert('No se pudo eliminar'); return; }
   loadVentas();
 }
 
@@ -6868,9 +6877,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="fin-venta-tc-row" style="display:none"><label class="modal-label" for="fin-venta-tc">Tipo de cambio</label>
       <input type="number" id="fin-venta-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
+    <label class="modal-label" for="fin-venta-iva">IVA</label>
+    <select id="fin-venta-iva" class="modal-input"><option value="no">Sin IVA</option><option value="mas">Más IVA (se suma el 22%)</option><option value="incluido">IVA incluido en el monto</option></select>
     <label class="modal-label" for="fin-venta-notas">Notas</label>
     <input type="text" id="fin-venta-notas" class="modal-input" maxlength="1000" placeholder="50% al empezar, el resto a la entrega…">
-    <div style="color:var(--texto-debil);font-size:.75rem;margin-top:8px">Solo queda anotada como venta: no crea ningún movimiento ni cobro.</div>
+    <div style="color:var(--texto-debil);font-size:.75rem;margin-top:8px">Solo queda anotada en Ventas: no crea movimientos, cobros ni IVA en Finanzas.</div>
     <div id="fin-venta-error" style="color:#f87171;font-size:.8rem;min-height:1em;margin-top:8px"></div>
     <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button class="btn-ghost" onclick="cerrarVenta()">Cancelar</button>

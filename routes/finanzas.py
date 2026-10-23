@@ -1104,6 +1104,16 @@ def api_venta_borrar(vid):
     return jsonify({"ok": True})
 
 
+@finanzas_bp.route("/api/finanzas/ventas/cierre/<int:client_id>", methods=["DELETE"])
+def api_venta_borrar_cierre(client_id):
+    """Saca un cierre automático de Ventas. El cliente queda como estaba."""
+    from services.finanzas import borrar_cierre
+    _, quien = _quien()
+    if not borrar_cierre(_db(), client_id, quien):
+        return jsonify({"ok": False, "error": "ese cliente no tiene cierre"}), 404
+    return jsonify({"ok": True})
+
+
 @finanzas_bp.route("/api/finanzas/aportes")
 def api_aportes():
     """Lo aportado por los socios hasta la fecha (Juan, 1/10)."""
