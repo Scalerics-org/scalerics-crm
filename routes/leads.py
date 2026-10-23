@@ -153,6 +153,9 @@ def api_leads():
         businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES, cohorte=cohorte)
     elif crm_group == "clientes":
         businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES, cohorte=cohorte)
+        # Un cliente eliminado de Clientes queda archivado (23/10): tampoco
+        # aparece en los selectores de cliente que salen de acá.
+        businesses = [b for b in businesses if not b.get("archivado_en")]
     elif crm_group == "meta":
         businesses = get_all_businesses(_db(), source="meta")
         # Lo que necesita la lista por mes de Meta Ads: el color del semaforo

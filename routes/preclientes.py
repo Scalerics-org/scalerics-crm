@@ -196,12 +196,42 @@ def api_clientes_activos():
             LEFT JOIN users ue ON b.encargado_id     = ue.id
             LEFT JOIN users um ON b.mantenimiento_id = um.id
             LEFT JOIN users uc ON b.cobros_id        = uc.id
-            WHERE b.crm_status IN ({marcadores})
+            WHERE b.crm_status IN ({marcadores}) AND b.archivado_en IS NULL
             ORDER BY b.name COLLATE NOCASE
         """, list(ETAPAS_CLIENTE)).fetchall()
     finally:
         conn.close()
     return jsonify({"clientes": [dict(f) for f in filas], "total": len(filas)})
+
+
+@preclientes_bp.route("/api/clientes-activos/<int:client_id>", methods=["DELETE"])
+def api_quitar_cliente(client_id):
+    """"Eliminar cliente" (Juan, 23/10): lo saca de Clientes sin borrarlo.
+
+    Se archiva, como los comercios viejos de Outbound: `archivado_en` lo
+    esconde de Clientes, de los listados de leads, del buscador y de los
+    selectores de cliente. Su etapa, historial, reuniones y lo que tenga en
+    Finanzas quedan como estaban. Nada lo desarchiva solo; para devolverlo:
+    `UPDATE businesses SET archivado_en = NULL WHERE id = ...`.
+    """
+    from datetime import datetime, timezone
+    db = _db()
+    biz = get_business(db, client_id)
+    if not biz or biz.get("archivado_en") or (biz.get("crm_status") or "") not in ETAPAS_CLIENTE:
+        return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+    # Directo y no con update_business: `archivado_en` no está en
+    # ALLOWED_COLUMNS a propósito, para que ninguna ruta genérica lo toque.
+    conn = _db_connect(db)
+    try:
+        conn.execute("UPDATE businesses SET archivado_en = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), client_id))
+        conn.commit()
+    finally:
+        conn.close()
+    log_activity(db, session.get("user_name", "sistema"), "cliente_quitado", "lead",
+                 client_id, biz.get("name", ""), "Sacado de Clientes (archivado)",
+                 user_id=_uid())
+    return jsonify({"ok": True})
 
 
 @preclientes_bp.route("/api/clientes-activos/<int:client_id>/responsables", methods=["PUT"])

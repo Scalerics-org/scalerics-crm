@@ -1299,6 +1299,8 @@ def ventas_del_mes(db_path: str, periodo: str) -> dict:
             "SELECT b.id, b.name, MIN(e.created_at) AS cerrado_at "
             "FROM businesses b JOIN lead_events e ON e.lead_id = b.id "
             f"WHERE b.crm_status IN ({etapas}) AND e.new_status IN ({etapas}) "
+            # Un cliente eliminado de Clientes (archivado) ya no es cliente.
+            "AND b.archivado_en IS NULL "
             "GROUP BY b.id", ETAPAS_CLIENTE + ETAPAS_CLIENTE).fetchall()
     finally:
         c.close()
