@@ -1,8 +1,9 @@
 """Base de la vista previa: datos inventados para ver una PR funcionando.
 
-La usa `scripts/preview_start.sh` en las apps `scalerics-crm-pr-<N>` que crea
-`.github/workflows/preview.yml`. Nunca toca la base de producción: arranca de
-una base vacía en /tmp, y cada reinicio de la máquina la vuelve a sembrar.
+La usa `server.py` cuando arranca con CRM_PREVIEW=1, en las vistas previas de
+Vercel que publica `.github/workflows/preview.yml`. Nunca toca la base de
+producción: arranca de una base vacía en /tmp, y cada instancia nueva de la
+función la vuelve a sembrar.
 
 Uso:  python -m scripts.preview_seed <ruta de la base>
 

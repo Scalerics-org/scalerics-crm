@@ -65,7 +65,7 @@ no lo más fácil.
 **Paso 3.** Construilo, con una VISTA PREVIA que se pueda abrir:
 - En scalerics-crm: rama `claude/<tema>`, el cambio con tests corriendo en
   verde, y una PR contra main. Cada PR se publica sola en
-  `https://scalerics-crm-pr-<número de PR>.fly.dev` con datos inventados.
+  `https://scalerics-crm-pr-<número de PR>.vercel.app` con datos inventados.
 - En scalerics-web: igual; Cloudflare deja el link de preview como comentario
   en la PR.
 - Un producto nuevo va como sección o prototipo dentro de uno de esos dos

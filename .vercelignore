@@ -11,3 +11,4 @@ docs/
 .github/
 __pycache__/
 *.log
+wa-service/

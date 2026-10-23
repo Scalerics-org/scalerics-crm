@@ -1,18 +1,18 @@
 name: Vista previa
 
-# Cada PR levanta una copia del CRM con datos inventados en
-# https://scalerics-crm-pr-<N>.fly.dev, para verla andando antes de mergear.
-# Al cerrar la PR, la app se borra.
+# Cada PR publica una copia del CRM con datos inventados en Vercel, en
+# https://scalerics-crm-pr-<N>.vercel.app, para verla andando antes de mergear.
+# Las vistas previas de Vercel no cuestan, así que no se borran al cerrar.
+# Producción sigue en Fly: esto no la toca.
 #
 # pull_request_target y no pull_request, a propósito: así corre SIEMPRE este
-# archivo tal como está en main, nunca la versión de la rama. FLY_API_TOKEN
-# alcanza también a la app de producción, y una rama (de un agente, o de un
-# agente que leyó algo malicioso) podría cambiar el workflow para llevárselo.
-# El código de la rama no se ejecuta en este runner: se manda al builder
-# remoto de Fly, que no tiene el token.
+# archivo tal como está en main, nunca la versión de la rama, y una rama (de un
+# agente, o de un agente que leyó algo malicioso) no puede cambiarlo para
+# llevarse VERCEL_TOKEN. El código de la rama no se ejecuta en este runner: se
+# sube a Vercel, que lo construye allá sin el token.
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, closed]
+    types: [opened, reopened, synchronize]
 
 concurrency:
   group: preview-${{ github.event.number }}
@@ -20,40 +20,37 @@ concurrency:
 
 jobs:
   preview:
-    # Solo ramas de este repo: una PR desde un fork no levanta nada.
+    # Solo ramas de este repo: una PR desde un fork no publica nada.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      APP: scalerics-crm-pr-${{ github.event.number }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_n1EAPrIU0WjrWQp5lXNPyFGA
+      VERCEL_PROJECT_ID: prj_Ioi9yV9APvvN3QFu5lyR3W9Z5fxR
+      ALIAS: scalerics-crm-pr-${{ github.event.number }}.vercel.app
     steps:
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Borrar la vista previa
-        if: github.event.action == 'closed'
-        run: flyctl apps destroy "$APP" --yes || echo "no había app para borrar"
-
       - uses: actions/checkout@v4
-        if: github.event.action != 'closed'
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      - name: Crear y deployar
-        if: github.event.action != 'closed'
+      - name: Publicar en Vercel
         env:
           PREVIEW_PASSWORD: ${{ secrets.PREVIEW_PASSWORD }}
         run: |
+          if [ -z "$VERCEL_TOKEN" ]; then echo "Falta el secret VERCEL_TOKEN en el repo."; exit 1; fi
           if [ ${#PREVIEW_PASSWORD} -lt 12 ]; then
             echo "Falta el secret PREVIEW_PASSWORD (12 caracteres o más) en el repo."; exit 1
           fi
-          flyctl status --app "$APP" >/dev/null 2>&1 || flyctl apps create "$APP" --org personal
-          flyctl secrets set --app "$APP" --stage \
-            PREVIEW_PASSWORD="$PREVIEW_PASSWORD" SECRET_KEY="$(openssl rand -hex 32)"
-          flyctl deploy --app "$APP" --config fly.preview.toml --remote-only --ha=false
+          # La función de Vercel tiene tope de tamaño: playwright y las
+          # librerías de Google se importan recién al usarse y acá no hacen falta.
+          cp requirements-preview.txt requirements.txt
+          url=$(npx --yes vercel@54 deploy --yes --token "$VERCEL_TOKEN" \
+                  --env CRM_PREVIEW=1 --env PREVIEW_PASSWORD="$PREVIEW_PASSWORD")
+          npx --yes vercel@54 alias set "$url" "$ALIAS" --token "$VERCEL_TOKEN"
 
       - name: Dejar el link en la PR
         if: github.event.action == 'opened' || github.event.action == 'reopened'
@@ -63,7 +60,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `Vista previa: https://${process.env.APP}.fly.dev\n\n` +
+              body: `Vista previa: https://${process.env.ALIAS}\n\n` +
                     'Datos inventados, sin mails ni procesos de fondo. Entrá con preview@scalerics.com ' +
-                    'y la clave de vista previa del equipo. Se actualiza con cada push y se borra al cerrar la PR.',
+                    'y la clave de vista previa del equipo. Se actualiza con cada push.',
             });

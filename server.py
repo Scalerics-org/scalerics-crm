@@ -17,6 +17,19 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
+# Vista previa de una PR en Vercel (.github/workflows/preview.yml): base de
+# datos inventados en /tmp y sin procesos de fondo, así no manda mails ni toca
+# nada real. En producción (Fly) CRM_PREVIEW no existe y esto no corre.
+if os.environ.get("CRM_PREVIEW") == "1":
+    os.environ["DB_PATH"] = "/tmp/preview.db"
+    os.environ["CRM_SIN_PROCESOS_DE_FONDO"] = "true"
+    os.environ.setdefault("PREVIEW_EMAIL", "preview@scalerics.com")
+    os.environ["ADMIN_EMAIL"] = os.environ["PREVIEW_EMAIL"]
+    from scripts.preview_seed import LARGO_MINIMO_CLAVE, sembrar
+    if len(os.environ.get("PREVIEW_PASSWORD", "")) < LARGO_MINIMO_CLAVE:
+        raise RuntimeError("PREVIEW_PASSWORD falta o es corta: la vista previa no arranca sin una clave propia")
+    sembrar(os.environ["DB_PATH"], os.environ["PREVIEW_EMAIL"], os.environ["PREVIEW_PASSWORD"])
+
 from database import (init_db, seed_linkedin_banco, seed_linkedin_temas,
                       seed_pitch_templates)
 from dashboard import create_app
