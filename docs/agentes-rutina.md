@@ -43,10 +43,9 @@ abierta sin visitas casi no cuesta. Igual conviene cerrar las PRs descartadas.
 3. **Nombre:** `Agente Scalerics (<tu nombre>)`.
 4. **Prompt:** el bloque de abajo, tal cual. **Modelo: Opus** (en el selector
    del prompt). Nunca Fable: tiene tope semanal y es el que usan las personas.
-5. **Trigger > Schedule > Custom**, con el cron de tu fila de la tabla. Las
-   horas están pensadas en hora de Uruguay: al guardar, mirá la próxima
-   corrida que muestra la tarea. Si dice 18:07 en vez de 21:07, el cron va en
-   UTC y hay que sumar 3 horas (`7 0-5 * * *`).
+5. **Trigger > Schedule > Custom**, con el cron de tu fila de la tabla. **El
+   cron va en UTC** (Uruguay es UTC-3 todo el año): `0-5` UTC son las 21 a las
+   2 de acá. Al guardar, la próxima corrida tiene que decir 21 y algo.
 6. **Advanced settings > Repository:** `Scalerics-org/scalerics-crm`,
    `Scalerics-org/scalerics-web` y `Scalerics-org/scalerics-claude`.
 7. **Environment:** el *Default*. El CRM se usa por el conector, que pasa por
@@ -66,13 +65,13 @@ abre se reinicia antes de las 8: nadie arranca el día con la cuenta gastada.
 Los minutos están corridos para que dos agentes no lean la lista al mismo
 tiempo y arranquen el mismo proyecto.
 
-| Cuenta | Cron |
+| Cuenta | Cron (UTC) |
 |---|---|
-| Juan T. | `7 21-23,0-2 * * *` |
-| Javier | `19 21-23,0-2 * * *` |
-| Juan P. | `31 21-23,0-2 * * *` |
-| Gonzalo | `43 21-23,0-2 * * *` |
-| contacto@ | `55 21-23,0-2 * * *` |
+| Juan T. | `7 0-5 * * *` |
+| Javier | `19 0-5 * * *` |
+| Juan P. | `31 0-5 * * *` |
+| Gonzalo | `43 0-5 * * *` |
+| contacto@ | `55 0-5 * * *` |
 
 ## El prompt
 
