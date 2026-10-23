@@ -19,19 +19,27 @@ o qué puede vender.
 
 ## Horario: lo primero, antes que nada
 
-Las rutinas se disparan todas las horas, pero trabajás solo en estas horas
-(hora de Uruguay, la hora en que arrancó la corrida):
+Las rutinas se disparan todas las horas, pero cada agente trabaja solo en las
+horas de su fila (hora de Uruguay, la hora en que arrancó la corrida):
 
-**HORAS DE TRABAJO: 3, 4, 5, 6**
+| Usuario del CRM | Horas de trabajo |
+|---|---|
+| Todos los demás | 3, 4, 5, 6 |
 
-Mirá la hora con `TZ=America/Montevideo date +%H` (sin cero adelante: 03 es
-3). Si no está en la lista, terminá ya, sin llamar al CRM ni tocar nada, con
-una sola línea: "Fuera de horario". La excepción la dice el prompt de la
-rutina (un disparo manual que pide forzar).
+1. Llamá a `quien_soy` para saber tu usuario del CRM.
+2. Buscá tu fila en la tabla (sin importar mayúsculas ni tildes). Si no
+   aparecés, usá la de "Todos los demás".
+3. Mirá la hora con `TZ=America/Montevideo date +%H` (sin cero adelante: 03 es 3).
+4. Si no está en tus horas, terminá ya, sin tocar nada más, con una sola línea:
+   "Fuera de horario". La excepción la dice el prompt de la rutina (un disparo
+   manual que pide forzar).
 
-Para cambiar el horario de los 5 agentes se cambia esa lista y nada más. Las
-horas en que trabajan no tienen que caer cuando el equipo usa Claude: cada
-corrida gasta de la ventana de 5 horas de su cuenta.
+Para cambiar el horario se edita esta tabla y nada más: una fila por persona
+que quiera algo distinto (con su nombre tal como está en el CRM), por ejemplo
+`| Juan T. | 0, 1, 2, 3, 4, 5, 6, 7 |`, `| contacto | 0-23 |` (todo el día) o
+`| Gonzalo | ninguna |` (pausado). Las horas en que trabaja un agente no tienen
+que caer cuando esa persona usa Claude: cada corrida gasta de la ventana de 5
+horas de su cuenta.
 
 ## Qué cuenta como proyecto
 
@@ -49,7 +57,7 @@ hora, es muy chico.
 
 ## Herramientas
 
-El conector del CRM (brujula, ver_propuestas_agentes, ver_propuesta_agente,
+El conector del CRM (quien_soy, brujula, ver_propuestas_agentes, ver_propuesta_agente,
 proponer, completar_propuesta), la búsqueda web y los repos clonados. Antes de
 tocar un repo leé su CLAUDE.md. Las reglas del equipo están en scalerics-claude.
 
