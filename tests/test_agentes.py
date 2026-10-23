@@ -329,3 +329,7 @@ def test_la_brujula_no_lleva_el_aviso_de_terceros(db, juan):
     r = json.loads(mt.ejecutar(db, juan, "ver_propuestas_agentes", {})["content"][0]["text"])
     assert r["aviso"] == mt.AVISO_DATOS_DE_TERCEROS
     assert all("aviso" not in h for h in mt.listar_herramientas())
+
+
+def test_quien_soy_devuelve_el_usuario_del_conector(db, juan):
+    assert _texto_resultado(mt.ejecutar(db, juan, "quien_soy", {})) == {"nombre": "Juan"}

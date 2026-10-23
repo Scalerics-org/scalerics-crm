@@ -372,6 +372,17 @@ _ENLACES = {
 
 HERRAMIENTAS += [
     {
+        "name": "quien_soy",
+        "description": ("El usuario del CRM con el que estás conectado: es la cuenta del miembro del "
+                        "equipo que corre esta rutina. Sirve para buscar tu fila en el horario por "
+                        "persona de docs/agentes-instrucciones.md."),
+        "inputSchema": {"type": "object", "properties": {}, "required": [],
+                        "additionalProperties": False},
+        "con_usuario": True,
+        "fn": lambda db, a, u: {"nombre": u.get("name")},
+        "aviso": "Es el nombre del usuario del CRM que autorizó este conector.",
+    },
+    {
         "name": "brujula",
         "description": ("Las prioridades que escribió el equipo de Scalerics para los agentes: qué "
                         "importa este mes, qué no hace falta, qué ideas gustan. Leela PRIMERO, antes "
