@@ -1,0 +1,13 @@
+# Lo que no sube a la vista previa de Vercel (api/index.py).
+.env
+credentials.json
+*.db
+backups/
+generated_demos/
+tests/
+bot/
+wa-lector/
+docs/
+.github/
+__pycache__/
+*.log
