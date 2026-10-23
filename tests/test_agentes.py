@@ -319,3 +319,13 @@ def test_inspiracion_y_titulo_que_se_ajusta(db, juan):
 
 def test_los_tipos_son_de_proyecto_grande():
     assert ag.TIPOS == ("crm", "producto", "tecnologia", "proceso", "otro")
+
+
+def test_la_brujula_no_lleva_el_aviso_de_terceros(db, juan):
+    ag.guardar_brujula(db, "Prioridad: portal de clientes", "Javier")
+    r = json.loads(mt.ejecutar(db, juan, "brujula", {})["content"][0]["text"])
+    assert "equipo de Scalerics" in r["aviso"] and "terceros" not in r["aviso"]
+    # Lo que escriben los agentes o los leads sigue con el aviso de siempre.
+    r = json.loads(mt.ejecutar(db, juan, "ver_propuestas_agentes", {})["content"][0]["text"])
+    assert r["aviso"] == mt.AVISO_DATOS_DE_TERCEROS
+    assert all("aviso" not in h for h in mt.listar_herramientas())
