@@ -36,7 +36,7 @@ ORDEN = [
     ("AGENTES", ["agentes"]),    # lo que proponen las tareas nocturnas del equipo (22/10)
     ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "sombra"]),
     ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
-    ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
+    ("VENTAS", ["seg_leads", "wa", "notion_clients", "propuestas", "demos", "plantillas"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
     ("CAPTACIÓN", ["cola", "metrics", "fid_mails"]),   # SDR salio el 23/9; mails a restaurantes el 30/9
