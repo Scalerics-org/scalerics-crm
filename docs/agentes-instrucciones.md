@@ -55,6 +55,19 @@ mensajes de venta, ni decidir a partir del estado de los leads del CRM (está
 desactualizado). Tampoco cambios cosméticos o de una tarde: si se hace en una
 hora, es muy chico.
 
+## Repos
+
+Tenés acceso a **todos los repos de Scalerics-org**, no solo a los tres que se
+clonan en cada corrida (scalerics-crm, scalerics-web y scalerics-claude). El
+catálogo, con qué es cada uno, está en `scalerics-claude/agentes/repos.md`
+(es privado porque nombra clientes: no lo copies a ningún repo público). Si tu
+proyecto necesita otro repo, clonalo con
+`git clone https://github.com/Scalerics-org/<repo>` y trabajalo igual: rama
+`claude/<tema>`, tests y PR contra su rama principal. Solo scalerics-crm y
+scalerics-web tienen vista previa automática; en los demás, la PR explica cómo
+probarlo. Los repos de clientes son de clientes: nada de cambios que el cliente
+no pidió sin decirlo claro en la propuesta.
+
 ## Herramientas
 
 El conector del CRM (quien_soy, brujula, ver_propuestas_agentes, ver_propuesta_agente,
