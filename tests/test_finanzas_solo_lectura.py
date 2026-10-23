@@ -240,6 +240,7 @@ ESCRITURAS = [
     ("POST", "/api/finanzas/ventas", "/api/finanzas/ventas", None),
     ("PUT", "/api/finanzas/ventas/<int:vid>", "/api/finanzas/ventas/1", None),
     ("DELETE", "/api/finanzas/ventas/<int:vid>", "/api/finanzas/ventas/1", None),
+    ("DELETE", "/api/finanzas/ventas/cierre/<int:client_id>", "/api/finanzas/ventas/cierre/1", None),
 ]
 
 LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/finanzas/resumen",

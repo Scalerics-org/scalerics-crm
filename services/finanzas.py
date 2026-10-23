@@ -1245,19 +1245,20 @@ def aportado_hasta_la_fecha(db_path: str) -> dict:
 # se cobra en dos partes se ve como dos ingresos de 1.000 en meses distintos.
 # Acá va lo VENDIDO, en el mes en que se vendió.
 #
+# Es solo para analizar lo vendido (Juan, 22/10): no lee ni escribe nada de
+# movimientos, por cobrar, fijos ni esenciales, y nada de eso lee esto.
+#
 # Dos fuentes:
 #   1. Los cierres: cada negocio que es cliente hoy cuenta como venta en el mes
-#      en que pasó por primera vez a una etapa de cliente. El monto es lo que
-#      se le vende en total: lo cobrado (sin mantenimiento ni aportes, que no
-#      son venta) más lo que falta cobrarle. Sale solo, sin cargar nada.
-#   2. Las cargadas a mano (`finanzas_ventas`): para una venta sin lead en el
-#      CRM, o para poner el monto acordado. Una a mano de un cliente reemplaza
-#      su cierre, en cualquier mes: si no, la misma venta contaría dos veces.
+#      en que pasó por primera vez a una etapa de cliente. Sale del pipeline,
+#      no de la plata: aparece sin monto hasta que se le pone.
+#   2. Las de `finanzas_ventas`: cargadas a mano, o un cierre al que se le puso
+#      monto. Cualquier fila de un cliente, aunque esté borrada, le gana a su
+#      cierre en todos los meses: así una venta no cuenta dos veces, y eliminar
+#      un cierre (que deja una fila borrada) lo saca para siempre.
 #
 # El primer paso y no el último: devolver a un cliente a su etapa (lo que pasó
 # el 21/10) deja un evento nuevo de "cerrado", y no es otra venta.
-
-CATEGORIAS_NO_VENTA = ("mantenimiento", CATEGORIA_APORTE)
 
 # Uruguay está en UTC-3 todo el año (sin horario de verano desde 2015). Los
 # eventos se guardan en UTC: un cierre del 31 a las 22 hs es del 31, no del 1.
@@ -1285,7 +1286,6 @@ def ventas_del_mes(db_path: str, periodo: str) -> dict:
     from database import ETAPAS_CLIENTE
 
     etapas = ",".join("?" * len(ETAPAS_CLIENTE))
-    no_venta = ",".join("?" * len(CATEGORIAS_NO_VENTA))
     c = _conn_ventas(db_path)
     try:
         manuales = [dict(f) for f in c.execute(
@@ -1293,58 +1293,52 @@ def ventas_del_mes(db_path: str, periodo: str) -> dict:
             "LEFT JOIN businesses b ON b.id = v.client_id "
             "WHERE v.borrado = 0 AND v.periodo = ? ORDER BY v.fecha DESC, v.id DESC",
             (periodo,))]
-        con_venta_manual = {f[0] for f in c.execute(
-            "SELECT DISTINCT client_id FROM finanzas_ventas "
-            "WHERE borrado = 0 AND client_id IS NOT NULL")}
+        con_fila = {f[0] for f in c.execute(
+            "SELECT DISTINCT client_id FROM finanzas_ventas WHERE client_id IS NOT NULL")}
         cierres = c.execute(
             "SELECT b.id, b.name, MIN(e.created_at) AS cerrado_at "
             "FROM businesses b JOIN lead_events e ON e.lead_id = b.id "
             f"WHERE b.crm_status IN ({etapas}) AND e.new_status IN ({etapas}) "
             "GROUP BY b.id", ETAPAS_CLIENTE + ETAPAS_CLIENTE).fetchall()
-        cobrado = {f[0]: float(f[1] or 0) for f in c.execute(
-            "SELECT client_id, SUM(monto_usd) FROM finanzas_movimientos "
-            "WHERE tipo = 'ingreso' AND anulado = 0 AND client_id IS NOT NULL "
-            f"AND categoria NOT IN ({no_venta}) GROUP BY client_id",
-            CATEGORIAS_NO_VENTA)}
-        pendiente = {f[0]: float(f[1] or 0) for f in c.execute(
-            "SELECT client_id, SUM(monto_usd) FROM finanzas_por_cobrar "
-            "WHERE cobrado_movimiento_id IS NULL AND client_id IS NOT NULL "
-            "GROUP BY client_id")}
     finally:
         c.close()
 
     ventas = []
     for f in cierres:
         fecha = _fecha_local(f["cerrado_at"])
-        if not fecha or fecha[:7] != periodo or f["id"] in con_venta_manual:
+        if not fecha or fecha[:7] != periodo or f["id"] in con_fila:
             continue
-        cob, pen = cobrado.get(f["id"], 0.0), pendiente.get(f["id"], 0.0)
         ventas.append({
             "origen": "cierre", "id": None, "client_id": f["id"],
             "cliente": f["name"], "concepto": None, "fecha": fecha,
-            "monto": _r2(cob + pen), "moneda": "USD", "tipo_cambio": None,
-            "monto_usd": _r2(cob + pen),
-            "cobrado_usd": _r2(cob), "pendiente_usd": _r2(pen), "notas": None})
+            "monto": None, "moneda": "USD", "tipo_cambio": None,
+            "monto_usd": None, "facturado": 0, "iva_incluido": 0, "iva_usd": 0.0,
+            "notas": None})
     for m in manuales:
-        cid = m["client_id"]
         ventas.append({
-            "origen": "manual", "id": m["id"], "client_id": cid,
+            "origen": "manual", "id": m["id"], "client_id": m["client_id"],
             "cliente": m["client_name"] or m["cliente"] or "Sin nombre",
             "concepto": m["concepto"], "fecha": m["fecha"], "monto": m["monto"],
             "moneda": m["moneda"], "tipo_cambio": m["tipo_cambio"],
-            "monto_usd": _r2(m["monto_usd"]),
-            "cobrado_usd": _r2(cobrado.get(cid, 0.0)) if cid else None,
-            "pendiente_usd": _r2(pendiente.get(cid, 0.0)) if cid else None,
+            "monto_usd": _r2(m["monto_usd"]), "facturado": m["facturado"],
+            "iva_incluido": m["iva_incluido"], "iva_usd": _r2(m["iva_usd"] or 0),
             "notas": m["notas"]})
     ventas.sort(key=lambda v: (v["fecha"], v["cliente"] or ""), reverse=True)
 
-    total = sum(v["monto_usd"] for v in ventas)
+    con_monto = [v["monto_usd"] for v in ventas if v["monto_usd"] is not None]
+    total = sum(con_monto)
+    iva = sum(v["iva_usd"] for v in ventas)
     return {
         "periodo": periodo,
         "ventas": ventas,
         "cantidad": len(ventas),
+        "sin_monto": len(ventas) - len(con_monto),
+        # El total es el neto, como en Movimientos; con el IVA va aparte.
         "total_usd": _r2(total),
-        "promedio_usd": _r2(total / len(ventas)) if ventas else None,
+        "iva_usd": _r2(iva),
+        "total_con_iva_usd": _r2(total + iva),
+        # Sobre las que tienen monto: un cierre sin monto no vale cero.
+        "promedio_usd": _r2(total / len(con_monto)) if con_monto else None,
         # Lo vendido en pesos, en pesos: el total en dólares usa el tipo de
         # cambio de cada venta, y con esto se ve lo que se acordó.
         "total_uyu": _r2(sum(v["monto"] for v in ventas if v["moneda"] == "UYU")),
@@ -1379,11 +1373,21 @@ def validar_venta(data: dict) -> tuple[dict | None, str | None]:
         monto_usd = a_usd(monto, moneda, tc)
     except ValueError as e:
         return None, str(e)
+    # IVA como en los esenciales: "más IVA" suma el 22% aparte; "IVA incluido"
+    # lo separa de adentro del monto. El monto escrito se guarda tal cual.
+    facturado = 1 if data.get("facturado") in (True, 1, "1", "true", "on") else 0
+    iva_incluido = 1 if facturado and data.get("iva_incluido") in (True, 1, "1", "true", "on") else 0
+    iva_usd = 0.0
+    if facturado and iva_incluido:
+        monto_usd, iva_usd = desglosar_iva_incluido(monto_usd)
+    elif facturado:
+        iva_usd = _r2(iva_sobre(monto_usd))
     return {"client_id": client_id, "cliente": None if client_id else cliente,
             "concepto": (data.get("concepto") or "").strip()[:200] or None,
             "fecha": fecha, "periodo": periodo_de(fecha), "monto": monto,
             "moneda": moneda, "tipo_cambio": tc if moneda != "USD" else None,
-            "monto_usd": _r2(monto_usd),
+            "monto_usd": _r2(monto_usd), "facturado": facturado,
+            "iva_incluido": iva_incluido, "iva_usd": iva_usd,
             "notas": (data.get("notas") or "").strip()[:1000] or None}, None
 
 
@@ -1420,5 +1424,30 @@ def borrar_venta(db_path: str, vid: int) -> bool:
                         "WHERE id = ? AND borrado = 0", (vid,))
         c.commit()
         return cur.rowcount > 0
+    finally:
+        c.close()
+
+
+def borrar_cierre(db_path: str, client_id: int, quien: str) -> bool:
+    """Saca el cierre de un cliente de Ventas. Deja una fila ya borrada, que
+    alcanza para que el cierre no vuelva (ver arriba). No toca al cliente."""
+    from database import ETAPAS_CLIENTE
+    c = _conn_ventas(db_path)
+    try:
+        etapas = ",".join("?" * len(ETAPAS_CLIENTE))
+        f = c.execute(
+            "SELECT b.name, MIN(e.created_at) FROM businesses b "
+            "JOIN lead_events e ON e.lead_id = b.id "
+            f"WHERE b.id = ? AND e.new_status IN ({etapas}) GROUP BY b.id",
+            (client_id,) + ETAPAS_CLIENTE).fetchone()
+        if not f:
+            return False
+        fecha = _fecha_local(f[1]) or date.today().isoformat()
+        c.execute("INSERT INTO finanzas_ventas (client_id, fecha, periodo, monto, moneda, "
+                  "monto_usd, notas, borrado, created_by_name) "
+                  "VALUES (?, ?, ?, 0, 'USD', 0, 'cierre eliminado de Ventas', 1, ?)",
+                  (client_id, fecha, periodo_de(fecha), quien))
+        c.commit()
+        return True
     finally:
         c.close()
