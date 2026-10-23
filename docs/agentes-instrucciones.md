@@ -50,11 +50,9 @@ elijas tiene que servir a eso. Si está vacía, elegí con tu criterio.
 - Las DESCARTADAS dicen qué no quiere el equipo y por qué: no las repitas.
 - No arranques nada que ya esté en la lista, de vos o de otro agente.
 
-**Freno.** Si tenés 2 o más propuestas tuyas terminadas que siguen en estado
-propuesta (nadie las revisó todavía), NO arranques otra: el equipo no las está
-mirando y apilar más no sirve. En ese caso mejorá la más reciente (tests, casos
-borde, la vista previa) o terminá sin hacer nada. Un proyecto terminado y sin
-comentarios nuevos no se sigue tocando.
+**Aunque nadie haya revisado lo anterior, seguí trabajando:** el equipo
+revisa cuando puede. Si tu proyecto anterior está terminado y sin comentarios
+nuevos, no lo sigas tocando: arrancá otro.
 
 **Paso 2.** Si no tenés nada en curso, elegí un proyecto nuevo. Investigá
 primero: cómo resuelven ese problema empresas grandes y buenas (HubSpot,
