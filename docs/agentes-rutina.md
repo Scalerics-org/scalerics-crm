@@ -43,9 +43,8 @@ abierta sin visitas casi no cuesta. Igual conviene cerrar las PRs descartadas.
 3. **Nombre:** `Agente Scalerics (<tu nombre>)`.
 4. **Prompt:** el bloque de abajo, tal cual. **Modelo: Opus** (en el selector
    del prompt). Nunca Fable: tiene tope semanal y es el que usan las personas.
-5. **Trigger > Schedule > Custom**, con el cron de tu fila de la tabla. **El
-   cron va en UTC** (Uruguay es UTC-3 todo el año): `0-5` UTC son las 21 a las
-   2 de acá. Al guardar, la próxima corrida tiene que decir 21 y algo.
+5. **Trigger > Schedule > Custom**, con el cron de tu fila de la tabla de
+   horarios (va en UTC). Al guardar, la próxima corrida tiene que decir 3 y algo.
 6. **Advanced settings > Repository:** `Scalerics-org/scalerics-crm`,
    `Scalerics-org/scalerics-web` y `Scalerics-org/scalerics-claude`.
 7. **Environment:** el *Default*. El CRM se usa por el conector, que pasa por
@@ -59,19 +58,27 @@ abierta sin visitas casi no cuesta. Igual conviene cerrar las PRs descartadas.
 
 ### Horarios
 
-Corren de 21 a 2, una vez por hora: un proyecto grande avanza toda la noche.
-La última corrida empieza a las 2 y algo, así que la ventana de 5 horas que
-abre se reinicia antes de las 8: nadie arranca el día con la cuenta gastada.
-Los minutos están corridos para que dos agentes no lean la lista al mismo
-tiempo y arranquen el mismo proyecto.
+Corren **de madrugada, de 3 a 6** (hora de Uruguay), una vez por hora: 3:07,
+4:07, 5:07 y 6:07. La regla es que la ventana de 5 horas que abre la primera
+corrida se cierre antes de que la persona empiece a usar Claude: la de las 3:07
+se cierra a las 8:07. La última corrida es a las 6 y no a las 7 porque una
+corrida tarda 20 a 50 minutos, y si se estira más allá de las 8:07 abre una
+ventana nueva justo cuando arrancás el día.
 
-| Cuenta | Cron (UTC) |
-|---|---|
-| Juan T. | `7 0-5 * * *` |
-| Javier | `19 0-5 * * *` |
-| Juan P. | `31 0-5 * * *` |
-| Gonzalo | `43 0-5 * * *` |
-| contacto@ | `55 0-5 * * *` |
+Si alguien trabaja a esas horas o arranca antes de las 8, que corra su fila
+para otro hueco con la misma regla. Los minutos están corridos para que dos
+agentes no lean la lista al mismo tiempo y arranquen el mismo proyecto.
+
+El cron va **en UTC** (Uruguay es UTC-3 todo el año): `6-9` UTC son las 3 a
+las 6 de acá. Al guardar, la próxima corrida tiene que decir 3 y algo.
+
+| Cuenta | Cron (UTC) | Hora de Uruguay |
+|---|---|---|
+| Juan T. | `7 6-9 * * *` | 3:07 a 6:07 |
+| Javier | `19 6-9 * * *` | 3:19 a 6:19 |
+| Juan P. | `31 6-9 * * *` | 3:31 a 6:31 |
+| Gonzalo | `43 6-9 * * *` | 3:43 a 6:43 |
+| contacto@ | `55 6-9 * * *` | 3:55 a 6:55 |
 
 ## El prompt
 
