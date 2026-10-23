@@ -60,6 +60,30 @@ def sembrar(db: str, email: str, clave: str) -> None:
                     clave="preview-ejemplo")
 
 
+def entrar_solo(app, db: str, email: str) -> None:
+    """En la vista previa nadie tiene que loguearse: cada visita sin sesión
+    entra como el usuario de vista previa. Los datos son inventados y no hay
+    procesos de fondo ni credenciales, así que no hay nada real que cuidar.
+
+    Va primero en la lista de before_request: si no, el candado de
+    `require_login` (que se registra en create_app) redirige al login antes."""
+    from flask import session
+
+    from database import get_user_by_email
+
+    def _entrar():
+        if session.get("logged_in"):
+            return None
+        usuario = get_user_by_email(db, email)
+        if usuario:
+            session["logged_in"] = True
+            session["user_id"] = usuario["id"]
+            session["user_name"] = usuario["name"]
+        return None
+
+    app.before_request_funcs.setdefault(None, []).insert(0, _entrar)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("uso: python -m scripts.preview_seed <ruta de la base>", file=sys.stderr)

@@ -23,15 +23,15 @@ Vercel no cuestan. Producción sigue en Fly. El proyecto de Vercel es
 Para que ande hace falta, una sola vez:
 
 - En `Scalerics-org/scalerics-crm` > Settings > Secrets and variables > Actions:
-  - **`PREVIEW_PASSWORD`**: la clave para entrar a las vistas previas (12
-    caracteres o más). El usuario es `preview@scalerics.com`. Compartila con
-    el equipo por fuera del repo.
+  - **`PREVIEW_PASSWORD`**: una clave de 12 caracteres o más para el usuario
+    `preview@scalerics.com` de la vista previa. Nadie la tiene que escribir:
+    la vista previa entra sola, sin login (los datos son inventados). Existe
+    para que ese usuario no quede con una clave por defecto.
   - **`VERCEL_TOKEN`**: un token de Vercel (vercel.com > Account Settings >
     Tokens), con alcance sobre la cuenta donde está `scalerics-crm-preview`.
 - En Vercel, proyecto `scalerics-crm-preview` > Settings > Deployment
   Protection: **apagar Vercel Authentication**. Si no, solo puede abrir las
-  vistas previas quien tenga sesión en esa cuenta de Vercel. El CRM igual pide
-  su propia clave.
+  vistas previas quien tenga sesión en esa cuenta de Vercel. (Ya está apagada.)
 
 Para **scalerics.com**: en Cloudflare, Worker `lucky-forest-13b9` > Settings >
 Build, prender **Builds for non-production branches**. Cada rama publica una

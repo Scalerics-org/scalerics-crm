@@ -69,3 +69,29 @@ def test_el_workflow_corre_la_version_de_main():
     assert "persist-credentials: false" in wf
     assert "CRM_PREVIEW=1" in wf
     assert "scalerics-crm-pr-${{ github.event.number }}.vercel.app" in wf
+
+
+def test_la_vista_previa_entra_sola_sin_login(tmp_path, monkeypatch):
+    import dashboard
+    monkeypatch.setenv("SECRET_KEY", "test")
+    monkeypatch.setenv("ADMIN_EMAIL", "preview@scalerics.com")
+    db = str(tmp_path / "p.db")
+    ps.sembrar(db, "preview@scalerics.com", "una-clave-larga-1")
+    app = dashboard.create_app(db)
+    app.config["TESTING"] = True
+    c = app.test_client()
+    # Sin entrada automática, el panel manda al login.
+    assert c.get("/").status_code == 302
+    ps.entrar_solo(app, db, "preview@scalerics.com")
+    c = app.test_client()
+    r = c.get("/")
+    assert r.status_code == 200 and 'id="agentes-panel"' in r.get_data(as_text=True)
+    assert c.get("/api/agentes").get_json()["ok"] is True
+
+
+def test_produccion_no_entra_sola():
+    srv = (RAIZ / "server.py").read_text(encoding="utf-8")
+    i = srv.index("entrar_solo(app")
+    # La línea de arriba de la llamada es el if de CRM_PREVIEW.
+    anterior = srv[:i].rstrip().splitlines()[-2].strip()
+    assert anterior == 'if os.environ.get("CRM_PREVIEW") == "1":'

@@ -42,6 +42,10 @@ seed_linkedin_banco(db_path)
 
 app = create_app(db_path)
 
+if os.environ.get("CRM_PREVIEW") == "1":
+    from scripts.preview_seed import entrar_solo
+    entrar_solo(app, db_path, os.environ["PREVIEW_EMAIL"])
+
 if __name__ == "__main__":
     from dashboard import run
     run(db_path)
