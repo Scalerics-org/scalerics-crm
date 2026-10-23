@@ -1,4 +1,4 @@
-"""La vista previa de una PR (scripts/preview_seed.py, fly.preview.toml,
+"""La vista previa de una PR en Vercel (scripts/preview_seed.py, server.py con CRM_PREVIEW,
 .github/workflows/preview.yml): datos inventados, sin clave por defecto y sin
 nada de producción."""
 
@@ -41,14 +41,24 @@ def test_siembra_y_es_idempotente(tmp_path, monkeypatch):
     assert len(ag.listar(db)) == 1
 
 
-def test_el_arranque_no_usa_la_base_ni_los_procesos_de_produccion():
-    sh = (RAIZ / "scripts" / "preview_start.sh").read_text(encoding="utf-8")
-    assert "DB_PATH=/tmp/preview.db" in sh
-    assert "CRM_SIN_PROCESOS_DE_FONDO=true" in sh
-    assert "leads_backup" not in sh and "/data" not in sh
-    toml = (RAIZ / "fly.preview.toml").read_text(encoding="utf-8")
-    assert "[[mounts]]" not in toml
-    assert 'min_machines_running = 0' in toml
+def test_el_modo_vista_previa_no_usa_la_base_ni_los_procesos_de_produccion():
+    srv = (RAIZ / "server.py").read_text(encoding="utf-8")
+    bloque = srv[srv.index('if os.environ.get("CRM_PREVIEW") == "1":'):srv.index("from database import")]
+    assert 'os.environ["DB_PATH"] = "/tmp/preview.db"' in bloque
+    assert 'os.environ["CRM_SIN_PROCESOS_DE_FONDO"] = "true"' in bloque
+    assert "PREVIEW_PASSWORD" in bloque
+    # La vista previa no puede subir secretos ni la base.
+    ignorado = (RAIZ / ".vercelignore").read_text(encoding="utf-8").split()
+    for algo in (".env", "credentials.json", "*.db", "backups/"):
+        assert algo in ignorado
+
+
+def test_las_dependencias_de_la_vista_previa_alcanzan_para_arrancar():
+    req = [l.strip() for l in (RAIZ / "requirements-preview.txt").read_text(encoding="utf-8").splitlines()
+           if l.strip() and not l.startswith("#")]
+    for paquete in ("flask", "requests", "pytz", "python-dotenv"):
+        assert paquete in req
+    assert "playwright" not in req
 
 
 def test_el_workflow_corre_la_version_de_main():
@@ -57,13 +67,5 @@ def test_el_workflow_corre_la_version_de_main():
     assert "\n  pull_request:" not in wf
     assert "head.repo.full_name == github.repository" in wf
     assert "persist-credentials: false" in wf
-    assert "flyctl apps destroy" in wf
-
-
-def test_la_vista_previa_es_chica_y_se_limpia():
-    toml = (RAIZ / "fly.preview.toml").read_text(encoding="utf-8")
-    assert 'memory = "256mb"' in toml
-    limpieza = (RAIZ / ".github" / "workflows" / "preview-limpieza.yml").read_text(encoding="utf-8")
-    assert "scalerics-crm-pr-" in limpieza and "5 days ago" in limpieza
-    # Nunca puede tocar la app de producción.
-    assert 'startswith("scalerics-crm-pr-")' in limpieza
+    assert "CRM_PREVIEW=1" in wf
+    assert "scalerics-crm-pr-${{ github.event.number }}.vercel.app" in wf

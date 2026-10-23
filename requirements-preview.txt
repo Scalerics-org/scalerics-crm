@@ -1,0 +1,12 @@
+# Dependencias de la vista previa en Vercel (api/index.py). El workflow
+# preview.yml copia este archivo encima de requirements.txt antes de deployar:
+# playwright, anthropic y las librerías de Google se importan recién al usarse,
+# y la vista previa no las usa. Así la función entra en el límite de Vercel.
+flask
+jinja2
+python-dotenv
+requests
+pytz
+json-repair
+cryptography
+Pillow

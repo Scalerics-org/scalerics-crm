@@ -14,25 +14,28 @@ mandar mensajes y publicar lo siguen haciendo las personas.
 
 ## Una sola vez: las vistas previas
 
-Cada PR del CRM levanta sola una copia en `https://scalerics-crm-pr-<N>.fly.dev`
-(`.github/workflows/preview.yml`), con datos inventados, sin mails ni procesos
-de fondo, y se borra al cerrar la PR. Para que ande hacen falta, en
-`Scalerics-org/scalerics-crm` > Settings > Secrets and variables > Actions:
+Cada PR del CRM publica sola una copia en Vercel, en
+`https://scalerics-crm-pr-<N>.vercel.app` (`.github/workflows/preview.yml`),
+con datos inventados y sin mails ni procesos de fondo. Las vistas previas de
+Vercel no cuestan. Producción sigue en Fly. El proyecto de Vercel es
+`scalerics-crm-preview`, en la cuenta de Juan.
 
-- **`PREVIEW_PASSWORD`**: la clave para entrar a las vistas previas (12
-  caracteres o más). El usuario es `preview@scalerics.com`. Compartila con el
-  equipo por fuera del repo.
-- **`FLY_API_TOKEN`**: ya lo usa el deploy. Tiene que poder **crear apps** en
-  la org `personal` de Fly: un token de deploy de una sola app no alcanza. Si
-  el primer workflow falla con un error de permisos, se crea uno con
-  `fly tokens create org personal` y se reemplaza el secret.
+Para que ande hace falta, una sola vez:
+
+- En `Scalerics-org/scalerics-crm` > Settings > Secrets and variables > Actions:
+  - **`PREVIEW_PASSWORD`**: la clave para entrar a las vistas previas (12
+    caracteres o más). El usuario es `preview@scalerics.com`. Compartila con
+    el equipo por fuera del repo.
+  - **`VERCEL_TOKEN`**: un token de Vercel (vercel.com > Account Settings >
+    Tokens), con alcance sobre la cuenta donde está `scalerics-crm-preview`.
+- En Vercel, proyecto `scalerics-crm-preview` > Settings > Deployment
+  Protection: **apagar Vercel Authentication**. Si no, solo puede abrir las
+  vistas previas quien tenga sesión en esa cuenta de Vercel. El CRM igual pide
+  su propia clave.
 
 Para **scalerics.com**: en Cloudflare, Worker `lucky-forest-13b9` > Settings >
 Build, prender **Builds for non-production branches**. Cada rama publica una
 URL de preview y Cloudflare la deja como comentario en la PR.
-
-Cada vista previa es una app de Fly que se duerme cuando nadie la mira: una PR
-abierta sin visitas casi no cuesta. Igual conviene cerrar las PRs descartadas.
 
 ## Cómo crear la tarea (cada uno en su cuenta)
 
