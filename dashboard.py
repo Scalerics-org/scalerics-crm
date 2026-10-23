@@ -9070,10 +9070,30 @@ async function loadClientesPanel() {
         <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>
         <div class="actions">
           <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
+          <button class="pitch-btn" style="color:#f87171;border-color:rgba(248,113,113,.35);background:transparent" onclick="cliEliminar(${b.id}, ${_cliAttr(b.name || '')})">Eliminar</button>
         </div>
       </div>`; }).join('');
     if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
+}
+
+// "Eliminar cliente" (Juan, 23/10): lo saca de Clientes sin borrarlo. Queda
+// archivado con su historial y lo que tenga en Finanzas (routes/preclientes.py).
+function _cliAttr(texto) {
+  // El nombre va como argumento JS dentro de un onclick="...": JSON para las
+  // comillas y entidades para que no cierre el atributo.
+  return JSON.stringify(texto).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function cliEliminar(clientId, nombre) {
+  if (!confirm('¿Eliminar a ' + nombre + ' de Clientes?\\n\\nSe saca de la lista, pero queda guardado en el CRM con su historial y lo que tenga en Finanzas.')) return;
+  try {
+    const r = await fetch('/api/clientes-activos/' + clientId, {method: 'DELETE'});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) { alert('No se pudo eliminar: ' + e.message); return; }
+  loadClientesPanel();
 }
 
 // ── Save notes inline ─────────────────────────────────────────────────────────
