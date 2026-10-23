@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Propuesta online (23/10): el presupuesto como link con seguimiento y
+        # aceptación (services/propuestas_online.py). Va a quien ya vende.
+        from services.propuestas_online import init_propuestas_online
+        init_propuestas_online(conn)
+        _grant_panel_to_existing_roles(conn, "propuestas", si_tiene=("notion_clients", "seg_leads"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)

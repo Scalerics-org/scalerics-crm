@@ -20,7 +20,9 @@ import sys
 from werkzeug.security import generate_password_hash
 
 from database import create_user, get_user_by_email, init_db
+from database import add_attachment
 from services import agentes as ag
+from services import propuestas_online as po
 
 LARGO_MINIMO_CLAVE = 12
 
@@ -35,6 +37,79 @@ LEADS = [
     ("Gimnasio Fuerza", "gimnasio", "Canelones", "cerrado"),
     ("Tienda Bambú", "ropa", "Colonia", "en_desarrollo"),
 ]
+
+
+PRESUPUESTO = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<style>body{{font-family:Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 24px;color:#1c2b40}}
+h1{{background:#0f1f3d;color:#fff;padding:24px;border-radius:8px}}h2{{color:#0088CC}}
+.precio{{font-size:32px;font-weight:700;color:#0f1f3d}}</style></head><body>
+<h1>Presupuesto · {negocio}</h1>
+<h2>Alcance</h2><ul><li>Sitio web de 5 secciones, adaptado a celular</li>
+<li>Botón de WhatsApp y formulario de contacto</li><li>SEO local en Google</li></ul>
+<h2>Tiempo</h2><p>Entre 3 y 4 semanas.</p>
+<h2>Inversión</h2><p class="precio">USD {monto}</p><p>50% al empezar, 50% al entregar.</p>
+<p><i>Documento de ejemplo de la vista previa: datos inventados.</i></p></body></html>"""
+
+# (negocio, monto, días desde que se mandó, aperturas, segundos, horas desde la última, cómo terminó)
+PROPUESTAS = [
+    ("Ferretería Norte", 1800, 2, 3, 420, 3, None),
+    ("Óptica Central", 1200, 1, 0, 0, None, None),
+    ("Veterinaria Patitas", 950, 6, 1, 45, 120, None),
+    ("Librería del Sur", 1500, 9, 4, 600, 150, "aceptada"),
+    ("Bar El Puerto", 2200, 12, 2, 90, 260, "rechazada"),
+]
+
+
+def _sembrar_propuestas(db: str) -> None:
+    """Links de presupuesto en todos los estados, para ver el panel lleno."""
+    from datetime import timedelta
+    conn = sqlite3.connect(db)
+    try:
+        ids = dict(conn.execute("SELECT name, id FROM businesses"))
+    finally:
+        conn.close()
+    ahora = po._ahora()
+    for negocio, monto, dias, vistas, segundos, horas, fin in PROPUESTAS:
+        html = PRESUPUESTO.format(negocio=negocio, monto=f"{monto:,}".replace(",", ".")).encode()
+        aid = add_attachment(db, ids[negocio], "budget", "presupuesto.html",
+                             file_data=html, mime_type="text/html")
+        r = po.publicar(db, ids[negocio], html, f"Propuesta para {negocio}", "Vista previa",
+                        attachment_id=aid, monto=monto)
+        creado = ahora - timedelta(days=dias)
+        # Código fijo: cada instancia de Vercel siembra su propia base, y el
+        # link copiado en una tiene que abrir en otra.
+        r["codigo"] = f"vista-previa-{ids[negocio]}"
+        ultima = ahora - timedelta(hours=horas) if horas is not None else None
+        conn = sqlite3.connect(db)
+        try:
+            conn.execute(
+                "UPDATE propuestas_online SET codigo=?, creado_en=?, vence_en=?, vistas=?, segundos=?, "
+                "primera_vista=?, ultima_vista=? WHERE id=?",
+                (r["codigo"], po._txt(creado), po._txt(creado + timedelta(days=po.DIAS_VIGENCIA)), vistas, segundos,
+                 po._txt(ultima - timedelta(hours=vistas)) if ultima else None,
+                 po._txt(ultima) if ultima else None, r["id"]))
+            conn.execute("UPDATE propuestas_online_eventos SET en=? WHERE propuesta_id=?",
+                         (po._txt(creado), r["id"]))
+            for i in range(vistas):
+                conn.execute("INSERT INTO propuestas_online_eventos (propuesta_id, tipo, en) VALUES (?,?,?)",
+                             (r["id"], "vista", po._txt(ultima - timedelta(hours=i))))
+            conn.commit()
+        finally:
+            conn.close()
+        p = po.por_codigo(db, r["codigo"])
+        if fin == "aceptada":
+            po.aceptar(db, p, "Laura Gómez", "laura@ejemplo.com", True)
+        elif fin == "rechazada":
+            po.rechazar(db, p, "Por ahora no tenemos presupuesto, lo vemos en marzo.")
+        if fin:
+            conn = sqlite3.connect(db)
+            try:
+                conn.execute("UPDATE propuestas_online SET resuelta_en=? WHERE id=?", (po._txt(ultima), r["id"]))
+                conn.execute("UPDATE propuestas_online_eventos SET en=? WHERE propuesta_id=? AND tipo=?",
+                             (po._txt(ultima), r["id"], fin))
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def sembrar(db: str, email: str, clave: str) -> None:
@@ -52,6 +127,8 @@ def sembrar(db: str, email: str, clave: str) -> None:
             conn.commit()
     finally:
         conn.close()
+    if not po.listar(db):
+        _sembrar_propuestas(db)
     if not ag.listar(db):
         autor = {"id": None, "name": "Agente de ejemplo"}
         ag.guardar_brujula(db, "Vista previa: datos inventados.", "Vista previa")

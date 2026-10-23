@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.propuestas_online import PUBLICAS as PROPUESTAS_PUBLICAS, propuestas_online_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  propuestas: 'presupuestos propuestas links aceptadas firma cotizacion',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -3250,6 +3252,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-propuestas .nav-icon{stroke:#fb923c}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3289,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-propuestas.active .nav-icon{stroke:#fed7aa}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3322,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-propuestas .nav-icon{stroke:#c2410c}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3842,6 +3847,34 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
 }
+/* Propuesta online (23/10): el presupuesto como link con seguimiento. */
+.po-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.po-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.po-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.po-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.po-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.po-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.po-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.po-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.po-lista{display:flex;flex-direction:column;gap:10px}
+.po-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:6px}
+.po-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.po-lead{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.po-monto{margin-left:auto;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.po-meta{font-size:.8rem;color:var(--texto-tenue);display:flex;gap:6px 14px;flex-wrap:wrap}
+.po-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto)}
+.po-pill.caliente{background:#3b1d0a;color:#fdba74}
+body.light .po-pill.caliente{background:#ffedd5;color:#9a3412}
+.po-pill.vista{background:var(--azul-tinte);color:var(--azul-claro)}
+.po-pill.aceptada{background:var(--verde-tinte);color:var(--verde-texto)}
+.po-pill.rechazada{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.po-pill.vencida,.po-pill.revocada{background:var(--relleno);color:var(--texto-tenue)}
+.po-nota{font-size:.82rem;color:var(--texto);border-left:2px solid var(--borde-fuerte);padding-left:10px;white-space:pre-line;overflow-wrap:anywhere}
+.po-acc{display:flex;gap:6px;flex-wrap:wrap}
+.po-eventos{list-style:none;margin:2px 0 0;padding:0;font-size:.8rem;color:var(--texto-tenue);display:flex;flex-direction:column;gap:3px}
+.po-eventos b{color:var(--texto);font-weight:600}
+.po-ficha{margin:0 0 14px}
+.po-ficha .po-item{padding:10px 12px}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -5005,6 +5038,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
+  <!-- Propuesta online (23/10): el presupuesto como link, con aperturas y aceptación. Panel "propuestas". -->
+  <div class="nav-item" id="nav-propuestas" onclick="showPanel('propuestas')"><i data-lucide="file-check" class="nav-icon"></i> Propuestas online <span id="po-badge" style="display:none;background:#f97316;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
   <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
   <div class="nav-section-label">OPERACIÓN</div>
@@ -6376,6 +6411,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= PROPUESTAS ONLINE PANEL ======= -->
+  <!-- El presupuesto como link (/p/<código>): quién lo abrió, cuánto lo leyó y
+       quién lo aceptó (services/propuestas_online.py). Se publica desde la
+       pestaña Presupuesto de la ficha del lead. -->
+  <div id="propuestas-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Propuestas online</h1>
+        <div class="page-date">Los presupuestos mandados como link. Llamá primero a las calientes: las abrieron hace poco y volvieron.</div>
+      </div>
+    </div>
+    <div class="po-kpis" id="po-kpis"></div>
+    <div class="po-filtros" id="po-filtros" role="group" aria-label="Filtrar propuestas"></div>
+    <div class="cr-nota" id="po-nota" role="status" aria-live="polite"></div>
+    <div class="po-lista" id="po-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN PROPUESTAS ONLINE PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +7653,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'propuestas') poCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12761,7 +12815,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','propuestas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -12890,7 +12944,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes, propRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -12902,6 +12956,9 @@ async function _cpLoadAll() {
     // Seguimiento de leads: el recordatorio abierto y el historial de llamados.
     // Sin el panel da 403 y la seccion no se muestra.
     fetch('/api/seg-leads/lead/' + _cpClientId).then(r => r.ok ? r.json() : null),
+    // Propuesta online: los links de presupuesto de este lead. Sin el panel
+    // "propuestas" da 403 y el presupuesto se ve como antes.
+    fetch('/api/propuestas-online?lead_id=' + _cpClientId).then(r => r.ok ? r.json() : null),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -12912,6 +12969,7 @@ async function _cpLoadAll() {
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
   _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
   _cpData.seg       = segRes.status === 'fulfilled' ? segRes.value : null;
+  _cpData.propuestas = propRes.status === 'fulfilled' && propRes.value ? propRes.value.propuestas : null;
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -13451,6 +13509,7 @@ function _cpRenderBudget() {
       <a href="/api/attachments/${a.id}/file" target="_blank" style="color:var(--azul-claro);font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
         <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨️ PDF</a>
+        ${_cpData.propuestas ? `<button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="poPublicarDesdeFicha(${a.id})">🔗 Link para el cliente</button>` : ''}
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},${escJs(a.name)})">✏️ Editar con IA</button>
         <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
       </div>
@@ -13474,6 +13533,7 @@ function _cpRenderBudget() {
     ${cobroBtnHtml}
     ${listHtml}
   </div>
+  ${poFichaHtml(_cpData.propuestas)}
   ${_cpRenderAttachBox('budget')}`;
 }
 
@@ -17838,6 +17898,222 @@ async function agAccion(e) {
   await agCargar();
 }
 // ========== FIN Agentes ==========
+
+// ========== Propuestas online ==========
+// El presupuesto como link (/p/<código>), con aperturas, lectura y aceptación
+// (services/propuestas_online.py). El nombre del lead, la firma y el motivo
+// los escribe gente de afuera: todo pasa por crEsc.
+const PO_FILTROS = [['', 'Todas'], ['caliente', 'Calientes'], ['sin_abrir', 'Sin abrir'], ['vista', 'Vistas'],
+                    ['aceptada', 'Aceptadas'], ['rechazada', 'Rechazadas'], ['cerradas', 'Vencidas o dadas de baja']];
+const PO_SENAL = {caliente: 'Caliente', vista: 'Vista', sin_abrir: 'Sin abrir', aceptada: 'Aceptada',
+                  rechazada: 'Rechazada', vencida: 'Vencida', revocada: 'Dada de baja'};
+const PO_ORDEN = {caliente: 0, vista: 1, sin_abrir: 2, aceptada: 3, rechazada: 4, vencida: 5, revocada: 6};
+const PO_EVENTO = {publicada: 'Se publicó', vista: 'La abrieron', aceptada: 'La aceptaron',
+                   rechazada: 'Dijeron que no', revocada: 'Se dio de baja'};
+let poFiltro = '';
+let poDatos = [];
+
+function poMonto(n, moneda) {
+  if (n === null || n === undefined) return '';
+  return (moneda || 'USD') + ' ' + Number(n).toLocaleString('es-UY', {maximumFractionDigits: 2});
+}
+
+function poFecha(utc) {
+  if (!utc) return '';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  return isNaN(d) ? '' : d.toLocaleString('es-UY', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+}
+
+function poHace(utc) {
+  if (!utc) return '';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'hace ' + h + ' h';
+  return 'hace ' + Math.round(h / 24) + ' días';
+}
+
+function poLectura(seg) {
+  if (!seg) return '';
+  return seg < 60 ? seg + ' s de lectura' : Math.round(seg / 60) + ' min de lectura';
+}
+
+function poMeta(p) {
+  const partes = [];
+  if (p.vistas) partes.push(p.vistas + (p.vistas === 1 ? ' apertura' : ' aperturas'));
+  if (p.segundos) partes.push(poLectura(p.segundos));
+  if (p.ultima_vista) partes.push('última ' + poHace(p.ultima_vista));
+  if (p.senal === 'sin_abrir') partes.push('mandada ' + poHace(p.creado_en));
+  if (['caliente', 'vista', 'sin_abrir'].includes(p.senal)) partes.push('vence ' + poFecha(p.vence_en));
+  if (p.resuelta_en && p.senal !== 'vencida') partes.push(PO_SENAL[p.senal].toLowerCase() + ' ' + poFecha(p.resuelta_en));
+  return partes.map(crEsc).join(' · ');
+}
+
+function poNota(p) {
+  if (p.estado === 'aceptada')
+    return '<div class="po-nota">Firmó: ' + crEsc(p.firma_nombre || '') + (p.firma_email ? ' · ' + crEsc(p.firma_email) : '') + '</div>';
+  if (p.estado === 'rechazada' && p.motivo)
+    return '<div class="po-nota">Motivo: ' + crEsc(p.motivo) + '</div>';
+  return '';
+}
+
+function poHtml(p, enFicha) {
+  const id = Number(p.id);
+  const abierta = ['caliente', 'vista', 'sin_abrir'].includes(p.senal);
+  const acc = ['<button type="button" class="of-btn prim" data-po="copiar" data-id="' + id + '">Copiar link</button>',
+               '<a class="of-btn" href="' + crEsc(p.url) + '" target="_blank" rel="noopener" style="text-decoration:none">Abrir</a>'];
+  if (!enFicha) acc.push('<button type="button" class="of-btn" data-po="actividad" data-id="' + id + '" aria-expanded="false">Actividad</button>');
+  if (abierta) acc.push('<button type="button" class="of-btn" data-po="revocar" data-id="' + id + '">Dar de baja</button>');
+  return '<div class="po-item" id="po-item-' + id + '">'
+    + '<div class="po-cab"><span class="po-pill ' + crEsc(p.senal) + '">' + crEsc(PO_SENAL[p.senal] || p.senal) + '</span>'
+    + (enFicha ? '<span class="po-meta">' + crEsc(p.titulo) + '</span>'
+               : '<a class="po-lead" href="#" data-po="ficha" data-lead="' + Number(p.lead_id) + '">' + crEsc(p.lead_nombre || 'Lead borrado') + '</a>')
+    + (p.monto !== null ? '<span class="po-monto">' + crEsc(poMonto(p.monto, p.moneda)) + '</span>' : '') + '</div>'
+    + '<div class="po-meta">' + poMeta(p) + '</div>'
+    + poNota(p)
+    + '<div class="po-acc">' + acc.join('') + '</div>'
+    + '<ul class="po-eventos" id="po-ev-' + id + '" hidden></ul>'
+    + '</div>';
+}
+
+function poPintarKpis(r) {
+  const box = document.getElementById('po-kpis');
+  if (!box) return;
+  const pct = v => v === null || v === undefined ? '—' : Math.round(v * 100) + '%';
+  const kpis = [
+    ['Abiertas por cobrar', poMonto(r.monto_abierto) || 'USD 0',
+     ((r.por_senal.caliente || 0) + ' calientes · ' + (r.por_senal.sin_abrir || 0) + ' sin abrir')],
+    ['Tasa de apertura', pct(r.tasa_apertura), r.abiertas + ' de ' + r.enviadas + ' links'],
+    ['Aceptadas', poMonto(r.monto_aceptado) || 'USD 0', r.aceptadas + ' propuestas · ' + pct(r.tasa_aceptacion) + ' de las respondidas'],
+    ['Tiempo a respuesta', r.horas_a_respuesta === null ? '—'
+       : (r.horas_a_respuesta < 48 ? r.horas_a_respuesta + ' h' : Math.round(r.horas_a_respuesta / 24) + ' días'),
+     'mediana, de mandar a aceptar o rechazar'],
+  ];
+  box.innerHTML = kpis.map(([l, v, sub]) => '<div class="po-kpi"><div class="po-kpi-l">' + crEsc(l)
+    + '</div><div class="po-kpi-v">' + crEsc(v) + '</div><div class="po-kpi-s">' + crEsc(sub) + '</div></div>').join('');
+  const badge = document.getElementById('po-badge');
+  if (badge) {
+    badge.textContent = r.por_senal.caliente || '';
+    badge.style.display = r.por_senal.caliente ? 'inline' : 'none';
+  }
+}
+
+function poPasaFiltro(p) {
+  if (!poFiltro) return true;
+  if (poFiltro === 'cerradas') return p.senal === 'vencida' || p.senal === 'revocada';
+  return p.senal === poFiltro;
+}
+
+function poPintarLista() {
+  const box = document.getElementById('po-lista');
+  const filtros = document.getElementById('po-filtros');
+  const n = f => poDatos.filter(p => { const prev = poFiltro; poFiltro = f; const ok = poPasaFiltro(p); poFiltro = prev; return ok; }).length;
+  filtros.innerHTML = PO_FILTROS.map(([f, txt]) => '<button type="button" class="po-filtro" data-po-filtro="' + f
+    + '" aria-pressed="' + (f === poFiltro) + '">' + txt + ' (' + n(f) + ')</button>').join('');
+  const lista = poDatos.filter(poPasaFiltro)
+    .sort((a, b) => (PO_ORDEN[a.senal] - PO_ORDEN[b.senal]) || String(b.ultima_vista || b.creado_en).localeCompare(String(a.ultima_vista || a.creado_en)));
+  box.innerHTML = lista.length ? lista.map(p => poHtml(p, false)).join('')
+    : '<div class="of-vacio">' + (poDatos.length ? 'No hay propuestas con este filtro.'
+      : 'Todavía no hay links. Se crean desde la pestaña Presupuesto de la ficha del lead, con "Link para el cliente".') + '</div>';
+}
+
+async function poCargar() {
+  const nota = document.getElementById('po-nota');
+  if (!document.getElementById('po-lista')) return;
+  if (nota) nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/propuestas-online');
+    poDatos = d.propuestas;
+    poPintarKpis(d.resumen);
+  } catch (e) {
+    poDatos = [];
+    if (nota) nota.textContent = e.message;
+  }
+  poPintarLista();
+  document.getElementById('po-filtros').onclick = e => {
+    const b = e.target.closest('[data-po-filtro]');
+    if (!b) return;
+    poFiltro = b.dataset.poFiltro;
+    poPintarLista();
+  };
+  document.getElementById('po-lista').onclick = e => poAccion(e, false);
+}
+
+async function poCopiar(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (e) { window.prompt('Copiá el link para el cliente:', url); return false; }
+}
+
+async function poAccion(e, enFicha) {
+  const b = e.target.closest('[data-po]');
+  if (!b) return;
+  const nota = document.getElementById('po-nota');
+  const lista = enFicha ? (_cpData.propuestas || []) : poDatos;
+  const p = lista.find(x => x.id === Number(b.dataset.id));
+  const accion = b.dataset.po;
+  if (accion === 'ficha') { e.preventDefault(); openClientPanel(Number(b.dataset.lead)); return; }
+  if (!p) return;
+  if (accion === 'copiar') {
+    if (await poCopiar(p.url)) { b.textContent = 'Copiado ✓'; setTimeout(() => { b.textContent = 'Copiar link'; }, 1600); }
+    return;
+  }
+  if (accion === 'actividad') {
+    const ul = document.getElementById('po-ev-' + p.id);
+    if (!ul.hidden) { ul.hidden = true; b.setAttribute('aria-expanded', 'false'); return; }
+    try {
+      const d = await ofPedir('/api/propuestas-online/' + p.id);
+      ul.innerHTML = d.propuesta.eventos.map(ev => '<li><b>' + crEsc(PO_EVENTO[ev.tipo] || ev.tipo) + '</b> · '
+        + crEsc(poFecha(ev.en)) + (ev.detalle && ev.tipo !== 'vista' ? ' · ' + crEsc(ev.detalle) : '') + '</li>').join('')
+        || '<li>Sin actividad.</li>';
+      ul.hidden = false;
+      b.setAttribute('aria-expanded', 'true');
+    } catch (ex) { if (nota) nota.textContent = ex.message; }
+    return;
+  }
+  if (accion === 'revocar') {
+    if (!confirm('¿Dar de baja este link? El cliente va a ver que ya no está disponible.')) return;
+    try {
+      await ofPedir('/api/propuestas-online/' + p.id + '/revocar', 'POST', {});
+    } catch (ex) { alert(ex.message); return; }
+    if (enFicha) await poRecargarFicha(); else poCargar();
+  }
+}
+
+// ── En la ficha del lead (pestaña Presupuesto) ──
+function poFichaHtml(lista) {
+  if (!lista) return '';
+  if (!lista.length) return '<div class="cp-section po-ficha"><div class="cp-section-title">Links para el cliente</div>'
+    + '<div style="color:var(--texto-debil);font-size:.82rem">Con "🔗 Link para el cliente" el presupuesto se manda como link: '
+    + 'vas a ver cuándo lo abre, cuánto lo lee, y lo puede aceptar ahí mismo.</div></div>';
+  return '<div class="cp-section po-ficha" onclick="poAccion(event, true)"><div class="cp-section-title">Links para el cliente</div>'
+    + '<div class="po-lista">' + lista.map(p => poHtml(p, true)).join('') + '</div></div>';
+}
+
+async function poRecargarFicha() {
+  try {
+    const d = await ofPedir('/api/propuestas-online?lead_id=' + _cpClientId);
+    _cpData.propuestas = d.propuestas;
+  } catch (e) { /* queda la lista de antes */ }
+  _cpSwitchTab('budget');
+}
+
+async function poPublicarDesdeFicha(attachmentId) {
+  const sugerido = _cpData.budget && _cpData.budget.total_amount ? String(_cpData.budget.total_amount) : '';
+  const monto = window.prompt('Monto de la propuesta en USD (para el panel; dejalo vacío si no aplica):', sugerido);
+  if (monto === null) return;
+  let d;
+  try {
+    d = await ofPedir('/api/propuestas-online', 'POST',
+                      {attachment_id: attachmentId, monto: monto.trim() === '' ? '' : monto.replace(',', '.')});
+  } catch (e) { alert(e.message); return; }
+  const copiado = await poCopiar(d.propuesta.url);
+  await poRecargarFicha();
+  if (copiado) alert('Link copiado. Mandáselo al cliente: vas a ver acá cuándo lo abre.');
+}
+// ========== FIN Propuestas online ==========
 
 
 // ========== Instagram ==========
@@ -23059,7 +23335,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, propuestas_online_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23086,6 +23362,11 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Propuesta online: el link del presupuesto que abre el cliente. La
+        # llave es el código al azar; routes/propuestas_online.py no confía en
+        # nada más. Igual se mira la sesión, para no contar las visitas del equipo.
+        if request.path.startswith(PROPUESTAS_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24113,8 +24394,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','propuestas'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',propuestas:'Propuestas online'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
