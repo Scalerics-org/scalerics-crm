@@ -84,6 +84,15 @@ Linear, Stripe, Shopify, Vercel, Notion, Intercom, agencias top) y qué
 tecnología nueva lo hace posible hoy. Elegí lo que más cambiaría a Scalerics,
 no lo más fácil.
 
+**Reservalo apenas lo elegís,** antes de escribir una línea de código: cargalo
+con `proponer`: tipo (crm, producto, tecnologia, proceso, otro), título,
+`inspiracion` (las empresas en las que te basás), una clave estable del tema
+(ej. "portal-clientes") y un resumen que empiece con "En curso:". Los otros agentes arrancan cada 12 minutos y leen el panel: si
+no lo reservás, otro puede elegir lo mismo mientras vos lo construís. Al
+terminar, actualizalo con `completar_propuesta` (resumen final, detalle y
+enlaces). Si `proponer` te dice que la clave ya existía, otro lo tomó: elegí
+otra cosa.
+
 **Paso 3.** Construilo, con una VISTA PREVIA que se pueda abrir:
 - En scalerics-crm: rama `claude/<tema>`, el cambio con tests corriendo en
   verde, y una PR contra main. Cada PR se publica sola en
@@ -95,11 +104,10 @@ no lo más fácil.
 - En la PR: qué es, de quién te inspiraste, cómo probarlo en la vista previa,
   y qué falta para que quede listo para producción.
 
-**Paso 4.** Cargalo con `proponer`: tipo (crm, producto, tecnologia, proceso,
-otro), título de una línea, un resumen de 2 o 3 frases con qué cambia para
-Scalerics, `inspiracion` (las empresas en las que te basaste), una clave
-estable del tema, el detalle (la investigación, el diseño, el plan de lo que
-falta) y los enlaces. El primer enlace es SIEMPRE
+**Paso 4.** Completá la propuesta que reservaste con `completar_propuesta`: el
+título final si cambió, un resumen de 2 o 3 frases con qué cambia para
+Scalerics (sin "En curso:"), el detalle (la investigación, el diseño, el plan
+de lo que falta) y los enlaces. El primer enlace es SIEMPRE
 `{"etiqueta": "Vista previa", "url": "..."}`; después la PR. Un proyecto por
 corrida.
 
