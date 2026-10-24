@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.materiales import PUBLICAS as MATERIALES_PUBLICAS, materiales_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  materiales: 'materiales cliente portal logo fotos textos catalogo checklist entrega onboarding',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,319 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+MAT_JS = r"""// ========== Materiales de clientes ==========
+// services/materiales.py guarda; acá solo se pinta. Los títulos, textos y
+// nombres de archivo los escribe el cliente: todo pasa por crEsc.
+const MAT_ESTADO = {revisar: 'Para revisar', trabado: 'Trabado', esperando: 'Esperando al cliente',
+                    completo: 'Completo', cerrado: 'Cerrado'};
+const MAT_ORDEN = {revisar: 0, trabado: 1, esperando: 2, completo: 3, cerrado: 4};
+const MAT_ITEM = {pendiente: 'Falta', enviado: 'Para revisar', aprobado: 'Aprobado', cambios: 'Cambios pedidos'};
+const MAT_CLASE = {archivo: 'archivos', texto: 'texto', link: 'links'};
+const MAT_FILTROS = [['', 'Todos'], ['revisar', 'Para revisar'], ['trabado', 'Trabados'],
+                     ['esperando', 'Esperando'], ['completo', 'Completos'], ['cerrado', 'Cerrados']];
+let matDatos = [];
+let matTipos = {};
+let matFiltro = '';
+let matAbierto = null;
+let matDiasTrabado = 5;
+
+function matPeso(n) {
+  if (!n) return '0 KB';
+  return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
+}
+
+function matPasa(p, f) {
+  if (!f) return p.estado !== 'cerrado';
+  return p.estado === f;
+}
+
+function matHtml(p) {
+  const id = Number(p.id);
+  const meta = [];
+  meta.push('<b>' + Number(p.hechos) + ' de ' + Number(p.total) + '</b> aprobados');
+  if (p.conteo.enviado) meta.push('<b>' + Number(p.conteo.enviado) + '</b> para revisar');
+  if (p.estado !== 'cerrado' && p.estado !== 'completo') {
+    meta.push(p.ultimo_cliente ? 'el cliente mandó algo ' + crEsc(matHace(p.ultimo_cliente))
+      : 'el cliente todavía no mandó nada');
+  }
+  meta.push(p.ultima_visita ? 'abrió el link ' + crEsc(matHace(p.ultima_visita)) : 'no abrió el link');
+  if (p.fecha_limite) meta.push((p.vencido ? '<span class="mat-mal">venció el ' : 'para el ') + crEsc(p.fecha_limite.split('-').reverse().join('/')) + (p.vencido ? '</span>' : ''));
+  if (p.bytes) meta.push(matPeso(p.bytes));
+  const acc = [
+    '<button type="button" class="of-btn prim" data-mat="detalle" data-id="' + id + '" aria-expanded="' + (matAbierto === id) + '">' + (matAbierto === id ? 'Ocultar' : 'Abrir') + '</button>',
+    '<button type="button" class="of-btn" data-mat="copiar" data-id="' + id + '">Copiar link</button>',
+    '<a class="of-btn" style="text-decoration:none" href="' + crEsc(p.link) + '" target="_blank" rel="noopener">Ver como cliente</a>',
+    '<a class="of-btn" style="text-decoration:none" href="/api/materiales/' + id + '/zip">Bajar todo (zip)</a>',
+    '<button type="button" class="of-btn" data-mat="cerrar" data-id="' + id + '">' + (p.cerrado_en ? 'Reabrir portal' : 'Cerrar portal') + '</button>',
+    '<button type="button" class="of-btn" data-mat="borrar" data-id="' + id + '">Borrar</button>',
+  ];
+  return '<div class="mat-item ' + crEsc(p.estado) + '" id="mat-item-' + id + '">'
+    + '<div class="mat-cab"><span class="mat-pill ' + crEsc(p.estado) + '">' + crEsc(MAT_ESTADO[p.estado] || p.estado) + '</span>'
+    + '<span class="mat-nombre">' + crEsc(p.nombre) + '</span>'
+    + '<span class="mat-tipo">' + crEsc(matTipos[p.tipo] || p.tipo) + (p.cliente_nombre ? ' · ' + crEsc(p.cliente_nombre) : '') + '</span></div>'
+    + '<div class="mat-barra" role="progressbar" aria-label="Avance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Number(p.pct) + '"><span style="width:' + Number(p.pct) + '%"></span></div>'
+    + '<div class="mat-meta">' + meta.join(' · ') + '</div>'
+    + (p.estado === 'trabado' ? '<div class="mat-alerta">Hace ' + Number(p.dias_sin_cliente) + ' días que no tenemos noticias: escribile o llamalo.</div>' : '')
+    + '<div class="mat-acc">' + acc.join('') + '</div>'
+    + '<div class="mat-det" id="mat-det-' + id + '" hidden></div>'
+    + '</div>';
+}
+
+function matHace(utc) {
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'hace ' + h + ' h';
+  return 'hace ' + Math.round(h / 24) + ' días';
+}
+
+function matPintarKpis(r) {
+  const kpis = [
+    ['Portales abiertos', String(r.abiertos), r.completos + ' con todo aprobado', ''],
+    ['Para revisar', String(r.para_revisar), 'ítems que mandó el cliente', r.para_revisar ? 'atencion' : ''],
+    ['Trabados', String(r.trabados), 'sin noticias hace ' + matDiasTrabado + '+ días', r.trabados ? 'mal' : ''],
+    ['Avance medio', r.pct_medio === null ? '—' : r.pct_medio + '%', r.vencidos ? r.vencidos + ' pasados de fecha' : 'de los portales abiertos', r.vencidos ? 'mal' : ''],
+  ];
+  document.getElementById('mat-kpis').innerHTML = kpis.map(([l, v, sub, c]) => '<div class="mat-kpi"><div class="mat-kpi-l">' + crEsc(l)
+    + '</div><div class="mat-kpi-v mat-' + c + '">' + crEsc(v) + '</div><div class="mat-kpi-s">' + crEsc(sub) + '</div></div>').join('');
+  const badge = document.getElementById('mat-badge');
+  if (badge) { badge.textContent = r.para_revisar || ''; badge.style.display = r.para_revisar ? 'inline' : 'none'; }
+}
+
+function matPintarLista() {
+  document.getElementById('mat-filtros').innerHTML = MAT_FILTROS.map(([f, t]) => '<button type="button" class="mat-filtro" data-mat-filtro="' + f
+    + '" aria-pressed="' + (f === matFiltro) + '">' + t + ' (' + matDatos.filter(p => matPasa(p, f)).length + ')</button>').join('');
+  const lista = matDatos.filter(p => matPasa(p, matFiltro))
+    .sort((a, b) => (MAT_ORDEN[a.estado] - MAT_ORDEN[b.estado]) || b.dias_sin_cliente - a.dias_sin_cliente);
+  document.getElementById('mat-lista').innerHTML = lista.length ? lista.map(matHtml).join('')
+    : '<div class="of-vacio">' + (matDatos.length ? 'Ningún portal con este filtro.'
+      : 'Todavía no hay portales. Con "+ Nuevo portal" armás la checklist del primer proyecto y le mandás el link al cliente.') + '</div>';
+  if (matAbierto && document.getElementById('mat-det-' + matAbierto)) matDetalle(matAbierto);
+}
+
+async function matCargar() {
+  if (!document.getElementById('mat-lista')) return;
+  const nota = document.getElementById('mat-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/materiales');
+    matDatos = d.portales;
+    matTipos = d.tipos;
+    matDiasTrabado = d.dias_trabado;
+    matPintarKpis(d.resumen);
+  } catch (e) {
+    matDatos = [];
+    nota.textContent = e.message;
+  }
+  matPintarLista();
+  document.getElementById('mat-filtros').onclick = e => {
+    const b = e.target.closest('[data-mat-filtro]');
+    if (!b) return;
+    matFiltro = b.dataset.matFiltro;
+    matPintarLista();
+  };
+  document.getElementById('mat-lista').onclick = matAccion;
+  document.getElementById('mat-nuevo').onclick = matAbrirForm;
+  document.getElementById('mat-cancelar').onclick = () => matCerrarForm();
+  document.getElementById('mat-form').onsubmit = matCrear;
+}
+
+function matItemHtml(it, cerrado) {
+  const iid = Number(it.id);
+  const arch = it.archivos.map(a => '<li><a href="/api/materiales/archivos/' + Number(a.id) + '">' + crEsc(a.nombre) + '</a> · '
+    + matPeso(a.bytes) + (a.subido_por !== 'cliente' ? ' · subió ' + crEsc(a.subido_por) : '')
+    + ' <button type="button" class="mat-x" data-mat="quitar" data-aid="' + Number(a.id) + '" aria-label="Quitar ' + crEsc(a.nombre) + '">✕</button></li>').join('');
+  const acc = [];
+  if (!cerrado) {
+    if (it.estado !== 'aprobado') acc.push('<button type="button" class="of-btn prim" data-mat="aprobar" data-iid="' + iid + '">Aprobar</button>');
+    if (it.estado !== 'cambios') acc.push('<button type="button" class="of-btn" data-mat="pedir" data-iid="' + iid + '">Pedir cambio</button>');
+    if (it.estado !== 'pendiente') acc.push('<button type="button" class="of-btn" data-mat="reabrir" data-iid="' + iid + '">Volver a falta</button>');
+    if (it.clase === 'archivo') acc.push('<label class="of-btn mat-subir">Subir por el cliente<input type="file" multiple data-mat-subir="' + iid + '" hidden></label>');
+    acc.push('<button type="button" class="of-btn" data-mat="borrar-item" data-iid="' + iid + '">Borrar ítem</button>');
+  }
+  return '<div class="mat-it ' + crEsc(it.estado) + '">'
+    + '<div class="mat-cab"><span class="mat-pill i-' + crEsc(it.estado) + '">' + crEsc(MAT_ITEM[it.estado] || it.estado) + '</span>'
+    + '<b class="mat-it-tit">' + crEsc(it.titulo) + '</b><span class="mat-tipo">' + crEsc(MAT_CLASE[it.clase] || it.clase)
+    + (it.obligatorio ? '' : ' · opcional') + '</span></div>'
+    + (it.texto ? '<div class="mat-texto">' + crEsc(it.texto) + '</div>' : '')
+    + (arch ? '<ul class="mat-arch">' + arch + '</ul>' : '')
+    + (it.comentario ? '<div class="mat-coment">' + (it.estado === 'cambios' ? 'Le pedimos: ' : '') + crEsc(it.comentario) + '</div>' : '')
+    + '<div class="mat-pedir" id="mat-pedir-' + iid + '" hidden><textarea maxlength="1000" aria-label="Qué le falta" placeholder="El logo está pixelado: ¿tenés el archivo original en PDF o AI?"></textarea>'
+    + '<button type="button" class="of-btn prim" data-mat="pedir-ok" data-iid="' + iid + '">Pedírselo</button></div>'
+    + '<div class="mat-acc">' + acc.join('') + '</div></div>';
+}
+
+async function matDetalle(id) {
+  const box = document.getElementById('mat-det-' + id);
+  if (!box) return;
+  let p;
+  try { p = (await ofPedir('/api/materiales/' + id)).portal; }
+  catch (e) { box.textContent = e.message; box.hidden = false; return; }
+  const cerrado = !!p.cerrado_en;
+  const ev = p.eventos.map(x => '<li><b>' + crEsc(ofFecha(x.en)) + '</b> · ' + crEsc(x.quien) + ' · ' + crEsc(x.accion.replace(/_/g, ' '))
+    + (x.detalle ? ' · ' + crEsc(x.detalle) : '') + '</li>').join('') || '<li>Sin movimiento.</li>';
+  box.innerHTML = '<div class="mat-its">' + p.items.map(it => matItemHtml(it, cerrado)).join('') + '</div>'
+    + (cerrado ? '' : '<form class="mat-alta-item" data-pid="' + id + '"><b>Agregar ítem</b>'
+      + '<input name="titulo" maxlength="120" required placeholder="Menú con precios" aria-label="Título">'
+      + '<input name="descripcion" maxlength="600" placeholder="Qué necesitamos, en una línea" aria-label="Descripción">'
+      + '<select name="clase" aria-label="Cómo se contesta"><option value="archivo">Con archivos</option><option value="texto">Con texto</option><option value="link">Con links</option></select>'
+      + '<label class="mat-chk"><input type="checkbox" name="obligatorio" checked> Obligatorio</label>'
+      + '<button type="submit" class="of-btn prim">Agregar</button></form>')
+    + '<div class="mat-pie"><div><h4>Mensaje y fecha para el cliente</h4>'
+    + '<textarea id="mat-msj-' + id + '" maxlength="1500" placeholder="¡Hola! Acá va todo lo que necesitamos para arrancar tu web.">' + crEsc(p.mensaje || '') + '</textarea>'
+    + '<div class="mat-acc"><input type="date" id="mat-fecha-' + id + '" value="' + crEsc(p.fecha_limite || '') + '" aria-label="Fecha límite">'
+    + '<button type="button" class="of-btn" data-mat="guardar" data-id="' + id + '">Guardar</button>'
+    + '<span class="of-ayuda" id="mat-guardar-' + id + '" role="status" aria-live="polite"></span></div></div>'
+    + '<div><h4>Actividad</h4><ul class="mat-ev">' + ev + '</ul></div></div>';
+  box.hidden = false;
+  box.onchange = matSubir;
+  box.onsubmit = matAgregarItem;
+}
+
+async function matSubir(e) {
+  const inp = e.target.closest('[data-mat-subir]');
+  if (!inp || !inp.files.length) return;
+  const fd = new FormData();
+  Array.from(inp.files).forEach(f => fd.append('archivos', f));
+  const nota = document.getElementById('mat-nota');
+  try {
+    const r = await fetch('/api/materiales/items/' + Number(inp.dataset.matSubir) + '/archivos', {method: 'POST', body: fd});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo subir.');
+  } catch (ex) { nota.textContent = ex.message; }
+  await matCargar();
+}
+
+async function matAgregarItem(e) {
+  const f = e.target.closest('.mat-alta-item');
+  if (!f) return;
+  e.preventDefault();
+  try {
+    await ofPedir('/api/materiales/' + Number(f.dataset.pid) + '/items', 'POST', {
+      titulo: f.elements.titulo.value, descripcion: f.elements.descripcion.value,
+      clase: f.elements.clase.value, obligatorio: f.elements.obligatorio.checked});
+  } catch (ex) { document.getElementById('mat-nota').textContent = ex.message; return; }
+  await matCargar();
+}
+
+async function matCopiar(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (e) { window.prompt('Copiá el link para el cliente:', url); return false; }
+}
+
+async function matAccion(e) {
+  const b = e.target.closest('[data-mat]');
+  if (!b) return;
+  const accion = b.dataset.mat;
+  const nota = document.getElementById('mat-nota');
+  const iid = Number(b.dataset.iid);
+  try {
+    if (accion === 'aprobar' || accion === 'reabrir') {
+      await ofPedir('/api/materiales/items/' + iid + '/revision', 'POST', {accion: accion});
+      return await matCargar();
+    }
+    if (accion === 'pedir') {
+      const box = document.getElementById('mat-pedir-' + iid);
+      box.hidden = !box.hidden;
+      if (!box.hidden) box.querySelector('textarea').focus();
+      return;
+    }
+    if (accion === 'pedir-ok') {
+      const txt = document.getElementById('mat-pedir-' + iid).querySelector('textarea').value;
+      await ofPedir('/api/materiales/items/' + iid + '/revision', 'POST', {accion: 'pedir', comentario: txt});
+      return await matCargar();
+    }
+    if (accion === 'quitar') {
+      if (!confirm('¿Quitar este archivo? Se borra del portal.')) return;
+      await ofPedir('/api/materiales/archivos/' + Number(b.dataset.aid), 'DELETE');
+      return await matCargar();
+    }
+    if (accion === 'borrar-item') {
+      if (!confirm('¿Borrar este ítem y lo que haya subido el cliente?')) return;
+      await ofPedir('/api/materiales/items/' + iid, 'DELETE');
+      return await matCargar();
+    }
+    const id = Number(b.dataset.id);
+    const p = matDatos.find(x => x.id === id);
+    if (!p) return;
+    if (accion === 'detalle') {
+      matAbierto = matAbierto === id ? null : id;
+      return matPintarLista();
+    }
+    if (accion === 'copiar') {
+      if (await matCopiar(p.link)) { b.textContent = 'Copiado ✓'; setTimeout(() => { b.textContent = 'Copiar link'; }, 1600); }
+      return;
+    }
+    if (accion === 'cerrar') {
+      await ofPedir('/api/materiales/' + id, 'PATCH', {cerrado: !p.cerrado_en});
+      return await matCargar();
+    }
+    if (accion === 'guardar') {
+      await ofPedir('/api/materiales/' + id, 'PATCH', {mensaje: document.getElementById('mat-msj-' + id).value,
+                                                         fecha_limite: document.getElementById('mat-fecha-' + id).value});
+      document.getElementById('mat-guardar-' + id).textContent = 'Guardado ✓';
+      return;
+    }
+    if (accion === 'borrar') {
+      if (!confirm('¿Borrar el portal de ' + p.nombre + '? Se borran también los archivos que subió el cliente y el link deja de andar.')) return;
+      await ofPedir('/api/materiales/' + id, 'DELETE');
+      if (matAbierto === id) matAbierto = null;
+      return await matCargar();
+    }
+  } catch (ex) { nota.textContent = ex.message; }
+}
+
+// ── Alta ──
+async function matAbrirForm() {
+  const form = document.getElementById('mat-form');
+  const boton = document.getElementById('mat-nuevo');
+  if (!form.hidden) { matCerrarForm(); return; }
+  form.hidden = false;
+  boton.setAttribute('aria-expanded', 'true');
+  document.getElementById('mat-tipo').innerHTML = Object.entries(matTipos).map(([k, v]) => '<option value="' + crEsc(k) + '">' + crEsc(v) + '</option>').join('');
+  form.elements.nombre.focus();
+  let cl = [];
+  try { cl = (await ofPedir('/api/materiales/clientes')).clientes; } catch (e) { cl = []; }
+  document.getElementById('mat-cliente').innerHTML = '<option value="">Ninguno</option>'
+    + cl.map(c => '<option value="' + Number(c.id) + '">' + crEsc(c.name) + (c.con_portal ? ' (ya tiene portal)' : '') + '</option>').join('');
+  document.getElementById('mat-cliente').onchange = e => {
+    const c = cl.find(x => x.id === Number(e.target.value));
+    if (c && !form.elements.nombre.value) form.elements.nombre.value = c.name;
+  };
+}
+
+function matCerrarForm() {
+  const form = document.getElementById('mat-form');
+  form.hidden = true;
+  form.reset();
+  document.getElementById('mat-form-estado').textContent = '';
+  document.getElementById('mat-nuevo').setAttribute('aria-expanded', 'false');
+}
+
+async function matCrear(e) {
+  e.preventDefault();
+  const form = e.target;
+  const est = document.getElementById('mat-form-estado');
+  const datos = {};
+  ['nombre', 'tipo', 'business_id', 'fecha_limite', 'mensaje'].forEach(k => { datos[k] = form.elements[k].value; });
+  est.textContent = 'Creando…';
+  let p;
+  try { p = (await ofPedir('/api/materiales', 'POST', datos)).portal; }
+  catch (ex) { est.textContent = ex.message; return; }
+  matCerrarForm();
+  matAbierto = p.id;
+  matFiltro = '';
+  await matCargar();
+  await matCopiar(p.link);
+  document.getElementById('mat-nota').textContent = 'Portal creado. El link para el cliente quedó copiado: revisá la checklist y mandáselo.';
+}
+// ========== FIN Materiales de clientes ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3565,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-materiales .nav-icon{stroke:#f472b6}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3602,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-materiales.active .nav-icon{stroke:#fbcfe8}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3635,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-materiales .nav-icon{stroke:#be185d}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3842,6 +4160,64 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
 }
+/* Materiales de clientes (24/10): el portal donde el cliente sube logo, textos y fotos. */
+.mat-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.mat-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.mat-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mat-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.mat-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.mat-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.mat-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.mat-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.mat-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mat-det[hidden],.mat-pedir[hidden]{display:none}
+.mat-lista{display:flex;flex-direction:column;gap:10px}
+.mat-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.mat-item.revisar{border-color:var(--azul)}
+.mat-item.trabado{border-color:var(--rojo-texto)}
+.mat-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mat-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.mat-tipo{margin-left:auto;font-size:.72rem;color:var(--texto-tenue);border:1px solid var(--borde-fuerte);border-radius:999px;padding:1px 8px}
+.mat-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto)}
+.mat-pill.revisar,.mat-pill.i-enviado{background:var(--azul-tinte);color:var(--azul-claro)}
+.mat-pill.completo,.mat-pill.i-aprobado{background:var(--verde-tinte);color:var(--verde-texto)}
+.mat-pill.trabado{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.mat-pill.i-cambios{background:var(--ambar-tinte);color:var(--ambar)}
+.mat-pill.cerrado,.mat-pill.esperando,.mat-pill.i-pendiente{color:var(--texto-tenue)}
+.mat-barra{height:6px;border-radius:999px;background:var(--relleno);overflow:hidden}
+.mat-barra span{display:block;height:100%;background:var(--azul)}
+.mat-meta{font-size:.8rem;color:var(--texto-tenue)}
+.mat-meta b{color:var(--texto);font-weight:600;font-variant-numeric:tabular-nums}
+.mat-mal,.mat-kpi-v.mat-mal{color:var(--rojo-texto)}
+.mat-kpi-v.mat-atencion{color:var(--azul-claro)}
+.mat-alerta{font-size:.8rem;color:var(--rojo-texto)}
+.mat-det{border-top:1px solid var(--borde);padding-top:10px;display:flex;flex-direction:column;gap:12px}
+.mat-its{display:flex;flex-direction:column;gap:8px}
+.mat-it{border:1px solid var(--borde);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.mat-it.enviado{border-color:var(--azul)}
+.mat-it-tit{color:var(--texto-fuerte);font-size:.88rem;overflow-wrap:anywhere}
+.mat-texto{white-space:pre-line;font-size:.82rem;background:var(--relleno);border-radius:8px;padding:8px 10px;color:var(--texto);overflow-wrap:anywhere;max-height:220px;overflow:auto}
+.mat-arch{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--texto-tenue)}
+.mat-arch a{color:var(--azul-claro);text-decoration:none;overflow-wrap:anywhere}
+.mat-x{background:none;border:0;color:var(--texto-debil);cursor:pointer;font-size:.75rem;padding:0 4px}
+.mat-coment{font-size:.8rem;color:var(--ambar);border-left:3px solid var(--ambar);padding-left:8px;white-space:pre-line;overflow-wrap:anywhere}
+.mat-pedir{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.mat-pedir textarea,.mat-pie textarea{flex:1;min-width:220px;width:100%;min-height:60px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px;font-family:inherit;font-size:.82rem;resize:vertical}
+.mat-subir{cursor:pointer}
+.mat-alta-item{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.8rem;color:var(--texto-tenue)}
+.mat-alta-item input,.mat-alta-item select,.mat-pie input,.mat-form input,.mat-form select,.mat-form textarea{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.82rem}
+.mat-alta-item input[name=titulo]{flex:1;min-width:160px}
+.mat-alta-item input[name=descripcion]{flex:2;min-width:200px}
+.mat-chk{display:flex;gap:4px;align-items:center}
+.mat-pie{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;font-size:.8rem}
+.mat-pie h4{margin:0 0 6px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mat-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;color:var(--texto-tenue);max-height:200px;overflow:auto}
+.mat-ev b{color:var(--texto);font-weight:600}
+.mat-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.mat-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.mat-form label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+.mat-form textarea{min-height:60px;resize:vertical}
+.mat-form-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -5010,6 +5386,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <!-- Materiales de clientes (24/10): el portal donde el cliente sube logo, textos y fotos. Panel "materiales". -->
+  <div class="nav-item" id="nav-materiales" onclick="showPanel('materiales')"><i data-lucide="folder-up" class="nav-icon"></i> Materiales <span id="mat-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
@@ -6376,6 +6754,38 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= MATERIALES PANEL ======= -->
+  <!-- La checklist de lo que tiene que mandar cada cliente (logo, textos,
+       fotos, catálogo) y el link donde lo sube (services/materiales.py). -->
+  <div id="materiales-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Materiales de clientes</h1>
+        <div class="page-date">Lo que tiene que mandar cada cliente para arrancar: lo sube a su link y acá lo revisás.</div>
+      </div>
+      <button type="button" class="of-btn prim" id="mat-nuevo" aria-expanded="false" aria-controls="mat-form">+ Nuevo portal</button>
+    </div>
+    <form class="mat-form" id="mat-form" hidden>
+      <div class="mat-form-grid">
+        <label>Proyecto<input name="nombre" maxlength="120" required placeholder="Web de Tienda Bambú"></label>
+        <label>Tipo (arma la checklist)<select name="tipo" id="mat-tipo"></select></label>
+        <label>Cliente del CRM (opcional)<select name="business_id" id="mat-cliente"><option value="">Ninguno</option></select></label>
+        <label>Para cuándo (opcional)<input name="fecha_limite" type="date"></label>
+      </div>
+      <label style="margin-top:10px">Mensaje para el cliente (opcional)<textarea name="mensaje" maxlength="1500" placeholder="¡Hola Ana! Acá va todo lo que necesitamos para arrancar tu web. Podés mandarlo de a partes."></textarea></label>
+      <div class="mat-form-pie">
+        <button type="submit" class="of-btn prim">Crear y copiar link</button>
+        <button type="button" class="of-btn" id="mat-cancelar">Cancelar</button>
+        <span class="of-ayuda" id="mat-form-estado" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <div class="mat-kpis" id="mat-kpis"></div>
+    <div class="mat-filtros" id="mat-filtros" role="group" aria-label="Filtrar portales"></div>
+    <div class="cr-nota" id="mat-nota" role="status" aria-live="polite"></div>
+    <div class="mat-lista" id="mat-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN MATERIALES PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8010,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'materiales') matCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13098,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','materiales','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',materiales:'folder-up'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',materiales:'Materiales'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13192,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','materiales'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16606,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*MAT_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23369,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*MAT_JS*/", "/* {% raw %} */" + MAT_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23492,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, materiales_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23519,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Materiales: la página donde el cliente sube lo suyo (/m/<código>).
+        # La llave es el código del portal; ver routes/materiales.py.
+        if request.path.startswith(MATERIALES_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24550,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','materiales'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',materiales:'Materiales de clientes'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
