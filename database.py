@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Agenda online (24/10): reservas con link para comercios con turnos
+        # (services/agenda.py).
+        from services.agenda import init_agenda
+        init_agenda(conn)
+        _grant_panel_to_existing_roles(conn, "reservas", si_tiene=("clientes", "projects"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
