@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.agenda import PUBLICAS as AGENDA_PUBLICAS, agenda_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  reservas: 'agenda online reservas turnos peluqueria barberia clinica veterinaria link',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,344 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+RV_JS = r"""// ========== Agenda online (reservas) ==========
+// services/agenda.py calcula los horarios libres y guarda; acá solo se pinta.
+// Nombres, notas y teléfonos los escribe el cliente final: todo pasa por crEsc.
+const RV_ESTADO = {confirmado: 'Confirmado', asistio: 'Vino', falto: 'Faltó', cancelado: 'Cancelado'};
+const RV_DIAS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+let rvLista = [];
+let rvSel = null;
+let rvDatos = null;
+let rvTab = 'agenda';
+let rvDia = '';
+let rvVista = 'dia';
+
+function rvPlata(n) { return '$ ' + Math.round(Number(n || 0)).toLocaleString('es-UY'); }
+
+function rvFechaLarga(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('es-UY', {weekday: 'long', day: 'numeric', month: 'long'});
+}
+
+function rvMover(iso, dias) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+async function rvCargar() {
+  const panel = document.getElementById('reservas-panel');
+  if (!panel) return;
+  panel.onclick = rvAccion;
+  panel.onsubmit = rvEnviar;
+  panel.onchange = rvCambio;
+  const nota = document.getElementById('rv-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/agenda');
+    rvLista = d.negocios;
+    if (!rvDia) rvDia = d.hoy;
+    if (!rvSel || !rvLista.some(n => n.id === rvSel)) rvSel = rvLista.length ? rvLista[0].id : null;
+  } catch (e) {
+    rvLista = [];
+    nota.textContent = e.message;
+  }
+  const sel = document.getElementById('rv-negocio');
+  sel.innerHTML = rvLista.map(n => '<option value="' + Number(n.id) + '"' + (n.id === rvSel ? ' selected' : '') + '>'
+    + crEsc(n.nombre) + (n.activo ? '' : ' (pausado)') + ' · ' + Number(n.hoy) + ' hoy</option>').join('');
+  sel.hidden = !rvLista.length;
+  await rvCargarNegocio();
+}
+
+async function rvCargarNegocio() {
+  const cuerpo = document.getElementById('rv-cuerpo');
+  if (!rvSel) {
+    rvDatos = null;
+    cuerpo.innerHTML = '<div class="rv-vacio">Todavía no hay comercios. Con "+ Nuevo comercio" armás la agenda y el link de reservas.</div>';
+    return;
+  }
+  try {
+    rvDatos = await ofPedir('/api/agenda/negocios/' + rvSel + '?dia=' + encodeURIComponent(rvDia) + '&vista=' + rvVista);
+  } catch (e) {
+    document.getElementById('rv-nota').textContent = e.message;
+    return;
+  }
+  rvPintar();
+}
+
+function rvKpis(m) {
+  const k = [
+    ['Hoy', String(m.hoy), 'turnos en la agenda', ''],
+    ['Próximos 7 días', String(m.proximos_7), rvPlata(m.agendado_7) + ' agendados', ''],
+    ['Ocupación 7 días', m.ocupacion_7 === null ? '—' : m.ocupacion_7 + '%', 'de las horas abiertas', ''],
+    ['Ausencias 30 días', m.ausencias_30 === null ? '—' : m.ausencias_30 + '%', m.faltas_30 + ' faltaron · ' + m.cancelados_30 + ' cancelaron', m.ausencias_30 >= 15 ? 'rv-mal' : ''],
+    ['Reservas por el link', m.por_link_pct === null ? '—' : m.por_link_pct + '%', m.fuera_de_hora + ' fuera de horario comercial', 'rv-bien'],
+    ['Para recordar', String(m.sin_recordar), 'hoy y mañana sin recordatorio', m.sin_recordar ? 'rv-atencion' : ''],
+  ];
+  return '<div class="rv-kpis">' + k.map(([l, v, s, c]) => '<div class="rv-kpi"><div class="rv-kpi-l">' + crEsc(l) + '</div><div class="rv-kpi-v ' + c + '">'
+    + crEsc(v) + '</div><div class="rv-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>';
+}
+
+function rvPintar() {
+  const n = rvDatos.negocio;
+  const tabs = [['agenda', 'Agenda'], ['config', 'Servicios y horarios'], ['ajustes', 'Ajustes del link']];
+  document.getElementById('rv-cuerpo').innerHTML =
+    '<div class="rv-link"><span>Link de reservas' + (n.activo ? '' : ' <b class="rv-mal">(pausado: no toma reservas)</b>') + '</span>'
+    + '<a href="' + crEsc(n.link) + '" target="_blank" rel="noopener">' + crEsc(n.link) + '</a>'
+    + '<button type="button" class="of-btn prim" data-rv="copiar">Copiar link</button></div>'
+    + rvKpis(rvDatos.metricas)
+    + '<div class="rv-tabs" role="tablist" aria-label="Vista">' + tabs.map(([k, l]) => '<button type="button" role="tab" class="rv-tab' + (rvTab === k ? ' activo' : '')
+      + '" aria-selected="' + (rvTab === k) + '" data-rv="tab" data-tab="' + k + '">' + l + '</button>').join('') + '</div>'
+    + '<div id="rv-vista">' + (rvTab === 'agenda' ? rvAgendaHtml() : rvTab === 'config' ? rvConfigHtml() : rvAjustesHtml()) + '</div>';
+}
+
+// ── agenda ──
+function rvTurnoHtml(t) {
+  const id = Number(t.id);
+  const hora = t.inicio.slice(11, 16) + '–' + t.fin.slice(11, 16);
+  const tel = String(t.telefono || '');
+  const meta = [crEsc(t.servicio), rvVista === 'semana' ? 'con ' + crEsc(t.profesional) : '', t.precio !== null ? rvPlata(t.precio) : '',
+    t.origen === 'link' ? 'reservó por el link' : 'lo cargó ' + crEsc(t.creado_por || 'el equipo')].filter(Boolean);
+  let acc = '';
+  if (t.estado === 'confirmado') {
+    acc = '<a class="of-btn' + (t.recordado_en ? '' : ' prim') + '" href="' + crEsc(t.whatsapp) + '" target="_blank" rel="noopener" data-rv="recordar" data-id="' + id + '">'
+      + (t.recordado_en ? 'Recordado ✓' : 'Recordar por WhatsApp') + '</a>'
+      + '<button type="button" class="of-btn" data-rv="estado" data-estado="asistio" data-id="' + id + '">Vino</button>'
+      + '<button type="button" class="of-btn" data-rv="estado" data-estado="falto" data-id="' + id + '">Faltó</button>'
+      + '<button type="button" class="of-btn" data-rv="estado" data-estado="cancelado" data-id="' + id + '">Cancelar</button>';
+  } else {
+    acc = '<button type="button" class="of-btn" data-rv="estado" data-estado="confirmado" data-id="' + id + '">Deshacer</button>';
+  }
+  return '<div class="rv-turno e-' + crEsc(t.estado) + '"><div class="rv-turno-cab"><b class="rv-hora">' + crEsc(hora) + '</b>'
+    + '<span class="rv-cli">' + crEsc(t.cliente) + '</span><span class="rv-pill e-' + crEsc(t.estado) + '">' + crEsc(RV_ESTADO[t.estado] || t.estado) + '</span></div>'
+    + '<div class="rv-meta">' + meta.join(' · ') + ' · <a href="tel:+' + crEsc(tel) + '">+' + crEsc(tel) + '</a></div>'
+    + (t.nota ? '<div class="rv-meta rv-nota-cli">“' + crEsc(t.nota) + '”</div>' : '')
+    + '<div class="rv-acc">' + acc + '</div></div>';
+}
+
+function rvAgendaHtml() {
+  const n = rvDatos.negocio;
+  const turnos = rvDatos.turnos;
+  const paso = rvVista === 'semana' ? 7 : 1;
+  let html = '<div class="rv-barra"><button type="button" class="of-btn" data-rv="dia" data-mover="-' + paso + '" aria-label="Anterior">‹</button>'
+    + '<button type="button" class="of-btn" data-rv="hoy">Hoy</button>'
+    + '<button type="button" class="of-btn" data-rv="dia" data-mover="' + paso + '" aria-label="Siguiente">›</button>'
+    + '<input type="date" id="rv-fecha" value="' + crEsc(rvDia) + '" aria-label="Día">'
+    + '<b class="rv-titulo-dia">' + crEsc(rvVista === 'semana' ? 'Semana del ' + rvFechaLarga(rvDia) : rvFechaLarga(rvDia)) + '</b>'
+    + '<span class="rv-sep"></span>'
+    + '<button type="button" class="of-btn' + (rvVista === 'dia' ? ' prim' : '') + '" data-rv="vista" data-vista="dia">Día</button>'
+    + '<button type="button" class="of-btn' + (rvVista === 'semana' ? ' prim' : '') + '" data-rv="vista" data-vista="semana">Semana</button>'
+    + '<button type="button" class="of-btn prim" data-rv="toggle" data-box="rv-alta" aria-controls="rv-alta">+ Cargar turno</button></div>'
+    + rvAltaHtml(n);
+  if (!n.servicios.length || !n.profesionales.length) {
+    return html + '<div class="rv-vacio">Falta cargar servicios y profesionales con su horario: andá a "Servicios y horarios".</div>';
+  }
+  if (rvVista === 'semana') {
+    const dias = [];
+    for (let i = 0; i < 7; i++) dias.push(rvMover(rvDia, i));
+    return html + '<div class="rv-semana">' + dias.map(d => {
+      const del = turnos.filter(t => t.inicio.slice(0, 10) === d);
+      return '<div class="rv-col"><div class="rv-col-cab">' + crEsc(rvFechaLarga(d)) + ' <span class="rv-meta">' + del.filter(t => t.estado !== 'cancelado').length + '</span></div>'
+        + (del.length ? del.map(rvTurnoHtml).join('') : '<div class="rv-meta">Sin turnos</div>') + '</div>';
+    }).join('') + '</div>';
+  }
+  const profs = n.profesionales.filter(p => p.activo || turnos.some(t => t.profesional_id === p.id));
+  return html + '<div class="rv-dia" style="--cols:' + Math.max(1, profs.length) + '">' + profs.map(p => {
+    const del = turnos.filter(t => t.profesional_id === p.id);
+    const dow = (new Date(rvDia + 'T12:00:00').getDay() + 6) % 7;
+    const horario = p.horarios.filter(h => h.dia === dow).map(h => h.desde + '–' + h.hasta).join(' y ') || 'no trabaja';
+    return '<div class="rv-col"><div class="rv-col-cab">' + crEsc(p.nombre) + ' <span class="rv-meta">' + crEsc(horario) + '</span></div>'
+      + (del.length ? del.map(rvTurnoHtml).join('') : '<div class="rv-meta">Sin turnos</div>') + '</div>';
+  }).join('') + '</div>';
+}
+
+function rvAltaHtml(n) {
+  const servs = n.servicios.filter(s => s.activo);
+  return '<form id="rv-alta" class="rv-form" data-rv-form="turno" hidden>'
+    + '<label>Servicio<select name="servicio_id" required>' + servs.map(s => '<option value="' + Number(s.id) + '">' + crEsc(s.nombre) + ' (' + Number(s.duracion_min) + ' min)</option>').join('') + '</select></label>'
+    + '<label>Con<select name="profesional_id"><option value="">Quien esté libre</option>' + n.profesionales.filter(p => p.activo).map(p => '<option value="' + Number(p.id) + '">' + crEsc(p.nombre) + '</option>').join('') + '</select></label>'
+    + '<label>Día<input type="date" name="fecha" value="' + crEsc(rvDia) + '" required></label>'
+    + '<label>Hora<select name="hora" id="rv-alta-hora" required><option value="">Elegí servicio y día</option></select></label>'
+    + '<label>Cliente<input name="cliente" maxlength="120" required></label>'
+    + '<label>Celular<input name="telefono" inputmode="tel" required placeholder="099 123 456"></label>'
+    + '<label class="rv-ancho">Nota (opcional)<input name="nota" maxlength="500"></label>'
+    + '<div class="rv-acc rv-ancho"><button type="submit" class="of-btn prim">Agendar</button><button type="button" class="of-btn" data-rv="toggle" data-box="rv-alta">Cancelar</button></div></form>';
+}
+
+async function rvHorasAlta() {
+  const f = document.getElementById('rv-alta');
+  const sel = document.getElementById('rv-alta-hora');
+  if (!f || !sel) return;
+  const q = new URLSearchParams({servicio_id: f.servicio_id.value, profesional_id: f.profesional_id.value, fecha: f.fecha.value});
+  sel.innerHTML = '<option value="">Buscando…</option>';
+  try {
+    const d = await ofPedir('/api/agenda/negocios/' + rvSel + '/libres?' + q);
+    sel.innerHTML = d.libres.length ? d.libres.map(x => '<option value="' + crEsc(x.hora) + '">' + crEsc(x.hora) + '</option>').join('')
+      : '<option value="">No hay lugar ese día</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">' + crEsc(e.message) + '</option>';
+  }
+}
+
+// ── servicios, profesionales y bloqueos ──
+function rvConfigHtml() {
+  const n = rvDatos.negocio;
+  const servs = n.servicios.map(s => '<form class="rv-fila" data-rv-form="servicio" data-id="' + Number(s.id) + '">'
+    + '<input name="nombre" value="' + crEsc(s.nombre) + '" maxlength="120" aria-label="Nombre" required>'
+    + '<input name="duracion_min" value="' + Number(s.duracion_min) + '" inputmode="numeric" aria-label="Minutos" class="rv-corto">'
+    + '<input name="precio" value="' + (s.precio === null ? '' : Number(s.precio)) + '" inputmode="decimal" aria-label="Precio" placeholder="$" class="rv-corto">'
+    + '<label class="rv-chk"><input type="checkbox" name="activo"' + (s.activo ? ' checked' : '') + '> visible</label>'
+    + '<button type="submit" class="of-btn">Guardar</button><button type="button" class="of-btn" data-rv="borrar-servicio" data-id="' + Number(s.id) + '">Borrar</button></form>').join('');
+  const opcServ = sel => n.servicios.filter(s => s.activo).map(s => '<label class="rv-chk"><input type="checkbox" name="servicios" value="' + Number(s.id) + '"'
+    + (sel.includes(s.id) ? ' checked' : '') + '> ' + crEsc(s.nombre) + '</label>').join('');
+  const profs = n.profesionales.map(p => '<form class="rv-prof" data-rv-form="profesional" data-id="' + Number(p.id) + '">'
+    + '<div class="rv-fila"><input name="nombre" value="' + crEsc(p.nombre) + '" maxlength="120" aria-label="Nombre" required>'
+    + '<input name="horarios" value="' + crEsc(p.horarios_texto) + '" class="rv-largo" aria-label="Horario" placeholder="lun-vie 09:00-13:00 15:00-19:00; sáb 09:00-13:00">'
+    + '<label class="rv-chk"><input type="checkbox" name="activo"' + (p.activo ? ' checked' : '') + '> activo</label>'
+    + '<button type="submit" class="of-btn">Guardar</button><button type="button" class="of-btn" data-rv="borrar-profesional" data-id="' + Number(p.id) + '">Borrar</button></div>'
+    + '<div class="rv-meta">Hace: ' + opcServ(p.servicios) + ' <span>(ninguno marcado = todos)</span></div></form>').join('');
+  const bloqs = n.bloqueos.map(b => {
+    const p = n.profesionales.find(x => x.id === b.profesional_id);
+    return '<li>' + crEsc(b.desde) + ' → ' + crEsc(b.hasta) + ' · ' + crEsc(p ? p.nombre : 'todo el local') + (b.motivo ? ' · ' + crEsc(b.motivo) : '')
+      + ' <button type="button" class="of-btn" data-rv="borrar-bloqueo" data-id="' + Number(b.id) + '" aria-label="Borrar bloqueo">✕</button></li>';
+  }).join('');
+  return '<h3 class="rv-h">Servicios</h3><div class="rv-meta">Nombre · minutos · precio en pesos. Lo que no está visible no aparece en el link.</div>' + servs
+    + '<form class="rv-fila" data-rv-form="servicio"><input name="nombre" maxlength="120" placeholder="Corte de pelo" aria-label="Nombre del servicio nuevo" required>'
+    + '<input name="duracion_min" inputmode="numeric" placeholder="30" aria-label="Minutos" class="rv-corto" required><input name="precio" inputmode="decimal" placeholder="$" aria-label="Precio" class="rv-corto">'
+    + '<button type="submit" class="of-btn prim">+ Agregar servicio</button></form>'
+    + '<h3 class="rv-h">Profesionales y horarios</h3><div class="rv-meta">El horario se escribe como "lun-vie 09:00-13:00 15:00-19:00; sáb 09:00-13:00". Dos rangos el mismo día = turno partido.</div>' + profs
+    + '<form class="rv-fila" data-rv-form="profesional"><input name="nombre" maxlength="120" placeholder="Nombre" aria-label="Nombre del profesional nuevo" required>'
+    + '<input name="horarios" class="rv-largo" placeholder="lun-vie 09:00-18:00" aria-label="Horario"><button type="submit" class="of-btn prim">+ Agregar profesional</button></form>'
+    + '<h3 class="rv-h">Bloqueos</h3><div class="rv-meta">Feriados, vacaciones o un rato sin turnos. Sin hora = el día entero.</div>'
+    + (bloqs ? '<ul class="rv-bloqs">' + bloqs + '</ul>' : '')
+    + '<form class="rv-fila" data-rv-form="bloqueo"><input type="date" name="desde" required aria-label="Desde"><input type="date" name="hasta" aria-label="Hasta">'
+    + '<input type="time" name="hora_desde" aria-label="Hora desde"><input type="time" name="hora_hasta" aria-label="Hora hasta">'
+    + '<select name="profesional_id" aria-label="A quién"><option value="">Todo el local</option>' + n.profesionales.map(p => '<option value="' + Number(p.id) + '">' + crEsc(p.nombre) + '</option>').join('') + '</select>'
+    + '<input name="motivo" maxlength="120" placeholder="Feriado" aria-label="Motivo"><button type="submit" class="of-btn prim">+ Bloquear</button></form>';
+}
+
+function rvAjustesHtml() {
+  const n = rvDatos.negocio;
+  const v = k => crEsc(n[k] === null || n[k] === undefined ? '' : n[k]);
+  return '<form class="rv-form" data-rv-form="ajustes">'
+    + '<label>Nombre<input name="nombre" value="' + v('nombre') + '" maxlength="120" required></label>'
+    + '<label>Rubro<input name="rubro" value="' + v('rubro') + '" maxlength="120" placeholder="Barbería"></label>'
+    + '<label>Dirección<input name="direccion" value="' + v('direccion') + '" maxlength="120"></label>'
+    + '<label>WhatsApp del comercio<input name="whatsapp" value="' + v('whatsapp') + '" inputmode="tel" placeholder="099 123 456"></label>'
+    + '<label>Link (/reservar/…)<input name="slug" value="' + v('slug') + '" maxlength="40"></label>'
+    + '<label>Color<input type="color" name="color" value="' + v('color') + '"></label>'
+    + '<label>Turnos cada<select name="intervalo_min">' + [10, 15, 20, 30, 60].map(m => '<option value="' + m + '"' + (n.intervalo_min === m ? ' selected' : '') + '>' + m + ' min</option>').join('') + '</select></label>'
+    + '<label>Reservar con al menos (min)<input name="anticipacion_min" value="' + v('anticipacion_min') + '" inputmode="numeric"></label>'
+    + '<label>Hasta cuántos días adelante<input name="dias_max" value="' + v('dias_max') + '" inputmode="numeric"></label>'
+    + '<label>Cancelar hasta (horas antes)<input name="cancelar_hasta_h" value="' + v('cancelar_hasta_h') + '" inputmode="numeric"></label>'
+    + '<label class="rv-chk"><input type="checkbox" name="activo"' + (n.activo ? ' checked' : '') + '> Toma reservas online</label>'
+    + '<label class="rv-ancho">Mensaje arriba de la página<textarea name="mensaje" maxlength="1000">' + v('mensaje') + '</textarea></label>'
+    + '<div class="rv-acc rv-ancho"><button type="submit" class="of-btn prim">Guardar</button>'
+    + '<button type="button" class="of-btn" data-rv="borrar-negocio">Borrar comercio</button></div></form>';
+}
+
+// ── acciones ──
+async function rvAccion(e) {
+  const b = e.target.closest('[data-rv]');
+  if (!b) return;
+  const a = b.dataset.rv;
+  const nota = document.getElementById('rv-nota');
+  nota.textContent = '';
+  const id = Number(b.dataset.id);
+  try {
+    if (a === 'nuevo') { const f = document.getElementById('rv-form-nuevo'); f.hidden = !f.hidden; b.setAttribute('aria-expanded', String(!f.hidden)); return; }
+    if (a === 'toggle') {
+      const box = document.getElementById(b.dataset.box);
+      box.hidden = !box.hidden;
+      if (!box.hidden && b.dataset.box === 'rv-alta') rvHorasAlta();
+      return;
+    }
+    if (a === 'tab') { rvTab = b.dataset.tab; return rvPintar(); }
+    if (a === 'vista') { rvVista = b.dataset.vista; return rvCargarNegocio(); }
+    if (a === 'hoy') { rvDia = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10); return rvCargarNegocio(); }
+    if (a === 'dia') { rvDia = rvMover(rvDia, Number(b.dataset.mover)); return rvCargarNegocio(); }
+    if (a === 'copiar') {
+      await navigator.clipboard.writeText(rvDatos.negocio.link);
+      b.textContent = 'Copiado ✓';
+      setTimeout(() => { b.textContent = 'Copiar link'; }, 1600);
+      return;
+    }
+    if (a === 'recordar') {
+      // El link wa.me se abre igual (es un <a>): acá solo queda anotado.
+      await ofPedir('/api/agenda/turnos/' + id, 'PATCH', {recordado: true});
+      return setTimeout(rvCargarNegocio, 300);
+    }
+    if (a === 'estado') {
+      if (b.dataset.estado === 'cancelado' && !confirm('¿Cancelar este turno? El horario queda libre en el link.')) return;
+      await ofPedir('/api/agenda/turnos/' + id, 'PATCH', {estado: b.dataset.estado});
+      return rvCargarNegocio();
+    }
+    const base = '/api/agenda/negocios/' + rvSel;
+    if (a === 'borrar-servicio') { if (!confirm('¿Borrar el servicio?')) return; await ofPedir(base + '/servicios/' + id, 'DELETE'); return rvCargarNegocio(); }
+    if (a === 'borrar-profesional') { if (!confirm('¿Borrar a esta persona?')) return; await ofPedir(base + '/profesionales/' + id, 'DELETE'); return rvCargarNegocio(); }
+    if (a === 'borrar-bloqueo') { await ofPedir(base + '/bloqueos/' + id, 'DELETE'); return rvCargarNegocio(); }
+    if (a === 'borrar-negocio') {
+      if (!confirm('¿Borrar el comercio con todos sus turnos? No se puede deshacer.')) return;
+      await ofPedir(base, 'DELETE');
+      rvSel = null;
+      return rvCargar();
+    }
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+
+function rvCambio(e) {
+  if (e.target.id === 'rv-negocio') { rvSel = Number(e.target.value); rvTab = 'agenda'; return rvCargarNegocio(); }
+  if (e.target.id === 'rv-fecha' && e.target.value) { rvDia = e.target.value; return rvCargarNegocio(); }
+  if (e.target.form && e.target.form.id === 'rv-alta' && e.target.name !== 'hora' && ['servicio_id', 'profesional_id', 'fecha'].includes(e.target.name)) rvHorasAlta();
+}
+
+async function rvEnviar(e) {
+  const f = e.target.closest('form[data-rv-form]');
+  if (!f) return;
+  e.preventDefault();
+  const tipo = f.dataset.rvForm;
+  const nota = document.getElementById('rv-nota');
+  nota.textContent = '';
+  const datos = Object.fromEntries(new FormData(f).entries());
+  f.querySelectorAll('input[type=checkbox]').forEach(c => { if (c.name !== 'servicios') datos[c.name] = c.checked; });
+  const id = Number(f.dataset.id) || 0;
+  const base = '/api/agenda/negocios/' + rvSel;
+  try {
+    if (tipo === 'nuevo') {
+      const d = await ofPedir('/api/agenda/negocios', 'POST', datos);
+      rvSel = d.negocio.id;
+      rvTab = 'config';
+      f.reset();
+      f.hidden = true;
+      return rvCargar();
+    }
+    if (tipo === 'turno') {
+      await ofPedir(base + '/turnos', 'POST', datos);
+      rvDia = datos.fecha;
+      return rvCargarNegocio();
+    }
+    if (tipo === 'servicio') await ofPedir(base + '/servicios' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', datos);
+    if (tipo === 'profesional') {
+      datos.servicios = Array.from(f.querySelectorAll('input[name=servicios]:checked')).map(c => Number(c.value));
+      await ofPedir(base + '/profesionales' + (id ? '/' + id : ''), id ? 'PUT' : 'POST', datos);
+    }
+    if (tipo === 'bloqueo') {
+      const d = await ofPedir(base + '/bloqueos', 'POST', datos);
+      if (d.bloqueo.turnos_que_chocan) alert('Ojo: hay ' + d.bloqueo.turnos_que_chocan + ' turno(s) confirmados en ese rango. Avisales y cancelalos desde la agenda.');
+    }
+    if (tipo === 'ajustes') await ofPedir(base, 'PATCH', datos);
+    if (tipo === 'ajustes') return rvCargar();
+    return rvCargarNegocio();
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+// ========== FIN Agenda online ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3590,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-reservas .nav-icon{stroke:#a3e635}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3627,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-reservas.active .nav-icon{stroke:#d9f99d}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3660,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-reservas .nav-icon{stroke:#4d7c0f}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -4730,6 +5073,63 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .li-tarjeta{padding:12px}
   .li-btn{flex:1 1 auto;min-height:40px}
 }
+/* Agenda online (24/10): el producto de reservas con link para comercios con turnos. */
+.rv-cab{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rv-cab select{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 10px;font-family:inherit;max-width:100%}
+.rv-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin:0 0 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end}
+.rv-form label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--texto-tenue)}
+.rv-form input,.rv-form select,.rv-form textarea,.rv-fila input,.rv-fila select,.rv-barra input{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
+.rv-form input[type=color]{padding:2px;height:32px}
+.rv-form .rv-ancho{grid-column:1/-1}
+.rv-form[hidden]{display:none}
+.rv-form textarea{min-height:60px;resize:vertical}
+.rv-form label.rv-chk,.rv-chk{flex-direction:row;align-items:center;gap:6px;font-size:.78rem;color:var(--texto-tenue);display:inline-flex;margin-right:10px}
+.rv-link{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--azul-tinte);border:1px solid var(--borde);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:var(--texto-tenue)}
+.rv-link a{color:var(--azul-claro);overflow-wrap:anywhere;font-weight:600}
+.rv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.rv-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.rv-kpi-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.5px}
+.rv-kpi-v{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--texto-fuerte)}
+.rv-kpi-s{font-size:.72rem;color:var(--texto-debil)}
+.rv-mal{color:var(--rojo-texto)!important}
+.rv-bien{color:var(--verde-texto)!important}
+.rv-atencion{color:var(--ambar)!important}
+.rv-tabs{display:flex;gap:6px;border-bottom:1px solid var(--borde);margin-bottom:12px;flex-wrap:wrap}
+.rv-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);padding:8px 12px;font-family:inherit;font-size:.85rem;cursor:pointer}
+.rv-tab.activo{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.rv-barra{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.rv-titulo-dia{font-size:.9rem;color:var(--texto-fuerte);text-transform:capitalize;margin-left:6px}
+.rv-sep{flex:1}
+.rv-dia{display:grid;grid-template-columns:repeat(var(--cols),minmax(220px,1fr));gap:10px;overflow-x:auto}
+.rv-semana{display:grid;grid-template-columns:repeat(7,minmax(200px,1fr));gap:10px;overflow-x:auto}
+.rv-col{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;padding:10px;min-height:120px}
+.rv-col-cab{font-weight:700;font-size:.85rem;color:var(--texto-fuerte);margin-bottom:8px}
+.rv-semana .rv-col-cab{text-transform:capitalize}
+.rv-turno{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid var(--azul);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.rv-turno.e-asistio{border-left-color:var(--verde)}
+.rv-turno.e-falto{border-left-color:var(--rojo)}
+.rv-turno.e-cancelado{border-left-color:var(--borde-fuerte);opacity:.55}
+.rv-turno-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rv-hora{font-variant-numeric:tabular-nums;font-size:.85rem}
+.rv-cli{flex:1;font-size:.85rem;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.rv-pill{border-radius:999px;padding:1px 8px;font-size:.68rem;font-weight:700;background:var(--azul-tinte);color:var(--azul-claro)}
+.rv-pill.e-asistio{background:var(--verde-tinte);color:var(--verde-texto)}
+.rv-pill.e-falto{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.rv-pill.e-cancelado{background:var(--relleno);color:var(--texto-tenue)}
+.rv-meta{font-size:.74rem;color:var(--texto-tenue);margin-top:3px;overflow-wrap:anywhere}
+.rv-meta a{color:var(--azul-claro)}
+.rv-nota-cli{font-style:italic}
+.rv-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.rv-acc a.of-btn{text-decoration:none}
+.rv-h{font-size:.92rem;margin:18px 0 4px;color:var(--texto-fuerte)}
+.rv-fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.rv-fila input{flex:1 1 160px}
+.rv-fila input.rv-corto{flex:0 0 90px;width:90px;min-width:0}
+.rv-fila input[type=checkbox]{flex:none}
+.rv-fila input.rv-largo{flex:3 1 280px}
+.rv-prof{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 10px;margin:6px 0}
+.rv-bloqs{font-size:.8rem;color:var(--texto);padding-left:18px}
+.rv-vacio{color:var(--texto-tenue);font-size:.85rem;padding:14px 2px}
 /* ── Credenciales ─────────────────────────────────────────────────────────────
    Contraseñas de la empresa. Solo tokens, panel admin-only. */
 .cr-nota{font-size:.8rem;color:var(--rojo-texto);margin:-6px 0 12px}
@@ -4990,6 +5390,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
   <div class="nav-section-label">AGENTES</div>
   <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
+  <!-- Agenda online (24/10): el producto de reservas que vendemos a comercios con turnos. Panel "reservas". -->
+  <div class="nav-section-label">PRODUCTOS</div>
+  <div class="nav-item" id="nav-reservas" onclick="showPanel('reservas')"><i data-lucide="calendar-check" class="nav-icon"></i> Agenda online</div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6376,6 +6779,32 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= RESERVAS PANEL ======= -->
+  <!-- Agenda online: los comercios a los que les armamos reservas con link,
+       su agenda del día y la configuración (services/agenda.py). -->
+  <div id="reservas-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Agenda online</h1>
+        <div class="page-date">Reservas con link para los comercios con turnos: sus clientes reservan desde el celular y acá se ve la agenda, quién vino y cuánto se llena.</div>
+      </div>
+      <div class="rv-cab">
+        <select id="rv-negocio" aria-label="Comercio" hidden></select>
+        <button type="button" class="of-btn prim" data-rv="nuevo" aria-expanded="false" aria-controls="rv-form-nuevo">+ Nuevo comercio</button>
+      </div>
+    </div>
+    <form id="rv-form-nuevo" class="rv-form" data-rv-form="nuevo" hidden>
+      <label>Nombre del comercio<input name="nombre" maxlength="120" required placeholder="Barbería Don Pepe"></label>
+      <label>Rubro<input name="rubro" maxlength="120" placeholder="Barbería"></label>
+      <label>Dirección<input name="direccion" maxlength="120" placeholder="Av. Brasil 2550, Pocitos"></label>
+      <label>WhatsApp del comercio<input name="whatsapp" inputmode="tel" placeholder="099 123 456"></label>
+      <div class="rv-acc rv-ancho"><button type="submit" class="of-btn prim">Crear y cargar servicios</button><button type="button" class="of-btn" data-rv="nuevo">Cancelar</button></div>
+    </form>
+    <div class="cr-nota" id="rv-nota" role="status" aria-live="polite"></div>
+    <div id="rv-cuerpo"></div>
+  </div>
+  <!-- ======= FIN RESERVAS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8029,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'reservas') rvCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12781,7 +13211,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reservas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16625,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*RV_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23388,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*RV_JS*/", "/* {% raw %} */" + RV_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23511,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, agenda_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23538,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Agenda online: la página de reservas de cada comercio (/reservar/<slug>)
+        # es pública a propósito; ver routes/agenda.py.
+        if request.path.startswith(AGENDA_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24569,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reservas'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',reservas:'Agenda online'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
