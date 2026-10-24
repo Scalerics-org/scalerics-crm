@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.monitor_sitios import PUBLICAS as MONITOR_PUBLICAS, monitor_sitios_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  monitor: 'monitor sitios caidas uptime ssl mantenimiento reporte velocidad',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,300 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+MONITOR_JS = r"""// ========== Monitor de sitios ==========
+// services/monitor_sitios.py revisa; acá solo se pinta. Los nombres y los
+// errores pueden traer texto del sitio vigilado: todo pasa por crEsc.
+const MON_ESTADO = {ok: 'Arriba', lento: 'Lento', ssl: 'SSL por vencer', falla: 'Falló el último',
+                    caido: 'Caído', sin_datos: 'Sin revisar', pausado: 'Pausado'};
+const MON_ORDEN = {caido: 0, falla: 1, ssl: 2, lento: 3, sin_datos: 4, ok: 5, pausado: 6};
+const MON_FILTROS = [['', 'Todos'], ['problemas', 'Con problemas'], ['caido', 'Caídos'],
+                     ['ssl', 'SSL por vencer'], ['mantenimiento', 'Con plan'], ['pausado', 'Pausados']];
+let monDatos = [];
+let monFiltro = '';
+let monAbierto = null;
+let monVistaPrevia = false;
+
+function monPct(v) {
+  if (v === null || v === undefined) return '—';
+  return v >= 1 ? '100%' : (v * 100).toFixed(2).replace('.', ',') + '%';
+}
+
+function monMs(n) {
+  if (!n) return '—';
+  return n < 1000 ? n + ' ms' : (n / 1000).toFixed(1).replace('.', ',') + ' s';
+}
+
+function monHace(utc) {
+  if (!utc) return 'nunca';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'hace ' + h + ' h';
+  return 'hace ' + Math.round(h / 24) + ' días';
+}
+
+function monFecha(utc) {
+  if (!utc) return '';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  return isNaN(d) ? '' : d.toLocaleString('es-UY', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+}
+
+function monDuracion(min) {
+  if (min < 60) return min + ' min';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h < 48 ? h + ' h' + (m ? ' ' + m + ' min' : '') : Math.round(h / 24) + ' días';
+}
+
+function monMes(m) {
+  const n = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return n[Number(m.slice(5)) - 1] + ' ' + m.slice(0, 4);
+}
+
+function monPasa(s, f) {
+  if (!f) return true;
+  if (f === 'problemas') return ['caido', 'falla', 'ssl', 'lento'].includes(s.estado);
+  if (f === 'mantenimiento') return s.plan === 'mantenimiento';
+  return s.estado === f;
+}
+
+function monBarras(b) {
+  return '<div class="mon-barras" aria-hidden="true">' + b.map(x => {
+    if (!x) return '<span></span>';
+    return '<span class="' + (x.ok ? 'v' : 'r') + '" title="' + (x.ok ? monMs(x.ms) : 'falló') + '"></span>';
+  }).join('') + '</div><div class="mon-barras-pie"><span>hace 48 h</span><span>ahora</span></div>';
+}
+
+function monHtml(s) {
+  const id = Number(s.id);
+  const meta = [];
+  if (s.estado === 'caido') meta.push('caído desde <b>' + crEsc(monFecha(s.caido_desde)) + '</b>');
+  meta.push('24 h <b>' + monPct(s.disp_24h) + '</b>');
+  meta.push('30 días <b>' + monPct(s.disp_30d) + '</b>' + (s.incidentes_30d ? ' · ' + s.incidentes_30d + ' incidente(s)' : ''));
+  meta.push('velocidad <b>' + monMs(s.ms_7d) + '</b>');
+  if (s.ssl_dias !== null && s.ssl_dias !== undefined) meta.push('SSL vence en <b>' + s.ssl_dias + ' días</b>');
+  meta.push('revisado ' + crEsc(monHace(s.ultimo_chequeo)));
+  const acc = [
+    '<button type="button" class="of-btn prim" data-mon="revisar" data-id="' + id + '">Revisar ahora</button>',
+    '<button type="button" class="of-btn" data-mon="detalle" data-id="' + id + '" aria-expanded="' + (monAbierto === id) + '">Detalle</button>',
+    '<button type="button" class="of-btn" data-mon="copiar" data-id="' + id + '">Copiar reporte</button>',
+    '<a class="of-btn" style="text-decoration:none" href="' + crEsc(s.reporte_url) + '" target="_blank" rel="noopener">Ver reporte</a>',
+    '<button type="button" class="of-btn" data-mon="pausar" data-id="' + id + '">' + (s.activo ? 'Pausar' : 'Reanudar') + '</button>',
+    '<button type="button" class="of-btn" data-mon="borrar" data-id="' + id + '">Borrar</button>',
+  ];
+  return '<div class="mon-item' + (s.estado === 'caido' ? ' caido' : '') + '" id="mon-item-' + id + '">'
+    + '<div class="mon-cab"><span class="mon-pill ' + crEsc(s.estado) + '">' + crEsc(MON_ESTADO[s.estado] || s.estado) + '</span>'
+    + '<span class="mon-nombre">' + crEsc(s.nombre) + '</span>'
+    + '<a class="mon-url" href="' + crEsc(s.url) + '" target="_blank" rel="noopener noreferrer">' + crEsc(s.url.replace(/^https?:[/][/]/, '')) + '</a>'
+    + '<span class="mon-plan">' + (s.plan === 'mantenimiento' ? 'Plan de mantenimiento' : 'Sin plan')
+    + (s.cliente_nombre ? ' · ' + crEsc(s.cliente_nombre) : '') + '</span></div>'
+    + '<div class="mon-meta">' + meta.join(' · ') + '</div>'
+    + (s.ultimo_error && s.estado !== 'ok' ? '<div class="mon-error">' + crEsc(s.ultimo_error) + '</div>' : '')
+    + monBarras(s.barras || [])
+    + '<div class="mon-acc">' + acc.join('') + '</div>'
+    + '<div class="mon-det" id="mon-det-' + id + '" hidden></div>'
+    + '</div>';
+}
+
+function monPintarKpis(r) {
+  const box = document.getElementById('mon-kpis');
+  const caidos = (r.por_estado.caido || 0) + (r.por_estado.falla || 0);
+  const kpis = [
+    ['Sitios vigilados', String(r.activos), r.con_plan + ' con plan de mantenimiento', ''],
+    ['Caídos ahora', String(caidos), caidos ? 'revisalos primero' : 'todo arriba', caidos ? 'mal' : ''],
+    ['Disponibilidad 30 días', monPct(r.disp_30d), 'promedio de los sitios activos', ''],
+    ['SSL por vencer', String(r.ssl_por_vencer), 'en menos de 21 días', r.ssl_por_vencer ? 'mal' : ''],
+  ];
+  box.innerHTML = kpis.map(([l, v, sub, c]) => '<div class="mon-kpi"><div class="mon-kpi-l">' + crEsc(l)
+    + '</div><div class="mon-kpi-v ' + c + '">' + crEsc(v) + '</div><div class="mon-kpi-s">' + crEsc(sub) + '</div></div>').join('');
+  const badge = document.getElementById('mon-badge');
+  if (badge) { badge.textContent = caidos || ''; badge.style.display = caidos ? 'inline' : 'none'; }
+}
+
+function monPintarLista() {
+  const filtros = document.getElementById('mon-filtros');
+  filtros.innerHTML = MON_FILTROS.map(([f, t]) => '<button type="button" class="mon-filtro" data-mon-filtro="' + f
+    + '" aria-pressed="' + (f === monFiltro) + '">' + t + ' (' + monDatos.filter(s => monPasa(s, f)).length + ')</button>').join('');
+  const lista = monDatos.filter(s => monPasa(s, monFiltro))
+    .sort((a, b) => (MON_ORDEN[a.estado] - MON_ORDEN[b.estado]) || a.nombre.localeCompare(b.nombre));
+  document.getElementById('mon-lista').innerHTML = lista.length ? lista.map(monHtml).join('')
+    : '<div class="of-vacio">' + (monDatos.length ? 'Ningún sitio con este filtro.'
+      : 'Todavía no hay sitios. Con "+ Agregar sitio" cargás el primero; los clientes con web cargada aparecen como sugerencia.') + '</div>';
+  if (monAbierto && document.getElementById('mon-det-' + monAbierto)) monDetalle(monAbierto);
+}
+
+async function monCargar() {
+  if (!document.getElementById('mon-lista')) return;
+  const nota = document.getElementById('mon-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/monitor/sitios');
+    monDatos = d.sitios;
+    monVistaPrevia = !!d.vista_previa;
+    monPintarKpis(d.resumen);
+  } catch (e) {
+    monDatos = [];
+    nota.textContent = e.message;
+  }
+  monPintarLista();
+  document.getElementById('mon-filtros').onclick = e => {
+    const b = e.target.closest('[data-mon-filtro]');
+    if (!b) return;
+    monFiltro = b.dataset.monFiltro;
+    monPintarLista();
+  };
+  document.getElementById('mon-lista').onclick = monAccion;
+  document.getElementById('mon-nuevo').onclick = monAbrirForm;
+  document.getElementById('mon-cancelar').onclick = () => monCerrarForm();
+  document.getElementById('mon-form').onsubmit = monCrear;
+}
+
+async function monDetalle(id) {
+  const box = document.getElementById('mon-det-' + id);
+  if (!box) return;
+  let d;
+  try { d = (await ofPedir('/api/monitor/sitios/' + id)).sitio; }
+  catch (e) { box.textContent = e.message; box.hidden = false; return; }
+  const inc = d.incidentes.length ? d.incidentes.map(i => '<li><b>' + crEsc(monFecha(i.empezo)) + '</b> · '
+    + monDuracion(i.minutos) + (i.termino ? '' : ' · sigue abierto') + '<br>' + crEsc(i.causa || '') + '</li>').join('')
+    : '<li>Sin incidentes.</li>';
+  const ch = d.chequeos.length ? d.chequeos.slice(0, 12).map(c => '<li><b>' + crEsc(monFecha(c.en)) + '</b> · '
+    + (c.ok ? 'bien' : 'falló') + (c.codigo ? ' · ' + Number(c.codigo) : '') + (c.ms ? ' · ' + monMs(c.ms) : '')
+    + (c.error ? ' · ' + crEsc(c.error) : '') + '</li>').join('') : '<li>Todavía no se revisó.</li>';
+  const notas = {};
+  d.notas.forEach(n => { notas[n.mes] = n.texto; });
+  const opciones = d.meses.map(m => '<option value="' + crEsc(m) + '">' + crEsc(monMes(m)) + '</option>').join('');
+  box.innerHTML = '<div><h4>Incidentes</h4><ul>' + inc + '</ul></div>'
+    + '<div><h4>Últimos chequeos</h4><ul>' + ch + '</ul></div>'
+    + '<div><h4>Qué hicimos (sale en el reporte)</h4><select id="mon-nota-mes-' + id + '" aria-label="Mes">' + opciones + '</select>'
+    + '<textarea id="mon-nota-txt-' + id + '" maxlength="4000" placeholder="Actualizamos WordPress y 6 plugins. Renovamos el SSL. Cambiamos el banner de la home."></textarea>'
+    + '<div class="mon-acc"><button type="button" class="of-btn prim" data-mon="nota" data-id="' + id + '">Guardar</button>'
+    + '<span class="of-ayuda" id="mon-nota-estado-' + id + '" role="status" aria-live="polite"></span></div></div>';
+  const sel = document.getElementById('mon-nota-mes-' + id);
+  const txt = document.getElementById('mon-nota-txt-' + id);
+  txt.value = notas[sel.value] || '';
+  sel.onchange = () => { txt.value = notas[sel.value] || ''; };
+  box.dataset.notas = JSON.stringify(notas);
+  box.hidden = false;
+}
+
+async function monCopiar(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (e) { window.prompt('Copiá el link del reporte:', url); return false; }
+}
+
+async function monAccion(e) {
+  const b = e.target.closest('[data-mon]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const s = monDatos.find(x => x.id === id);
+  const nota = document.getElementById('mon-nota');
+  if (!s) return;
+  const accion = b.dataset.mon;
+  if (accion === 'detalle') {
+    const box = document.getElementById('mon-det-' + id);
+    if (!box.hidden) { box.hidden = true; monAbierto = null; b.setAttribute('aria-expanded', 'false'); return; }
+    monAbierto = id;
+    b.setAttribute('aria-expanded', 'true');
+    await monDetalle(id);
+    return;
+  }
+  if (accion === 'copiar') {
+    if (await monCopiar(s.reporte_url)) { b.textContent = 'Copiado ✓'; setTimeout(() => { b.textContent = 'Copiar reporte'; }, 1600); }
+    return;
+  }
+  if (accion === 'revisar') {
+    b.disabled = true; b.textContent = 'Revisando…';
+    try { await ofPedir('/api/monitor/sitios/' + id + '/revisar', 'POST', {}); }
+    catch (ex) { nota.textContent = ex.message; b.disabled = false; b.textContent = 'Revisar ahora'; return; }
+    await monCargar();
+    return;
+  }
+  if (accion === 'pausar') {
+    try { await ofPedir('/api/monitor/sitios/' + id, 'PATCH', {activo: !s.activo}); }
+    catch (ex) { nota.textContent = ex.message; return; }
+    await monCargar();
+    return;
+  }
+  if (accion === 'borrar') {
+    if (!confirm('¿Borrar ' + s.nombre + ' del monitor? Se pierde su historial y el link del reporte deja de andar.')) return;
+    try { await ofPedir('/api/monitor/sitios/' + id, 'DELETE'); }
+    catch (ex) { nota.textContent = ex.message; return; }
+    if (monAbierto === id) monAbierto = null;
+    await monCargar();
+    return;
+  }
+  if (accion === 'nota') {
+    const mes = document.getElementById('mon-nota-mes-' + id).value;
+    const texto = document.getElementById('mon-nota-txt-' + id).value;
+    const est = document.getElementById('mon-nota-estado-' + id);
+    try {
+      await ofPedir('/api/monitor/sitios/' + id + '/nota', 'PUT', {mes: mes, texto: texto});
+      est.textContent = 'Guardado ✓';
+      const box = document.getElementById('mon-det-' + id);
+      const notas = JSON.parse(box.dataset.notas || '{}');
+      notas[mes] = texto;
+      box.dataset.notas = JSON.stringify(notas);
+    } catch (ex) { est.textContent = ex.message; }
+  }
+}
+
+// ── Alta ──
+let monSugeridos = [];
+
+async function monAbrirForm() {
+  const form = document.getElementById('mon-form');
+  const boton = document.getElementById('mon-nuevo');
+  if (!form.hidden) { monCerrarForm(); return; }
+  form.hidden = false;
+  boton.setAttribute('aria-expanded', 'true');
+  form.elements.nombre.focus();
+  try { monSugeridos = (await ofPedir('/api/monitor/sugeridos')).clientes; } catch (e) { monSugeridos = []; }
+  document.getElementById('mon-cliente').innerHTML = '<option value="">Ninguno</option>'
+    + monSugeridos.map(c => '<option value="' + Number(c.id) + '">' + crEsc(c.name) + '</option>').join('');
+  document.getElementById('mon-sug').innerHTML = monSugeridos.length
+    ? 'Clientes con web y sin monitor: ' + monSugeridos.slice(0, 8).map(c => '<button type="button" class="mon-filtro" data-sug="'
+      + Number(c.id) + '">' + crEsc(c.name) + '</button>').join('')
+    : '';
+  document.getElementById('mon-sug').onclick = e => {
+    const b = e.target.closest('[data-sug]');
+    if (!b) return;
+    const c = monSugeridos.find(x => x.id === Number(b.dataset.sug));
+    if (!c) return;
+    form.elements.nombre.value = c.name;
+    form.elements.url.value = c.website;
+    form.elements.business_id.value = String(c.id);
+  };
+}
+
+function monCerrarForm() {
+  const form = document.getElementById('mon-form');
+  form.hidden = true;
+  form.reset();
+  document.getElementById('mon-form-estado').textContent = '';
+  document.getElementById('mon-nuevo').setAttribute('aria-expanded', 'false');
+}
+
+async function monCrear(e) {
+  e.preventDefault();
+  const form = e.target;
+  const est = document.getElementById('mon-form-estado');
+  const datos = {};
+  ['nombre', 'url', 'url_extra', 'palabra', 'plan', 'business_id'].forEach(k => { datos[k] = form.elements[k].value; });
+  est.textContent = 'Guardando…';
+  try { await ofPedir('/api/monitor/sitios', 'POST', datos); }
+  catch (ex) { est.textContent = ex.message; return; }
+  monCerrarForm();
+  await monCargar();
+  // El primer chequeo corre en el servidor; en unos segundos ya hay dato.
+  if (!monVistaPrevia) setTimeout(monCargar, 8000);
+}
+// ========== FIN Monitor de sitios ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3546,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-monitor .nav-icon{stroke:#84cc16}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3583,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-monitor.active .nav-icon{stroke:#d9f99d}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3616,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-monitor .nav-icon{stroke:#65a30d}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3842,6 +4141,49 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
 }
+/* Monitor de sitios (24/10): caídas, SSL y velocidad de los sitios de clientes. */
+.mon-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.mon-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.mon-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mon-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.mon-kpi-v.mal{color:var(--rojo-texto)}
+.mon-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.mon-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.mon-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.mon-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.mon-lista{display:flex;flex-direction:column;gap:10px}
+.mon-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:7px}
+.mon-item.caido{border-color:var(--rojo-texto)}
+.mon-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mon-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.mon-url{font-size:.8rem;color:var(--azul-claro);text-decoration:none;overflow-wrap:anywhere}
+.mon-plan{margin-left:auto;font-size:.72rem;color:var(--texto-tenue);border:1px solid var(--borde-fuerte);border-radius:999px;padding:1px 8px}
+.mon-meta{font-size:.8rem;color:var(--texto-tenue);display:flex;gap:6px 14px;flex-wrap:wrap}
+.mon-meta b{color:var(--texto);font-weight:600;font-variant-numeric:tabular-nums}
+.mon-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto)}
+.mon-pill.ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.mon-pill.caido,.mon-pill.falla{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.mon-pill.ssl,.mon-pill.lento{background:var(--ambar-tinte);color:var(--ambar)}
+.mon-pill.pausado,.mon-pill.sin_datos{color:var(--texto-tenue)}
+.mon-error{font-size:.8rem;color:var(--rojo-texto);overflow-wrap:anywhere}
+.mon-barras{display:grid;grid-template-columns:repeat(48,1fr);gap:2px;height:22px;align-items:end}
+.mon-barras span{display:block;border-radius:2px;background:var(--relleno);height:100%}
+.mon-barras span.v{background:var(--verde-texto);opacity:.85}
+.mon-barras span.r{background:var(--rojo-texto)}
+.mon-barras-pie{display:flex;justify-content:space-between;font-size:.68rem;color:var(--texto-debil)}
+.mon-acc{display:flex;gap:6px;flex-wrap:wrap}
+.mon-det{border-top:1px solid var(--borde);padding-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;font-size:.8rem}
+.mon-det h4{margin:0 0 6px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mon-det ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;color:var(--texto-tenue)}
+.mon-det ul b{color:var(--texto);font-weight:600}
+.mon-det textarea{width:100%;min-height:90px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px;font-family:inherit;font-size:.82rem;resize:vertical}
+.mon-det select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:4px 8px;font-family:inherit;font-size:.8rem;margin-bottom:6px}
+.mon-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.mon-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.mon-form label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+.mon-form input,.mon-form select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:.85rem}
+.mon-sug{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;font-size:.76rem;color:var(--texto-tenue);align-items:center}
+.mon-form-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -5009,6 +5351,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
+  <!-- Monitor de sitios (24/10): caídas, SSL y velocidad de lo que entregamos. Panel "monitor". -->
+  <div class="nav-item" id="nav-monitor" onclick="showPanel('monitor')"><i data-lucide="activity" class="nav-icon"></i> Monitor de sitios <span id="mon-badge" style="display:none;background:#ef4444;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
@@ -6376,6 +6720,41 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= MONITOR DE SITIOS PANEL ======= -->
+  <!-- Los sitios y tiendas que entregamos: si están arriba, cuánto tardan,
+       cuándo vence el SSL, y el reporte del mes para el cliente
+       (services/monitor_sitios.py). -->
+  <div id="monitor-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Monitor de sitios</h1>
+        <div class="page-date" id="mon-sub">Los sitios que entregamos, revisados cada 10 minutos. Enterate antes que el cliente.</div>
+      </div>
+      <button type="button" class="of-btn prim" id="mon-nuevo" aria-expanded="false" aria-controls="mon-form">+ Agregar sitio</button>
+    </div>
+    <form class="mon-form" id="mon-form" hidden>
+      <div class="mon-form-grid">
+        <label>Nombre<input name="nombre" maxlength="120" required placeholder="Tienda Bambú"></label>
+        <label>Dirección<input name="url" maxlength="500" required placeholder="tiendabambu.com.uy"></label>
+        <label>Segunda dirección (opcional)<input name="url_extra" maxlength="500" placeholder="tiendabambu.com.uy/carrito"></label>
+        <label>Palabra que tiene que aparecer (opcional)<input name="palabra" maxlength="120" placeholder="Agregar al carrito"></label>
+        <label>Plan<select name="plan"><option value="mantenimiento">Plan de mantenimiento</option><option value="sin_plan">Sin plan (solo vigilamos)</option></select></label>
+        <label>Cliente del CRM (opcional)<select name="business_id" id="mon-cliente"><option value="">Ninguno</option></select></label>
+      </div>
+      <div class="mon-sug" id="mon-sug"></div>
+      <div class="mon-form-pie">
+        <button type="submit" class="of-btn prim">Agregar y revisar</button>
+        <button type="button" class="of-btn" id="mon-cancelar">Cancelar</button>
+        <span class="of-ayuda" id="mon-form-estado" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <div class="mon-kpis" id="mon-kpis"></div>
+    <div class="mon-filtros" id="mon-filtros" role="group" aria-label="Filtrar sitios"></div>
+    <div class="cr-nota" id="mon-nota" role="status" aria-live="polite"></div>
+    <div class="mon-lista" id="mon-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN MONITOR DE SITIOS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +7979,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'monitor') monCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13067,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','monitor','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',monitor:'activity'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',monitor:'Monitor'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13161,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','monitor'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16575,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*MONITOR_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23338,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*MONITOR_JS*/", "/* {% raw %} */" + MONITOR_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23461,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, monitor_sitios_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23488,11 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Monitor de sitios: el reporte del mes que abre el cliente (/r/<código>)
+        # y el despertador de afuera, que trae su propio token. Ver
+        # routes/monitor_sitios.py.
+        if request.path.startswith(MONITOR_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24520,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','monitor'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',monitor:'Monitor de sitios'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -24385,6 +24772,11 @@ loadBackups();
         # Modo sombra: recomendaciones de pauta los lunes, sin tocar Meta.
         from services.sombra_meta import start_sombra_meta
         start_sombra_meta(app)
+
+        # Monitor de sitios de clientes: solo GET a los sitios cargados, cada
+        # uno cada 10 min como mucho. MONITOR_SITIOS=off lo apaga.
+        from services.monitor_sitios import start_monitor_sitios
+        start_monitor_sitios(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.

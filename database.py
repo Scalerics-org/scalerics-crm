@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Monitor de sitios (24/10): caídas, SSL y velocidad de los sitios de
+        # clientes (services/monitor_sitios.py). Va a quien ya ve Clientes.
+        from services.monitor_sitios import init_monitor_sitios
+        init_monitor_sitios(conn)
+        _grant_panel_to_existing_roles(conn, "monitor", si_tiene=("clientes", "projects"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
