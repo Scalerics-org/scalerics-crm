@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.soporte import PUBLICAS as SOPORTE_PUBLICAS, soporte_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  soporte: 'pedidos soporte mantenimiento tickets cambios horas bolsa sla clientes',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,349 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+SP_JS = r"""// ========== Mesa de pedidos (soporte) ==========
+// services/soporte.py guarda y calcula el SLA; acá solo se pinta. Los títulos,
+// mensajes y nombres de archivo los escribe el cliente: todo pasa por crEsc.
+const SP_ESTADO = {nuevo: 'Nuevo', en_curso: 'En curso', esperando: 'Esperando al cliente', hecho: 'Hecho', descartado: 'Descartado'};
+const SP_FILTROS = [['abiertos', 'Abiertos'], ['toca', 'Nos toca'], ['vencidos', 'Vencidos'], ['esperando', 'Esperando al cliente'],
+                    ['hecho', 'Hechos'], ['todos', 'Todos']];
+let spDatos = {pedidos: [], planes: [], prioridades: {}, tipos: {}};
+let spFiltro = 'abiertos';
+let spPlan = '';
+let spTab = 'bandeja';
+let spAbierto = null;
+let spMes = '';
+
+function spFecha(utc) {
+  const d = new Date(String(utc || '').replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  return d.toLocaleString('es-UY', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+}
+
+function spH(n) { return String(Math.round(Number(n || 0) * 100) / 100).replace('.', ',') + ' h'; }
+
+function spDur(min) {
+  const m = Math.abs(Number(min));
+  if (m < 60) return m + ' min';
+  if (m < 48 * 60) return Math.round(m / 60) + ' h';
+  return Math.round(m / 1440) + ' días';
+}
+
+function spSla(s) {
+  if (s.estado === 'pausado') return ['', 'SLA en pausa'];
+  if (s.estado === 'cerrado') return ['', ''];
+  if (s.estado === 'cumplido') return ['sp-bien', 'resuelto a tiempo'];
+  if (s.vence === null) return ['sp-mal', 'resuelto fuera de plazo'];
+  const que = s.que === 'respuesta' ? 'responder' : 'resolver';
+  if (s.estado === 'vencido') return ['sp-mal', (s.que === 'respuesta' ? 'sin respuesta' : 'sin resolver') + ', venció hace ' + spDur(s.falta_min)];
+  return [s.estado === 'riesgo' ? 'sp-atencion' : '', que + ' en ' + spDur(s.falta_min)];
+}
+
+function spPasa(d) {
+  if (spPlan && d.plan_id !== Number(spPlan)) return false;
+  const abierto = ['nuevo', 'en_curso', 'esperando'].includes(d.estado);
+  if (spFiltro === 'abiertos') return abierto;
+  if (spFiltro === 'toca') return d.toca_responder;
+  if (spFiltro === 'vencidos') return abierto && d.sla.estado === 'vencido';
+  if (spFiltro === 'esperando') return d.estado === 'esperando';
+  if (spFiltro === 'hecho') return d.estado === 'hecho' || d.estado === 'descartado';
+  return true;
+}
+
+function spPedidoHtml(d) {
+  const id = Number(d.id);
+  const [clase, sla] = spSla(d.sla);
+  const meta = [crEsc(d.plan_nombre) + ' #' + Number(d.numero), crEsc(spDatos.tipos[d.tipo] || d.tipo), 'abierto ' + crEsc(spHace(d.creado_en))];
+  if (d.asignado) meta.push('lo tiene ' + crEsc(d.asignado));
+  if (d.horas) meta.push(spH(d.horas));
+  if (!d.de_cliente) meta.push('lo cargó ' + crEsc(d.creado_por));
+  return '<div class="sp-item' + (d.toca_responder ? ' toca' : '') + (d.sla.estado === 'vencido' && d.estado !== 'hecho' ? ' vencido' : '') + '" id="sp-item-' + id + '">'
+    + '<div class="sp-cab"><span class="sp-pill p-' + crEsc(d.prioridad) + '">' + crEsc(d.prioridad) + '</span>'
+    + '<span class="sp-tit">' + crEsc(d.titulo) + '</span>'
+    + '<span class="sp-pill e-' + crEsc(d.estado) + '">' + crEsc(SP_ESTADO[d.estado] || d.estado) + '</span></div>'
+    + '<div class="sp-meta">' + meta.join(' · ') + (sla ? ' · <span class="' + clase + '">' + crEsc(sla) + '</span>' : '')
+    + (d.toca_responder ? ' · <b class="sp-atencion">le toca al equipo</b>' : '') + '</div>'
+    + '<div class="sp-acc"><button type="button" class="of-btn' + (spAbierto === id ? '' : ' prim') + '" data-sp="abrir" data-id="' + id + '" aria-expanded="' + (spAbierto === id) + '">' + (spAbierto === id ? 'Cerrar' : 'Abrir') + '</button></div>'
+    + '<div class="sp-det" id="sp-det-' + id + '" hidden></div></div>';
+}
+
+function spHace(utc) {
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  return 'hace ' + spDur(min);
+}
+
+function spPintarKpis(r) {
+  const kpis = [
+    ['Abiertos', String(r.abiertos), r.sin_respuesta + ' sin primera respuesta', ''],
+    ['Nos toca', String(r.toca_responder), 'el cliente habló último', r.toca_responder ? 'atencion' : ''],
+    ['SLA vencido', String(r.vencidos), r.en_riesgo + ' por vencer', r.vencidos ? 'mal' : ''],
+    ['A tiempo', r.pct_a_tiempo === null ? '—' : r.pct_a_tiempo + '%', 'de los pedidos hechos', ''],
+    ['Horas del mes', spH(r.horas_usadas), 'de ' + spH(r.horas_contratadas) + ' contratadas en ' + r.planes + ' planes', ''],
+    ['Fuera del plan', String(r.pasados), r.monto_extra ? 'USD ' + r.monto_extra.toLocaleString('es-UY') + ' para facturar aparte' : 'clientes pasados de su bolsa', r.pasados ? 'atencion' : ''],
+  ];
+  document.getElementById('sp-kpis').innerHTML = kpis.map(([l, v, sub, c]) => '<div class="sp-kpi"><div class="sp-kpi-l">' + crEsc(l)
+    + '</div><div class="sp-kpi-v sp-' + c + '">' + crEsc(v) + '</div><div class="sp-kpi-s">' + crEsc(sub) + '</div></div>').join('');
+  const badge = document.getElementById('sp-badge');
+  const n = r.toca_responder + r.vencidos;
+  if (badge) { badge.textContent = n || ''; badge.style.display = n ? 'inline' : 'none'; }
+}
+
+function spPintar() {
+  document.querySelectorAll('#soporte-panel [data-sp-tab]').forEach(b => {
+    const activo = b.dataset.spTab === spTab;
+    b.setAttribute('aria-selected', String(activo));
+    b.classList.toggle('activo', activo);
+  });
+  document.getElementById('sp-vista-bandeja').hidden = spTab !== 'bandeja';
+  document.getElementById('sp-vista-planes').hidden = spTab !== 'planes';
+  const conteo = f => spDatos.pedidos.filter(d => { const v = spFiltro; spFiltro = f; const ok = spPasa(d); spFiltro = v; return ok; }).length;
+  document.getElementById('sp-filtros').innerHTML = SP_FILTROS.map(([k, l]) => '<button type="button" class="sp-filtro" data-sp-filtro="' + k + '" aria-pressed="' + (spFiltro === k) + '">' + crEsc(l) + ' (' + conteo(k) + ')</button>').join('')
+    + '<select class="sp-sel" id="sp-plan-filtro" aria-label="Filtrar por cliente"><option value="">Todos los clientes</option>'
+    + spDatos.planes.map(p => '<option value="' + Number(p.id) + '"' + (String(p.id) === String(spPlan) ? ' selected' : '') + '>' + crEsc(p.nombre) + '</option>').join('') + '</select>';
+  const lista = spDatos.pedidos.filter(spPasa);
+  document.getElementById('sp-lista').innerHTML = lista.length ? lista.map(spPedidoHtml).join('')
+    : '<div class="sp-meta" style="padding:8px 2px">' + (spDatos.planes.length ? 'Nada por acá.' : 'Todavía no hay planes: creá uno y mandale el link al cliente.') + '</div>';
+  document.getElementById('sp-planes').innerHTML = spDatos.planes.length ? spDatos.planes.map(spPlanHtml).join('')
+    : '<div class="sp-meta" style="padding:8px 2px">Todavía no hay planes. Con "+ Nuevo plan" armás el link del cliente.</div>';
+  if (spAbierto && document.getElementById('sp-det-' + spAbierto)) spDetalle(spAbierto);
+}
+
+async function spCargar() {
+  if (!document.getElementById('sp-lista')) return;
+  const nota = document.getElementById('sp-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/soporte' + (spMes ? '?mes=' + encodeURIComponent(spMes) : ''));
+    spDatos = d;
+    spMes = d.mes;
+    document.getElementById('sp-mes').value = d.mes;
+    spPintarKpis(d.resumen);
+  } catch (e) {
+    spDatos = {pedidos: [], planes: [], prioridades: {}, tipos: {}};
+    nota.textContent = e.message;
+  }
+  spPintar();
+  const panel = document.getElementById('soporte-panel');
+  panel.onclick = spAccion;
+  panel.onsubmit = spEnviar;
+  panel.onchange = e => {
+    if (e.target.id === 'sp-plan-filtro') { spPlan = e.target.value; spPintar(); }
+    if (e.target.id === 'sp-mes' && e.target.value) { spMes = e.target.value; spCargar(); }
+  };
+}
+
+// ── detalle de un pedido ──
+function spOpciones(obj, sel) {
+  return Object.entries(obj).map(([k, v]) => '<option value="' + crEsc(k) + '"' + (k === sel ? ' selected' : '') + '>' + crEsc(typeof v === 'string' ? v : v.nombre) + '</option>').join('');
+}
+
+async function spDetalle(id) {
+  const box = document.getElementById('sp-det-' + id);
+  if (!box) return;
+  let d;
+  try { d = (await ofPedir('/api/soporte/pedidos/' + id)).pedido; }
+  catch (e) { box.textContent = e.message; box.hidden = false; return; }
+  const adj = mid => d.archivos.filter(a => a.mensaje_id === mid).map(a => '<a class="sp-adj" href="/api/soporte/archivos/' + Number(a.id) + '">' + crEsc(a.nombre) + '</a>').join(' ');
+  const hilo = ['<div class="sp-m cli"><small>' + (d.de_cliente ? 'Cliente' : crEsc(d.creado_por) + ' (cargado por el equipo)') + ' · ' + crEsc(spHace(d.creado_en)) + '</small>'
+    + (d.descripcion ? crEsc(d.descripcion) : '<i>Sin detalle</i>') + (adj(null) ? '<div>' + adj(null) + '</div>' : '') + '</div>']
+    .concat(d.mensajes.map(m => '<div class="sp-m ' + (m.de_cliente ? 'cli' : (m.interno ? 'int' : 'eq')) + '"><small>' + (m.de_cliente ? 'Cliente' : crEsc(m.quien))
+      + (m.interno ? ' · nota interna' : '') + ' · ' + crEsc(spHace(m.creado_en)) + '</small>' + crEsc(m.texto)
+      + (adj(m.id) ? '<div>' + adj(m.id) + '</div>' : '') + '</div>')).join('');
+  const cargas = d.cargas.map(c => '<li>' + crEsc(c.fecha.split('-').reverse().join('/')) + ' · <b>' + spH(c.horas) + '</b> · ' + crEsc(c.quien)
+    + (c.nota ? ' · ' + crEsc(c.nota) : '') + ' <button type="button" class="sp-x" data-sp="borrar-horas" data-hid="' + Number(c.id) + '" aria-label="Borrar carga">✕</button></li>').join('');
+  const [, sla] = spSla(d.sla);
+  box.innerHTML = '<div class="sp-det-grid"><div>'
+    + '<div class="sp-hilo">' + hilo + '</div>'
+    + '<form class="sp-resp" data-sp-form="responder" data-id="' + id + '">'
+    + '<textarea name="texto" maxlength="6000" aria-label="Respuesta" placeholder="Lo que le contestás al cliente (lo ve en su link)"></textarea>'
+    + '<div class="sp-acc"><label class="sp-chk"><input type="checkbox" name="interno"> Nota interna (el cliente no la ve)</label>'
+    + '<label class="sp-chk">y dejarlo <select name="estado" class="sp-sel"><option value="">como está</option>' + spOpciones(SP_ESTADO, '') + '</select></label>'
+    + '<input type="file" name="archivos" multiple aria-label="Adjuntos">'
+    + '<button type="submit" class="of-btn prim">Mandar</button></div></form></div>'
+    + '<aside class="sp-lado">'
+    + '<div class="sp-campo"><span>SLA</span><b>' + crEsc(sla || '—') + '</b><small>responder antes del ' + crEsc(spFecha(d.sla.responder_antes)) + ' · resolver antes del ' + crEsc(spFecha(d.sla.resolver_antes)) + (d.sla.respuesta_tarde ? ' (se contestó tarde)' : '') + '</small></div>'
+    + '<form data-sp-form="cambiar" data-id="' + id + '" class="sp-campos">'
+    + '<label>Estado<select name="estado" class="sp-sel">' + spOpciones(SP_ESTADO, d.estado) + '</select></label>'
+    + '<label>Prioridad<select name="prioridad" class="sp-sel">' + spOpciones(spDatos.prioridades, d.prioridad) + '</select></label>'
+    + '<label>Tipo<select name="tipo" class="sp-sel">' + spOpciones(spDatos.tipos, d.tipo) + '</select></label>'
+    + '<label>Lo tiene<input name="asignado" maxlength="60" value="' + crEsc(d.asignado || '') + '" placeholder="Nombre"></label>'
+    + '<button type="submit" class="of-btn">Guardar</button></form>'
+    + '<div class="sp-campo"><span>Horas</span><b>' + spH(d.horas) + '</b></div>'
+    + (cargas ? '<ul class="sp-cargas">' + cargas + '</ul>' : '')
+    + '<form data-sp-form="horas" data-id="' + id + '" class="sp-horas">'
+    + '<input name="horas" inputmode="decimal" placeholder="1,5" aria-label="Horas" required>'
+    + '<input name="fecha" type="date" aria-label="Fecha">'
+    + '<input name="nota" maxlength="300" placeholder="Qué se hizo (lo ve el cliente)" aria-label="Nota">'
+    + '<button type="submit" class="of-btn">Cargar horas</button></form>'
+    + '<a class="of-btn" style="text-decoration:none;text-align:center" target="_blank" rel="noopener" href="/pedidos/' + encodeURIComponent(d.plan_codigo) + '/' + Number(d.numero) + '">Ver como el cliente</a>'
+    + '</aside></div>';
+  box.hidden = false;
+}
+
+// ── planes ──
+function spPlanHtml(p) {
+  const id = Number(p.id);
+  const bolsa = p.horas_mes ? spH(p.usadas) + ' de ' + spH(p.horas_mes) + (p.extra ? ' · <span class="sp-mal">' + spH(p.extra) + ' de más</span>' : ' · quedan ' + spH(p.restantes))
+    : spH(p.usadas) + ' (por hora, sin bolsa)';
+  const meta = [bolsa];
+  if (p.monto_extra) meta.push('<b>USD ' + Number(p.monto_extra).toLocaleString('es-UY') + '</b> a facturar aparte');
+  meta.push(Number(p.abiertos) + ' abiertos');
+  meta.push(p.ultima_visita ? 'abrió el link ' + crEsc(spHace(p.ultima_visita)) : 'nunca abrió el link');
+  return '<div class="sp-item' + (p.activo ? '' : ' pausado') + '" id="sp-plan-' + id + '">'
+    + '<div class="sp-cab"><span class="sp-tit">' + crEsc(p.nombre) + '</span>'
+    + (p.cliente_nombre ? '<span class="sp-tipo">' + crEsc(p.cliente_nombre) + '</span>' : '')
+    + (p.activo ? '' : '<span class="sp-pill">pausado</span>') + '</div>'
+    + '<div class="sp-barra' + (p.pasado ? ' sp-pasado' : '') + '" role="progressbar" aria-label="Horas usadas" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Number(p.pct) + '"><span style="width:' + Number(p.pct) + '%"></span></div>'
+    + '<div class="sp-meta">' + meta.join(' · ') + '</div>'
+    + '<div class="sp-acc">'
+    + '<button type="button" class="of-btn prim" data-sp="copiar" data-id="' + id + '">Copiar link</button>'
+    + '<a class="of-btn" style="text-decoration:none" href="' + crEsc(p.link) + '" target="_blank" rel="noopener">Ver como cliente</a>'
+    + '<button type="button" class="of-btn" data-sp="toggle" data-box="sp-alta-' + id + '">Cargar un pedido</button>'
+    + '<button type="button" class="of-btn" data-sp="toggle" data-box="sp-edit-' + id + '">Editar plan</button>'
+    + '<button type="button" class="of-btn" data-sp="ver-pedidos" data-id="' + id + '">Ver sus pedidos</button>'
+    + '<button type="button" class="of-btn" data-sp="nuevo-link" data-id="' + id + '">Cambiar link</button>'
+    + '<button type="button" class="of-btn" data-sp="borrar-plan" data-id="' + id + '">Borrar</button></div>'
+    + '<form class="sp-mini" id="sp-alta-' + id + '" data-sp-form="alta-pedido" data-id="' + id + '" hidden>'
+    + '<input name="titulo" maxlength="140" required placeholder="Lo que pidió (llegó por WhatsApp)" aria-label="Título">'
+    + '<select name="tipo" class="sp-sel" aria-label="Tipo">' + spOpciones(spDatos.tipos, 'cambio') + '</select>'
+    + '<select name="prioridad" class="sp-sel" aria-label="Prioridad">' + spOpciones(spDatos.prioridades, 'normal') + '</select>'
+    + '<textarea name="descripcion" maxlength="6000" placeholder="Lo que dijo el cliente, tal cual" aria-label="Detalle"></textarea>'
+    + '<button type="submit" class="of-btn prim">Cargar</button></form>'
+    + '<form class="sp-mini" id="sp-edit-' + id + '" data-sp-form="editar-plan" data-id="' + id + '" hidden>'
+    + '<label>Nombre<input name="nombre" maxlength="120" value="' + crEsc(p.nombre) + '"></label>'
+    + '<label>Horas por mes<input name="horas_mes" inputmode="decimal" value="' + crEsc(String(p.horas_mes).replace('.', ',')) + '"></label>'
+    + '<label>Hora extra (USD)<input name="precio_hora" inputmode="decimal" value="' + crEsc(p.precio_hora === null ? '' : String(p.precio_hora).replace('.', ',')) + '"></label>'
+    + '<label class="sp-chk"><input type="checkbox" name="activo"' + (p.activo ? ' checked' : '') + '> Link activo</label>'
+    + '<label style="grid-column:1/-1">Mensaje para el cliente<textarea name="mensaje" maxlength="1500">' + crEsc(p.mensaje || '') + '</textarea></label>'
+    + '<button type="submit" class="of-btn prim">Guardar</button></form>'
+    + '</div>';
+}
+
+async function spCopiar(url) {
+  try { await navigator.clipboard.writeText(url); return true; }
+  catch (e) { window.prompt('Copiá el link para el cliente:', url); return false; }
+}
+
+async function spAccion(e) {
+  const tab = e.target.closest('[data-sp-tab]');
+  if (tab) { spTab = tab.dataset.spTab; return spPintar(); }
+  const f = e.target.closest('[data-sp-filtro]');
+  if (f) { spFiltro = f.dataset.spFiltro; return spPintar(); }
+  const b = e.target.closest('[data-sp]');
+  if (!b) return;
+  const accion = b.dataset.sp;
+  const nota = document.getElementById('sp-nota');
+  const id = Number(b.dataset.id);
+  try {
+    if (accion === 'nuevo-plan') return spAbrirAlta();
+    if (accion === 'cancelar-plan') return spCerrarAlta();
+    if (accion === 'abrir') { spAbierto = spAbierto === id ? null : id; return spPintar(); }
+    if (accion === 'toggle') {
+      const box = document.getElementById(b.dataset.box);
+      box.hidden = !box.hidden;
+      return;
+    }
+    if (accion === 'ver-pedidos') { spPlan = String(id); spFiltro = 'todos'; spTab = 'bandeja'; return spPintar(); }
+    if (accion === 'borrar-horas') {
+      await ofPedir('/api/soporte/horas/' + Number(b.dataset.hid), 'DELETE');
+      return await spCargar();
+    }
+    const p = spDatos.planes.find(x => x.id === id);
+    if (!p) return;
+    if (accion === 'copiar') {
+      if (await spCopiar(p.link)) { b.textContent = 'Copiado ✓'; setTimeout(() => { b.textContent = 'Copiar link'; }, 1600); }
+      return;
+    }
+    if (accion === 'nuevo-link') {
+      if (!confirm('¿Cambiar el link de ' + p.nombre + '? El link viejo deja de andar y hay que mandarle el nuevo.')) return;
+      const r = await ofPedir('/api/soporte/planes/' + id, 'PATCH', {nuevo_link: true});
+      await spCargar();
+      await spCopiar(r.plan.link);
+      nota.textContent = 'Link nuevo copiado. Mandáselo al cliente.';
+      return;
+    }
+    if (accion === 'borrar-plan') {
+      if (!confirm('¿Borrar el plan de ' + p.nombre + '? Se borran sus pedidos, mensajes, horas y adjuntos, y el link deja de andar.')) return;
+      await ofPedir('/api/soporte/planes/' + id, 'DELETE');
+      return await spCargar();
+    }
+  } catch (ex) { nota.textContent = ex.message; }
+}
+
+async function spEnviar(e) {
+  const f = e.target.closest('[data-sp-form]');
+  if (!f) return;
+  e.preventDefault();
+  const tipo = f.dataset.spForm;
+  const id = Number(f.dataset.id);
+  const nota = document.getElementById('sp-nota');
+  nota.textContent = '';
+  try {
+    if (tipo === 'nuevo-plan') {
+      const datos = {};
+      ['nombre', 'business_id', 'horas_mes', 'precio_hora', 'mensaje'].forEach(k => { datos[k] = f.elements[k].value; });
+      const r = await ofPedir('/api/soporte/planes', 'POST', datos);
+      spCerrarAlta();
+      spTab = 'planes';
+      await spCargar();
+      await spCopiar(r.plan.link);
+      nota.textContent = 'Plan creado. El link para el cliente quedó copiado: mandáselo.';
+      return;
+    }
+    if (tipo === 'responder') {
+      const fd = new FormData(f);
+      if (!f.elements.interno.checked) fd.delete('interno');
+      const r = await fetch('/api/soporte/pedidos/' + id + '/mensajes', {method: 'POST', body: fd});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo mandar.');
+    } else if (tipo === 'cambiar') {
+      await ofPedir('/api/soporte/pedidos/' + id, 'PATCH', {estado: f.elements.estado.value, prioridad: f.elements.prioridad.value,
+                                                           tipo: f.elements.tipo.value, asignado: f.elements.asignado.value});
+    } else if (tipo === 'horas') {
+      await ofPedir('/api/soporte/pedidos/' + id + '/horas', 'POST', {horas: f.elements.horas.value, fecha: f.elements.fecha.value, nota: f.elements.nota.value});
+    } else if (tipo === 'alta-pedido') {
+      const r = await ofPedir('/api/soporte/planes/' + id + '/pedidos', 'POST', {titulo: f.elements.titulo.value, tipo: f.elements.tipo.value,
+                                                                              prioridad: f.elements.prioridad.value, descripcion: f.elements.descripcion.value});
+      spAbierto = r.pedido.id;
+      spTab = 'bandeja';
+      spFiltro = 'abiertos';
+    } else if (tipo === 'editar-plan') {
+      await ofPedir('/api/soporte/planes/' + id, 'PATCH', {nombre: f.elements.nombre.value, horas_mes: f.elements.horas_mes.value,
+                                                          precio_hora: f.elements.precio_hora.value, activo: f.elements.activo.checked, mensaje: f.elements.mensaje.value});
+    }
+  } catch (ex) { nota.textContent = ex.message; return; }
+  await spCargar();
+}
+
+async function spAbrirAlta() {
+  const form = document.getElementById('sp-form');
+  if (!form.hidden) return spCerrarAlta();
+  form.hidden = false;
+  document.getElementById('sp-nuevo').setAttribute('aria-expanded', 'true');
+  form.elements.nombre.focus();
+  let cl = [];
+  try { cl = (await ofPedir('/api/soporte/clientes')).clientes; } catch (e) { cl = []; }
+  const sel = form.elements.business_id;
+  sel.innerHTML = '<option value="">Ninguno</option>' + cl.map(c => '<option value="' + Number(c.id) + '">' + crEsc(c.name) + (c.con_plan ? ' (ya tiene plan)' : '') + '</option>').join('');
+  sel.onchange = () => {
+    const c = cl.find(x => x.id === Number(sel.value));
+    if (c && !form.elements.nombre.value) form.elements.nombre.value = c.name;
+  };
+}
+
+function spCerrarAlta() {
+  const form = document.getElementById('sp-form');
+  form.hidden = true;
+  form.reset();
+  document.getElementById('sp-nuevo').setAttribute('aria-expanded', 'false');
+}
+// ========== FIN Mesa de pedidos ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3595,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-soporte .nav-icon{stroke:#fb923c}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3632,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-soporte.active .nav-icon{stroke:#fed7aa}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3665,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-soporte .nav-icon{stroke:#c2410c}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -4732,6 +5080,71 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 }
 /* ── Credenciales ─────────────────────────────────────────────────────────────
    Contraseñas de la empresa. Solo tokens, panel admin-only. */
+/* Mesa de pedidos (24/10): lo que piden los clientes de mantenimiento y su bolsa de horas. */
+.sp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.sp-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.sp-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.sp-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.sp-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.sp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin-bottom:12px}
+.sp-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);padding:8px 14px;font-family:inherit;font-size:.85rem;cursor:pointer}
+.sp-tab.activo{color:var(--texto-fuerte);border-bottom-color:var(--azul);font-weight:600}
+.sp-filtros{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.sp-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.sp-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.sp-sel,#soporte-panel input:not([type=checkbox]):not([type=file]),#soporte-panel textarea{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 8px;font-size:.8rem;font-family:inherit;box-sizing:border-box;max-width:100%}
+#soporte-panel textarea{width:100%;min-height:70px;resize:vertical}
+.sp-lista{display:flex;flex-direction:column;gap:10px}
+.sp-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.sp-item.toca{border-color:var(--azul)}
+.sp-item.vencido{border-color:var(--rojo-texto)}
+.sp-item.pausado{opacity:.6}
+.sp-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp-tit{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere;flex:1;min-width:160px}
+.sp-tipo{font-size:.72rem;color:var(--texto-tenue);border:1px solid var(--borde-fuerte);border-radius:999px;padding:1px 8px}
+.sp-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto);white-space:nowrap}
+.sp-pill.p-urgente{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.sp-pill.p-normal{background:var(--azul-tinte);color:var(--azul-claro)}
+.sp-pill.p-baja,.sp-pill.e-descartado{color:var(--texto-tenue)}
+.sp-pill.e-nuevo,.sp-pill.e-en_curso{background:var(--azul-tinte);color:var(--azul-claro)}
+.sp-pill.e-esperando{background:var(--ambar-tinte);color:var(--ambar)}
+.sp-pill.e-hecho{background:var(--verde-tinte);color:var(--verde-texto)}
+.sp-meta{font-size:.8rem;color:var(--texto-tenue)}
+.sp-meta b{color:var(--texto);font-weight:600}
+.sp-mal,.sp-kpi-v.sp-mal{color:var(--rojo-texto)}
+.sp-atencion,.sp-kpi-v.sp-atencion{color:var(--ambar)}
+.sp-bien{color:var(--verde-texto)}
+.sp-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sp-det[hidden],.sp-mini[hidden],#sp-form[hidden],#sp-vista-bandeja[hidden],#sp-vista-planes[hidden]{display:none}
+.sp-det{border-top:1px solid var(--borde);padding-top:10px}
+.sp-det-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
+@media (max-width:860px){.sp-det-grid{grid-template-columns:1fr}}
+.sp-hilo{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.sp-m{border:1px solid var(--borde);border-radius:10px;padding:8px 12px;font-size:.85rem;white-space:pre-line;overflow-wrap:anywhere;max-width:92%}
+.sp-m small{display:block;color:var(--texto-tenue);font-size:.72rem;margin-bottom:2px;white-space:normal}
+.sp-m.cli{align-self:flex-start;background:var(--relleno)}
+.sp-m.eq{align-self:flex-end;background:var(--azul-tinte);border-color:var(--azul)}
+.sp-m.int{align-self:flex-end;background:var(--ambar-tinte);border-style:dashed}
+.sp-adj{font-size:.78rem;color:var(--azul-claro);margin-right:8px}
+.sp-resp{display:flex;flex-direction:column;gap:6px}
+.sp-chk{display:inline-flex;gap:6px;align-items:center;font-size:.78rem;color:var(--texto-tenue)}
+.sp-lado{display:flex;flex-direction:column;gap:10px}
+.sp-campo{display:flex;flex-direction:column;font-size:.8rem}
+.sp-campo span{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.sp-campo b{color:var(--texto-fuerte)}
+.sp-campo small{color:var(--texto-tenue)}
+.sp-campos,.sp-horas{display:flex;flex-direction:column;gap:6px}
+.sp-campos label{display:flex;flex-direction:column;gap:2px;font-size:.72rem;color:var(--texto-tenue)}
+.sp-cargas{list-style:none;margin:0;padding:0;font-size:.78rem;color:var(--texto-tenue);display:flex;flex-direction:column;gap:4px}
+.sp-x{background:none;border:0;color:var(--texto-tenue);cursor:pointer;font-size:.75rem}
+.sp-barra{height:6px;border-radius:999px;background:var(--relleno);overflow:hidden}
+.sp-barra span{display:block;height:100%;background:var(--azul)}
+.sp-barra.sp-pasado span{background:var(--ambar)}
+.sp-mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:end;border-top:1px solid var(--borde);padding-top:10px}
+.sp-mini label,#sp-form label{display:flex;flex-direction:column;gap:2px;font-size:.72rem;color:var(--texto-tenue)}
+.sp-mini textarea{grid-column:1/-1}
+#sp-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:end}
+#sp-form .sp-ancho{grid-column:1/-1}
 .cr-nota{font-size:.8rem;color:var(--rojo-texto);margin:-6px 0 12px}
 .cr-nota:empty{display:none}
 .cr-tabla-wrap{overflow-x:auto}
@@ -5010,6 +5423,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <!-- Pedidos de clientes (24/10): la mesa de pedidos de los planes de mantenimiento. Panel "soporte". -->
+  <div class="nav-item" id="nav-soporte" onclick="showPanel('soporte')"><i data-lucide="life-buoy" class="nav-icon"></i> Pedidos de clientes <span id="sp-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
@@ -6376,6 +6791,42 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= SOPORTE PANEL ======= -->
+  <!-- Lo que piden los clientes con plan de mantenimiento, con SLA, y la bolsa
+       de horas de cada plan (services/soporte.py). -->
+  <div id="soporte-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Pedidos de clientes</h1>
+        <div class="page-date">Lo que piden los clientes con plan de mantenimiento: lo mandan desde su link y acá se contesta, se resuelve y se cargan las horas.</div>
+      </div>
+      <button type="button" class="of-btn prim" id="sp-nuevo" data-sp="nuevo-plan" aria-expanded="false" aria-controls="sp-form">+ Nuevo plan</button>
+    </div>
+    <form id="sp-form" data-sp-form="nuevo-plan" hidden>
+      <label>Cliente o sitio<input name="nombre" maxlength="120" required placeholder="Web de Tienda Bambú"></label>
+      <label>Cliente del CRM (opcional)<select name="business_id" class="sp-sel"><option value="">Ninguno</option></select></label>
+      <label>Horas por mes (0 = sin bolsa, por hora)<input name="horas_mes" inputmode="decimal" value="4"></label>
+      <label>Hora extra en USD (opcional)<input name="precio_hora" inputmode="decimal" placeholder="25"></label>
+      <label class="sp-ancho">Mensaje para el cliente (opcional)<textarea name="mensaje" maxlength="1500" placeholder="¡Hola Ana! Desde acá nos pedís cualquier cambio en la web. El plan incluye 4 horas por mes."></textarea></label>
+      <div class="sp-acc sp-ancho"><button type="submit" class="of-btn prim">Crear y copiar link</button><button type="button" class="of-btn" data-sp="cancelar-plan">Cancelar</button></div>
+    </form>
+    <div class="sp-kpis" id="sp-kpis"></div>
+    <div class="sp-tabs" role="tablist" aria-label="Vista">
+      <button type="button" class="sp-tab activo" role="tab" data-sp-tab="bandeja" aria-selected="true">Bandeja</button>
+      <button type="button" class="sp-tab" role="tab" data-sp-tab="planes" aria-selected="false">Planes y horas</button>
+    </div>
+    <div class="cr-nota" id="sp-nota" role="status" aria-live="polite"></div>
+    <div id="sp-vista-bandeja">
+      <div class="sp-filtros" id="sp-filtros" role="group" aria-label="Filtrar pedidos"></div>
+      <div class="sp-lista" id="sp-lista" aria-live="polite"></div>
+    </div>
+    <div id="sp-vista-planes" hidden>
+      <div class="sp-filtros"><label class="sp-chk">Mes <input type="month" id="sp-mes" aria-label="Mes de la bolsa de horas"></label></div>
+      <div class="sp-lista" id="sp-planes"></div>
+    </div>
+  </div>
+  <!-- ======= FIN SOPORTE PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8051,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'soporte') spCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13139,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','soporte','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',soporte:'life-buoy'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',soporte:'Pedidos'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13233,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','soporte'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16647,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*SP_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23410,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*SP_JS*/", "/* {% raw %} */" + SP_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23533,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, soporte_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23560,11 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Pedidos de clientes: la página donde el cliente de mantenimiento pide
+        # cambios (/pedidos/<código>). La llave es el código del plan; ver
+        # routes/soporte.py.
+        if request.path.startswith(SOPORTE_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24592,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','soporte'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',soporte:'Pedidos de clientes'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
