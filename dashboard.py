@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.rentabilidad import rentabilidad_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  rentabilidad: 'rentabilidad horas proyectos margen presupuesto timesheet costo tarifa estimar',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,368 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+RT_JS = r"""// ========== Rentabilidad de proyectos ==========
+// services/rentabilidad.py hace todas las cuentas; acá solo se pinta.
+// Nombres de proyectos, clientes y notas los escribe el equipo: todo pasa por crEsc.
+const RT_SALUD = {ok: ['En camino', 'rt-ok'], riesgo: ['En riesgo', 'rt-riesgo'], atrasado: ['Atrasado', 'rt-mal'],
+  pasado: ['Pasado de horas', 'rt-mal'], cerrado: ['Entregado', 'rt-cerrado']};
+let rtDatos = null;
+let rtTab = 'proyectos';
+let rtFiltro = 'abiertos';
+let rtAbierto = null;
+let rtDetalle = null;
+let rtTic = null;
+
+function rtPlata(n) { return n === null || n === undefined ? '—' : '$ ' + Math.round(Number(n)).toLocaleString('es-UY'); }
+function rtHs(n) { return n === null || n === undefined ? '—' : Number(n).toLocaleString('es-UY', {maximumFractionDigits: 1}) + ' h'; }
+function rtPct(n) { return n === null || n === undefined ? '—' : Math.round(Number(n)) + '%'; }
+function rtFecha(iso) {
+  if (!iso) return '—';
+  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00');
+  return isNaN(d) ? '—' : d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit'});
+}
+
+async function rtCargar() {
+  const panel = document.getElementById('rentabilidad-panel');
+  if (!panel) return;
+  panel.onclick = rtAccion;
+  panel.onsubmit = rtEnviar;
+  rtNota('');
+  try {
+    rtDatos = await ofPedir('/api/rentabilidad');
+  } catch (e) {
+    rtNota(e.message);
+    return;
+  }
+  rtPintar();
+  if (rtAbierto) rtAbrir(rtAbierto, true);
+}
+
+function rtNota(t) { const n = document.getElementById('rt-nota'); if (n) n.textContent = t; }
+
+function rtKpis(k) {
+  const items = [
+    ['Horas este mes', rtHs(k.horas_mes), 'cargadas por el equipo', ''],
+    ['Utilización 4 semanas', rtPct(k.utilizacion_pct), 'de las horas disponibles', k.utilizacion_pct !== null && k.utilizacion_pct < 50 ? 'rt-t-atencion' : ''],
+    ['Margen de lo entregado', rtPct(k.margen_entregados_pct), k.entregados_90 + ' proyectos en 90 días · objetivo ' + rtPct(k.margen_objetivo),
+      k.margen_entregados_pct === null ? '' : (k.margen_entregados_pct < k.margen_objetivo ? 'rt-t-mal' : 'rt-t-bien')],
+    ['Tarifa efectiva', k.tarifa_efectiva ? rtPlata(k.tarifa_efectiva) + '/h' : '—', 'lo cobrado por hora trabajada · costo ' + (k.costo_medio_hora ? rtPlata(k.costo_medio_hora) + '/h' : '—'), ''],
+    ['En riesgo', String(k.en_riesgo), 'de ' + k.activos + ' proyectos abiertos', k.en_riesgo ? 'rt-t-mal' : 'rt-t-bien'],
+    ['Correcciones', rtPct(k.correcciones_pct), 'de las horas de 90 días', k.correcciones_pct >= 15 ? 'rt-t-atencion' : ''],
+  ];
+  return '<div class="rt-kpis">' + items.map(([l, v, s, c]) => '<div class="rt-kpi"><div class="rt-kpi-l">' + crEsc(l) + '</div><div class="rt-kpi-v ' + c + '">'
+    + crEsc(v) + '</div><div class="rt-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>';
+}
+
+function rtRelojes() {
+  const prendidos = rtDatos.equipo.filter(p => p.reloj);
+  if (!prendidos.length) return '';
+  return '<div class="rt-relojes">' + prendidos.map(p => '<div class="rt-reloj"><span class="rt-punto" aria-hidden="true"></span><b>' + crEsc(p.nombre) + '</b> · '
+    + crEsc(p.reloj.proyecto) + ' · ' + crEsc(rtDatos.fases[p.reloj.fase] || p.reloj.fase)
+    + ' · <span class="rt-crono" data-desde="' + crEsc(p.reloj.desde) + '">' + rtCrono(p.reloj.desde) + '</span>'
+    + '<button type="button" class="of-btn prim" data-rt="frenar" data-persona="' + Number(p.id) + '">Frenar y guardar</button></div>').join('') + '</div>';
+}
+
+function rtCrono(desde) {
+  const base = new Date(String(rtDatos.ahora).replace(' ', 'T'));
+  const ini = new Date(String(desde).replace(' ', 'T'));
+  const extra = (Date.now() - (rtDatos._cargado || Date.now())) / 1000;
+  let s = Math.max(0, Math.floor((base - ini) / 1000 + extra));
+  const h = Math.floor(s / 3600); s -= h * 3600;
+  const m = Math.floor(s / 60);
+  return h + ':' + String(m).padStart(2, '0');
+}
+
+function rtPintar() {
+  if (!rtDatos._cargado) rtDatos._cargado = Date.now();
+  const tabs = [['proyectos', 'Proyectos'], ['equipo', 'Equipo'], ['tipos', 'Por tipo y estimador'], ['ajustes', 'Ajustes']];
+  document.getElementById('rt-cuerpo').innerHTML = rtKpis(rtDatos.kpis) + rtRelojes() + rtCargaHtml()
+    + '<div class="rt-tabs" role="tablist" aria-label="Vista">' + tabs.map(([k, l]) => '<button type="button" role="tab" class="rt-tab' + (rtTab === k ? ' activo' : '')
+      + '" aria-selected="' + (rtTab === k) + '" data-rt="tab" data-tab="' + k + '">' + l + '</button>').join('') + '</div>'
+    + '<div id="rt-vista">' + (rtTab === 'proyectos' ? rtProyectosHtml() : rtTab === 'equipo' ? rtEquipoHtml() : rtTab === 'tipos' ? rtTiposHtml() : rtAjustesHtml()) + '</div>';
+  clearInterval(rtTic);
+  if (rtDatos.equipo.some(p => p.reloj)) {
+    rtTic = setInterval(() => {
+      if (!document.getElementById('rentabilidad-panel').classList.contains('active')) return;
+      document.querySelectorAll('.rt-crono').forEach(el => { el.textContent = rtCrono(el.dataset.desde); });
+    }, 30000);
+  }
+}
+
+// ── carga de horas ──
+function rtOpciones(lista, valor) {
+  return lista.map(([v, t]) => '<option value="' + crEsc(v) + '"' + (String(v) === String(valor) ? ' selected' : '') + '>' + crEsc(t) + '</option>').join('');
+}
+
+function rtCargaHtml() {
+  const abiertos = rtDatos.proyectos.filter(p => p.estado !== 'entregado');
+  const personas = rtDatos.personas;
+  if (!personas.length) {
+    return '<div class="rt-vacio">Nadie lleva horas todavía: en Recursos Humanos › Organigrama marcá "lleva horas" a quien trabaja en los proyectos.</div>';
+  }
+  return '<form id="rt-carga" class="rt-form rt-carga" data-rt-form="horas" hidden>'
+    + '<label>Quién<select name="persona_id" required>' + rtOpciones(personas.map(p => [p.id, p.nombre])) + '</select></label>'
+    + '<label>Proyecto<select name="proyecto_id" required>' + (abiertos.length ? rtOpciones(abiertos.map(p => [p.id, p.nombre + (p.cliente ? ' · ' + p.cliente : '')]), rtAbierto)
+      : '<option value="">No hay proyectos abiertos</option>') + '</select></label>'
+    + '<label>Fase<select name="fase">' + rtOpciones(Object.entries(rtDatos.fases), 'desarrollo') + '</select></label>'
+    + '<label>Día<input type="date" name="fecha" value="' + crEsc(rtDatos.hoy) + '" max="' + crEsc(rtDatos.hoy) + '"></label>'
+    + '<label>Tiempo<input name="tiempo" placeholder="1:30 · 1,5 · 90m" inputmode="decimal"></label>'
+    + '<label class="rt-ancho">Qué se hizo (opcional)<input name="nota" maxlength="300"></label>'
+    + '<div class="rt-acc rt-ancho"><button type="submit" class="of-btn prim">Guardar horas</button>'
+    + '<button type="button" class="of-btn" data-rt="prender">▶ Prender reloj</button>'
+    + '<button type="button" class="of-btn" data-rt="toggle" data-box="rt-carga">Cerrar</button>'
+    + '<span class="rt-ayuda">El reloj usa quién, proyecto y fase; al frenarlo se guarda solo.</span></div></form>';
+}
+
+// ── proyectos ──
+function rtBarra(m) {
+  const consumo = m.consumo_pct === null ? 0 : Math.min(Number(m.consumo_pct), 150);
+  const marca = m.avance_pct === null ? '' : '<span class="rt-marca" style="left:' + Math.min(100, Number(m.avance_pct)) / 1.5 + '%" title="Calendario: ' + Math.round(m.avance_pct) + '% del plazo"></span>';
+  return '<div class="rt-barra" role="img" aria-label="' + crEsc(rtHs(m.horas) + ' de ' + rtHs(m.horas_estimadas)) + '">'
+    + '<span class="rt-relleno ' + (RT_SALUD[m.salud] || ['', ''])[1] + '" style="width:' + consumo / 1.5 + '%"></span>'
+    + '<span class="rt-tope" title="Horas estimadas"></span>' + marca + '</div>';
+}
+
+function rtProyectosHtml() {
+  const filtros = [['abiertos', 'Abiertos'], ['entregados', 'Entregados'], ['todos', 'Todos']];
+  const lista = rtDatos.proyectos.filter(p => rtFiltro === 'todos' || (rtFiltro === 'abiertos') === (p.estado !== 'entregado'));
+  let html = '<div class="rt-barra-acc">' + filtros.map(([k, l]) => '<button type="button" class="of-btn' + (rtFiltro === k ? ' prim' : '') + '" data-rt="filtro" data-filtro="' + k + '">' + l + '</button>').join('')
+    + '<span class="rt-sep"></span><button type="button" class="of-btn prim" data-rt="nuevo">+ Proyecto</button></div>'
+    + '<form id="rt-nuevo" class="rt-form" data-rt-form="proyecto" hidden>' + rtProyectoCampos({}) + '<div class="rt-acc rt-ancho"><button type="submit" class="of-btn prim">Crear proyecto</button>'
+    + '<button type="button" class="of-btn" data-rt="toggle" data-box="rt-nuevo">Cancelar</button></div></form>';
+  if (!lista.length) return html + '<div class="rt-vacio">' + (rtDatos.proyectos.length ? 'No hay proyectos en esta vista.' : 'Todavía no hay proyectos. Cargá uno con el precio vendido y las horas que estimaste, y empezá a cargarle horas.') + '</div>';
+  html += '<div class="rt-lista">' + lista.map(p => {
+    const m = p.metricas;
+    const s = RT_SALUD[m.salud] || [m.salud, ''];
+    const margen = p.estado === 'entregado' ? m.margen_pct : m.margen_final_pct;
+    return '<div class="rt-proy' + (rtAbierto === p.id ? ' abierto' : '') + '"><button type="button" class="rt-proy-cab" data-rt="abrir" data-id="' + Number(p.id) + '" aria-expanded="' + (rtAbierto === p.id) + '">'
+      + '<span class="rt-proy-nom"><b>' + crEsc(p.nombre) + '</b><span class="rt-meta">' + crEsc([p.cliente, p.tipo_etiqueta].filter(Boolean).join(' · ')) + '</span></span>'
+      + '<span class="rt-pill ' + s[1] + '">' + crEsc(s[0]) + '</span>'
+      + '<span class="rt-proy-barra">' + rtBarra(m) + '<span class="rt-meta">' + crEsc(rtHs(m.horas) + ' de ' + rtHs(m.horas_estimadas)) + (m.consumo_pct !== null ? ' · ' + rtPct(m.consumo_pct) : '') + '</span></span>'
+      + '<span class="rt-num"><b class="' + (margen === null ? '' : margen < rtDatos.kpis.margen_objetivo ? 'rt-t-mal' : 'rt-t-bien') + '">' + rtPct(margen) + '</b><span class="rt-meta">' + (p.estado === 'entregado' ? 'margen' : 'margen proyectado') + '</span></span>'
+      + '<span class="rt-num"><b>' + (m.tarifa_efectiva ? rtPlata(m.tarifa_efectiva) : '—') + '</b><span class="rt-meta">por hora · vendida ' + (m.tarifa_vendida ? rtPlata(m.tarifa_vendida) : '—') + '</span></span>'
+      + '</button>' + (rtAbierto === p.id ? '<div class="rt-det" id="rt-det">Cargando…</div>' : '') + '</div>';
+  }).join('') + '</div>';
+  return html;
+}
+
+function rtProyectoCampos(p) {
+  const tipos = Object.entries(rtDatos.tipos);
+  return '<label>Proyecto<input name="nombre" maxlength="120" required value="' + crEsc(p.nombre || '') + '" placeholder="Tienda online Bambú"></label>'
+    + '<label>Cliente<input name="cliente" maxlength="120" value="' + crEsc(p.cliente || '') + '"></label>'
+    + '<label>Tipo<select name="tipo">' + rtOpciones(tipos, p.tipo || 'web') + '</select></label>'
+    + '<label>Precio vendido<span class="rt-doble"><select name="moneda" aria-label="Moneda">' + rtOpciones([['UYU', '$'], ['USD', 'US$']], p.moneda || 'UYU') + '</select>'
+    + '<input name="precio" inputmode="decimal" value="' + crEsc(p.precio || '') + '" placeholder="45000"></span></label>'
+    + '<label>Horas estimadas<input name="horas_estimadas" inputmode="decimal" value="' + crEsc(p.horas_estimadas || '') + '" placeholder="60"></label>'
+    + '<label>Inicio<input type="date" name="inicio" value="' + crEsc(p.inicio || '') + '"></label>'
+    + '<label>Entrega comprometida<input type="date" name="entrega" value="' + crEsc(p.entrega || '') + '"></label>'
+    + (p.id ? '<label>Estado<select name="estado">' + rtOpciones([['activo', 'Activo'], ['pausado', 'Pausado'], ['entregado', 'Entregado']], p.estado) + '</select></label>' : '')
+    + '<label class="rt-ancho">Notas<input name="notas" maxlength="1000" value="' + crEsc(p.notas || '') + '"></label>';
+}
+
+async function rtAbrir(id, quieto) {
+  rtAbierto = id;
+  if (!quieto) rtPintar();
+  const caja = document.getElementById('rt-det');
+  if (!caja) return;
+  try {
+    rtDetalle = await ofPedir('/api/rentabilidad/proyectos/' + id);
+  } catch (e) {
+    caja.textContent = e.message;
+    return;
+  }
+  caja.innerHTML = rtDetalleHtml(rtDetalle);
+}
+
+function rtBurnup(d) {
+  const serie = d.serie;
+  const est = Number(d.metricas.horas_estimadas) || 0;
+  if (!serie.length) return '<div class="rt-meta">Todavía no tiene horas cargadas.</div>';
+  const W = 520, H = 160, P = 28;
+  const max = Math.max(est, serie[serie.length - 1].horas, 1) * 1.1;
+  const x = i => P + (serie.length === 1 ? (W - 2 * P) / 2 : i * (W - 2 * P) / (serie.length - 1));
+  const y = v => H - P + 8 - (v / max) * (H - P - 8);
+  const linea = serie.map((s, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(s.horas).toFixed(1)).join(' ');
+  const ult = serie[serie.length - 1];
+  return '<svg class="rt-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Horas acumuladas por semana: ' + crEsc(rtHs(ult.horas)) + ' de ' + crEsc(rtHs(est)) + ' estimadas">'
+    + '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + (H - P + 8) + '" y2="' + (H - P + 8) + '" class="rt-eje"/>'
+    + (est ? '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(est).toFixed(1) + '" y2="' + y(est).toFixed(1) + '" class="rt-est"/><text x="' + P + '" y="' + (y(est) - 4).toFixed(1) + '" class="rt-svg-t">estimado ' + crEsc(rtHs(est)) + '</text>' : '')
+    + '<path d="' + linea + '" class="rt-linea ' + (est && ult.horas > est ? 'rt-linea-mal' : '') + '"/>'
+    + serie.map((s, i) => '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(s.horas).toFixed(1) + '" r="3" class="rt-pto"><title>Semana del ' + crEsc(rtFecha(s.semana)) + ': ' + crEsc(rtHs(s.horas)) + '</title></circle>').join('')
+    + '<text x="' + P + '" y="' + (H - 4) + '" class="rt-svg-t">' + crEsc(rtFecha(serie[0].semana)) + '</text>'
+    + '<text x="' + (W - P) + '" y="' + (H - 4) + '" text-anchor="end" class="rt-svg-t">' + crEsc(rtFecha(ult.semana)) + '</text></svg>';
+}
+
+function rtDetalleHtml(d) {
+  const p = d.proyecto, m = d.metricas;
+  const datos = [
+    ['Vendido', rtPlata(m.ingreso) + (p.moneda === 'USD' ? ' (US$ ' + Number(p.precio).toLocaleString('es-UY') + ')' : '')],
+    ['Costo hasta hoy', rtPlata(m.costo) + (m.horas_sin_costo ? ' · ' + rtHs(m.horas_sin_costo) + ' sin costo cargado' : '')],
+    ['Margen hoy', rtPlata(m.margen) + ' · ' + rtPct(m.margen_pct)],
+    [p.estado === 'entregado' ? 'Horas totales' : 'Proyección al cierre', rtHs(m.horas_final) + ' · margen ' + rtPlata(m.margen_final) + ' (' + rtPct(m.margen_final_pct) + ')'],
+    ['Plazo', rtFecha(p.inicio) + ' → ' + rtFecha(p.entrega) + (m.avance_pct !== null ? ' · ' + rtPct(m.avance_pct) + ' del tiempo' : '')],
+  ];
+  const fases = d.fases.length ? d.fases.map(f => '<div class="rt-fase"><span>' + crEsc(f.etiqueta) + '</span><span class="rt-fase-b"><span style="width:' + Number(f.pct) + '%" class="' + (f.fase === 'correcciones' ? 'rt-corr' : '') + '"></span></span><b>' + crEsc(rtHs(f.horas)) + '</b></div>').join('') : '<div class="rt-meta">Sin horas.</div>';
+  const gente = d.personas.map(x => crEsc(x.nombre) + ' ' + crEsc(rtHs(x.horas))).join(' · ');
+  const RT_MAX_CARGAS = 25;
+  const resto = d.cargas.length - RT_MAX_CARGAS;
+  const cargas = d.cargas.length ? '<div class="rt-h">Últimas cargas</div><table class="rt-tabla"><thead><tr><th>Día</th><th>Quién</th><th>Fase</th><th>Horas</th><th>Nota</th><th></th></tr></thead><tbody>'
+    + d.cargas.slice(0, RT_MAX_CARGAS).map(c => '<tr><td>' + crEsc(rtFecha(c.fecha)) + '</td><td>' + crEsc(c.persona) + '</td><td>' + crEsc(c.fase_etiqueta) + '</td><td>' + crEsc(rtHs(c.horas))
+      + (c.origen === 'reloj' ? ' <span class="rt-meta" title="Con el reloj">⏱</span>' : '') + '</td><td class="rt-nota-c">' + crEsc(c.nota || '') + '</td>'
+      + '<td><button type="button" class="of-btn" data-rt="borrar-horas" data-id="' + Number(c.id) + '" aria-label="Borrar carga">✕</button></td></tr>').join('') + '</tbody></table>'
+    + (resto > 0 ? '<div class="rt-meta">Y ' + resto + ' cargas más: están todas en el CSV de Ajustes.</div>' : '') : '';
+  return '<div class="rt-det-grid"><div><dl class="rt-dl">' + datos.map(([a, b]) => '<dt>' + crEsc(a) + '</dt><dd>' + crEsc(b) + '</dd>').join('') + '</dl>'
+    + (p.notas ? '<div class="rt-meta">' + crEsc(p.notas) + '</div>' : '') + '</div>'
+    + '<div><div class="rt-h">Horas acumuladas contra lo estimado</div>' + rtBurnup(d) + '</div>'
+    + '<div><div class="rt-h">En qué se fueron las horas</div>' + fases + (gente ? '<div class="rt-meta">' + gente + '</div>' : '') + '</div></div>'
+    + '<div class="rt-acc"><button type="button" class="of-btn prim" data-rt="cargar-aca" data-id="' + Number(p.id) + '"' + (p.estado === 'entregado' ? ' disabled' : '') + '>Cargar horas</button>'
+    + '<button type="button" class="of-btn" data-rt="toggle" data-box="rt-editar">Editar</button>'
+    + '<button type="button" class="of-btn" data-rt="borrar-proy" data-id="' + Number(p.id) + '">Borrar proyecto</button></div>'
+    + '<form id="rt-editar" class="rt-form" data-rt-form="editar" data-id="' + Number(p.id) + '" hidden>' + rtProyectoCampos(p)
+    + '<div class="rt-acc rt-ancho"><button type="submit" class="of-btn prim">Guardar</button></div></form>' + cargas;
+}
+
+// ── equipo ──
+function rtEquipoHtml() {
+  if (!rtDatos.equipo.length) return '<div class="rt-vacio">Nadie lleva horas en Equipo.</div>';
+  const sem = rtDatos.equipo[0].semana_desde;
+  return '<p class="rt-meta">Horas cargadas en las últimas cuatro semanas contra las horas por día de Equipo. El costo por hora se copia en cada carga: si lo cambiás, lo ya cargado no cambia.</p>'
+    + '<div class="rt-scroll"><table class="rt-tabla"><thead><tr><th>Persona</th><th>Costo por hora</th>' + sem.map(s => '<th>Sem. ' + crEsc(rtFecha(s)) + '</th>').join('') + '<th>Utilización</th></tr></thead><tbody>'
+    + rtDatos.equipo.map(p => '<tr><td><b>' + crEsc(p.nombre) + '</b><div class="rt-meta">' + crEsc(p.rol || '') + '</div></td>'
+      + '<td><form class="rt-costo" data-rt-form="costo" data-id="' + Number(p.id) + '"><input name="costo_hora" inputmode="decimal" aria-label="Costo por hora de ' + crEsc(p.nombre) + '" value="' + crEsc(p.costo_hora || '') + '" placeholder="$ / h"><button type="submit" class="of-btn">Guardar</button></form></td>'
+      + p.semanas.map(h => '<td><span class="rt-mini"><span style="width:' + Math.min(100, p.capacidad_semanal ? h / p.capacidad_semanal * 100 : 0) + '%"></span></span>' + crEsc(rtHs(h)) + '</td>').join('')
+      + '<td><b class="' + (p.utilizacion_pct === null ? '' : p.utilizacion_pct < 50 ? 'rt-t-atencion' : p.utilizacion_pct > 100 ? 'rt-t-mal' : 'rt-t-bien') + '">' + rtPct(p.utilizacion_pct) + '</b><div class="rt-meta">' + crEsc(rtHs(p.horas_4s)) + ' de ' + crEsc(rtHs(p.capacidad)) + '</div></td></tr>').join('')
+    + '</tbody></table></div>'
+    + (rtDatos.fases_90.length ? '<div class="rt-h">En qué se fueron las horas (90 días)</div>' + rtDatos.fases_90.map(f => '<div class="rt-fase"><span>' + crEsc(f.etiqueta) + '</span><span class="rt-fase-b"><span style="width:' + Number(f.pct) + '%" class="' + (f.fase === 'correcciones' ? 'rt-corr' : '') + '"></span></span><b>' + crEsc(rtPct(f.pct)) + '</b></div>').join('') : '');
+}
+
+// ── por tipo ──
+function rtTiposHtml() {
+  const filas = rtDatos.por_tipo;
+  const tabla = filas.length ? '<div class="rt-scroll"><table class="rt-tabla"><thead><tr><th>Tipo</th><th>Abiertos</th><th>Entregados</th><th>Horas reales (mediana)</th><th>Desvío de la estimación</th><th>Tarifa efectiva</th><th>Margen medio</th></tr></thead><tbody>'
+    + filas.map(t => '<tr><td><b>' + crEsc(t.etiqueta) + '</b></td><td>' + Number(t.activos) + '</td><td>' + Number(t.entregados) + '</td><td>' + crEsc(rtHs(t.horas_mediana)) + '</td>'
+      + '<td class="' + (t.desvio_pct > 10 ? 'rt-t-mal' : '') + '">' + (t.desvio_pct === null ? '—' : (t.desvio_pct > 0 ? '+' : '') + Math.round(t.desvio_pct) + '%') + '</td>'
+      + '<td>' + (t.tarifa_mediana ? rtPlata(t.tarifa_mediana) + '/h' : '—') + '</td><td class="' + (t.margen_medio_pct === null ? '' : t.margen_medio_pct < rtDatos.kpis.margen_objetivo ? 'rt-t-mal' : 'rt-t-bien') + '">' + rtPct(t.margen_medio_pct) + '</td></tr>').join('')
+    + '</tbody></table></div>' : '<div class="rt-vacio">Hace falta al menos un proyecto para ver números por tipo.</div>';
+  return tabla + '<div class="rt-h">Estimador para el próximo presupuesto</div>'
+    + '<p class="rt-meta">Con los proyectos entregados del mismo tipo: cuántas horas terminan llevando, cuánto se desvían las estimaciones y qué precio deja el margen objetivo con el costo por hora real del equipo.</p>'
+    + '<form class="rt-form" data-rt-form="estimar"><label>Tipo<select name="tipo">' + rtOpciones(Object.entries(rtDatos.tipos), 'web') + '</select></label>'
+    + '<label>Horas que pensás estimar (opcional)<input name="horas" inputmode="decimal" placeholder="40"></label>'
+    + '<div class="rt-acc"><button type="submit" class="of-btn prim">Estimar</button></div></form><div id="rt-estimacion"></div>';
+}
+
+function rtEstimacionHtml(e) {
+  if (!e.base) return '<div class="rt-vacio">Todavía no hay proyectos entregados de ' + crEsc(e.etiqueta) + ' con horas. Cuando se cierren los primeros, el estimador usa esa historia.</div>';
+  const filas = [
+    ['Basado en', e.base + ' proyecto' + (e.base === 1 ? '' : 's') + ' entregado' + (e.base === 1 ? '' : 's')],
+    ['Horas reales (mediana)', rtHs(e.horas_sugeridas)],
+  ];
+  if (e.horas_corregidas) filas.push(['Lo que tu estimación termina llevando', rtHs(e.horas_corregidas) + (e.desvio_pct > 0 ? ' (las de este tipo se pasan ' + Math.round(e.desvio_pct) + '%)' : '')]);
+  filas.push(['Costo por hora del equipo', e.costo_medio_hora ? rtPlata(e.costo_medio_hora) : 'falta cargar costos en Equipo']);
+  return '<div class="rt-estim"><dl class="rt-dl">' + filas.map(([a, b]) => '<dt>' + crEsc(a) + '</dt><dd>' + crEsc(b) + '</dd>').join('') + '</dl>'
+    + (e.precio_uyu ? '<div class="rt-sugerido"><div class="rt-kpi-l">Precio para ' + rtPct(e.margen_objetivo) + ' de margen</div><div class="rt-kpi-v">' + rtPlata(e.precio_uyu) + '</div><div class="rt-kpi-s">US$ ' + Number(e.precio_usd).toLocaleString('es-UY') + ' a ' + crEsc(e.tipo_cambio) + '</div></div>' : '') + '</div>';
+}
+
+// ── ajustes ──
+function rtAjustesHtml() {
+  const a = rtDatos.ajustes;
+  return '<form class="rt-form" data-rt-form="ajustes"><label>Tipo de cambio (pesos por dólar)<input name="tipo_cambio" inputmode="decimal" value="' + crEsc(a.tipo_cambio) + '"></label>'
+    + '<label>Margen objetivo (%)<input name="margen_objetivo" inputmode="decimal" value="' + crEsc(a.margen_objetivo) + '"></label>'
+    + '<div class="rt-acc"><button type="submit" class="of-btn prim">Guardar</button></div></form>'
+    + '<p class="rt-meta">Los proyectos vendidos en dólares se pasan a pesos con este tipo de cambio. El margen objetivo pinta en rojo lo que queda abajo y lo usa el estimador.</p>'
+    + '<p class="rt-meta"><a href="/api/rentabilidad/horas.csv" download>Bajar todas las horas en CSV</a> (para el contador o para facturar horas aparte).</p>';
+}
+
+// ── acciones ──
+function rtForm(f) {
+  const o = {};
+  new FormData(f).forEach((v, k) => { o[k] = v; });
+  return o;
+}
+
+async function rtAccion(e) {
+  const b = e.target.closest('[data-rt]');
+  if (!b) return;
+  const a = b.dataset.rt;
+  try {
+    if (a === 'tab') { rtTab = b.dataset.tab; rtPintar(); if (rtTab === 'proyectos' && rtAbierto) rtAbrir(rtAbierto, true); }
+    else if (a === 'filtro') { rtFiltro = b.dataset.filtro; rtPintar(); if (rtAbierto) rtAbrir(rtAbierto, true); }
+    else if (a === 'toggle') { const box = document.getElementById(b.dataset.box); if (box) box.hidden = !box.hidden; }
+    else if (a === 'nuevo') { const f = document.getElementById('rt-nuevo'); f.hidden = !f.hidden; if (!f.hidden) f.nombre.focus(); }
+    else if (a === 'cargar') { const f = document.getElementById('rt-carga'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.tiempo.focus(); } }
+    else if (a === 'cargar-aca') {
+      const f = document.getElementById('rt-carga');
+      if (f) { f.hidden = false; f.proyecto_id.value = b.dataset.id; f.scrollIntoView({behavior: 'smooth', block: 'center'}); f.tiempo.focus(); }
+    }
+    else if (a === 'abrir') { const id = Number(b.dataset.id); if (rtAbierto === id) { rtAbierto = null; rtPintar(); } else rtAbrir(id); }
+    else if (a === 'prender') {
+      const f = document.getElementById('rt-carga');
+      await ofPedir('/api/rentabilidad/reloj', 'POST', {persona_id: f.persona_id.value, proyecto_id: f.proyecto_id.value, fase: f.fase.value});
+      rtNota('Reloj prendido.');
+      await rtCargar();
+    }
+    else if (a === 'frenar') {
+      const r = await ofPedir('/api/rentabilidad/reloj/frenar', 'POST', {persona_id: b.dataset.persona});
+      await rtCargar();
+      rtNota(r.id ? 'Se guardaron ' + rtHs(r.minutos / 60) + '.' : 'Menos de un minuto: no se guardó nada.');
+    }
+    else if (a === 'borrar-horas') {
+      if (!confirm('¿Borrar esta carga de horas?')) return;
+      await ofPedir('/api/rentabilidad/horas/' + b.dataset.id, 'DELETE');
+      await rtCargar();
+    }
+    else if (a === 'borrar-proy') {
+      if (!confirm('¿Borrar el proyecto con todas sus horas? No se puede deshacer.')) return;
+      await ofPedir('/api/rentabilidad/proyectos/' + b.dataset.id, 'DELETE');
+      rtAbierto = null;
+      await rtCargar();
+    }
+  } catch (err) {
+    rtNota(err.message);
+  }
+}
+
+async function rtEnviar(e) {
+  const f = e.target.closest('form[data-rt-form]');
+  if (!f) return;
+  e.preventDefault();
+  const tipo = f.dataset.rtForm;
+  const datos = rtForm(f);
+  rtNota('');
+  try {
+    if (tipo === 'horas') {
+      await ofPedir('/api/rentabilidad/horas', 'POST', datos);
+      rtAbierto = Number(datos.proyecto_id) || rtAbierto;
+      await rtCargar();
+      rtNota('Horas guardadas.');
+    } else if (tipo === 'proyecto') {
+      const r = await ofPedir('/api/rentabilidad/proyectos', 'POST', datos);
+      rtAbierto = r.id;
+      rtFiltro = 'abiertos';
+      await rtCargar();
+    } else if (tipo === 'editar') {
+      await ofPedir('/api/rentabilidad/proyectos/' + f.dataset.id, 'PUT', datos);
+      await rtCargar();
+    } else if (tipo === 'costo') {
+      await ofPedir('/api/rentabilidad/costos/' + f.dataset.id, 'PUT', datos);
+      await rtCargar();
+      rtNota('Costo guardado. Vale para las horas que se carguen desde ahora.');
+    } else if (tipo === 'ajustes') {
+      await ofPedir('/api/rentabilidad/ajustes', 'PUT', datos);
+      await rtCargar();
+      rtNota('Ajustes guardados.');
+    } else if (tipo === 'estimar') {
+      const r = await ofPedir('/api/rentabilidad/estimar?' + new URLSearchParams(datos));
+      document.getElementById('rt-estimacion').innerHTML = rtEstimacionHtml(r.estimacion);
+    }
+  } catch (err) {
+    rtNota(err.message);
+  }
+}
+// ========== FIN Rentabilidad ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3240,6 +3604,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas .nav-icon{stroke:#f59e0b}
 #nav-simulador .nav-icon{stroke:#fb923c}
 #nav-inteligencia_fin .nav-icon{stroke:#86efac}
+#nav-rentabilidad .nav-icon{stroke:#eab308}
 #nav-notion_clients .nav-icon{stroke:#10b981}
 #nav-demos .nav-icon{stroke:#22d3ee}
 #nav-sdr .nav-icon{stroke:#f87171}
@@ -3274,6 +3639,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
 #nav-inteligencia_fin.active .nav-icon{stroke:#bbf7d0}
+#nav-rentabilidad.active .nav-icon{stroke:#fef08a}
 #nav-daily.active .nav-icon{stroke:#7dd3fc}
 #nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
@@ -3306,6 +3672,7 @@ body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
 body.light #nav-inteligencia_fin .nav-icon{stroke:#15803d}
+body.light #nav-rentabilidad .nav-icon{stroke:#854d0e}
 body.light #nav-daily .nav-icon{stroke:#0284c7}
 body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
@@ -4730,6 +5097,97 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .li-tarjeta{padding:12px}
   .li-btn{flex:1 1 auto;min-height:40px}
 }
+/* Rentabilidad de proyectos (25/10): horas contra presupuesto, margen y tarifa efectiva. */
+.rt-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.rt-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.rt-kpi-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.5px}
+.rt-kpi-v{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--texto-fuerte)}
+.rt-kpi-s{font-size:.72rem;color:var(--texto-debil)}
+.rt-t-mal{color:var(--rojo-texto)!important}
+.rt-t-bien{color:var(--verde-texto)!important}
+.rt-t-atencion{color:var(--ambar)!important}
+.rt-relojes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.rt-reloj{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--verde-tinte);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;font-size:.82rem;color:var(--texto)}
+.rt-punto{width:8px;height:8px;border-radius:50%;background:var(--verde);animation:rt-latido 1.6s ease-in-out infinite}
+@keyframes rt-latido{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.rt-punto{animation:none}}
+.rt-crono{font-variant-numeric:tabular-nums;font-weight:700}
+.rt-reloj .of-btn{margin-left:auto}
+.rt-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin:0 0 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+.rt-form[hidden]{display:none}
+.rt-form label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--texto-tenue)}
+.rt-form input,.rt-form select,.rt-costo input{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem;min-width:0}
+.rt-form .rt-ancho{grid-column:1/-1}
+.rt-doble{display:flex;gap:6px}
+.rt-doble select{flex:0 0 72px}
+.rt-doble input{flex:1}
+.rt-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.rt-ayuda{font-size:.72rem;color:var(--texto-debil)}
+.rt-tabs{display:flex;gap:6px;border-bottom:1px solid var(--borde);margin-bottom:12px;flex-wrap:wrap}
+.rt-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);padding:8px 12px;font-family:inherit;font-size:.85rem;cursor:pointer}
+.rt-tab.activo{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.rt-barra-acc{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.rt-sep{flex:1}
+.rt-lista{display:flex;flex-direction:column;gap:8px}
+.rt-proy{background:var(--superficie);border:1px solid var(--borde);border-radius:12px}
+.rt-proy.abierto{border-color:var(--azul)}
+.rt-proy-cab{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:minmax(160px,2fr) 120px minmax(160px,2fr) 130px 170px;gap:12px;align-items:center;padding:12px 14px}
+.rt-proy-cab:focus-visible{outline:2px solid var(--azul);outline-offset:-2px;border-radius:12px}
+.rt-proy-nom{display:flex;flex-direction:column;min-width:0;color:var(--texto-fuerte);font-size:.88rem;overflow-wrap:anywhere}
+.rt-num{display:flex;flex-direction:column;font-variant-numeric:tabular-nums;color:var(--texto-fuerte);font-size:.95rem}
+.rt-meta{font-size:.72rem;color:var(--texto-tenue);overflow-wrap:anywhere}
+.rt-pill{border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;white-space:nowrap;justify-self:start}
+.rt-pill.rt-ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.rt-pill.rt-riesgo{background:var(--ambar-tinte);color:var(--ambar)}
+.rt-pill.rt-mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.rt-pill.rt-cerrado{background:var(--relleno);color:var(--texto-tenue)}
+.rt-barra{position:relative;display:block;height:10px;border-radius:6px;background:var(--fondo-hundido);border:1px solid var(--borde);overflow:hidden;margin-bottom:3px}
+.rt-relleno{position:absolute;left:0;top:0;bottom:0;background:var(--azul)}
+.rt-relleno.rt-ok{background:var(--verde)}
+.rt-relleno.rt-riesgo{background:var(--ambar)}
+.rt-relleno.rt-mal{background:var(--rojo)}
+.rt-relleno.rt-cerrado{background:var(--texto-debil)}
+.rt-tope{position:absolute;top:0;bottom:0;left:66.6%;width:2px;background:var(--texto-fuerte);opacity:.6}
+.rt-marca{position:absolute;top:-1px;bottom:-1px;width:0;border-left:2px dashed var(--azul-claro)}
+.rt-det{border-top:1px solid var(--borde);padding:12px 14px}
+.rt-det-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:8px}
+.rt-dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:.8rem}
+.rt-dl dt{color:var(--texto-tenue)}
+.rt-dl dd{margin:0;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.rt-h{font-size:.85rem;font-weight:700;color:var(--texto-fuerte);margin:14px 0 6px}
+.rt-det-grid .rt-h{margin-top:0}
+.rt-svg{width:100%;height:auto;max-width:520px}
+.rt-eje{stroke:var(--borde-fuerte)}
+.rt-est{stroke:var(--texto-tenue);stroke-dasharray:4 4}
+.rt-linea{fill:none;stroke:var(--azul);stroke-width:2.5}
+.rt-linea-mal{stroke:var(--rojo)}
+.rt-pto{fill:var(--azul)}
+.rt-svg-t{fill:var(--texto-tenue);font-size:11px}
+.rt-fase{display:grid;grid-template-columns:minmax(110px,1fr) 2fr auto;gap:8px;align-items:center;font-size:.78rem;color:var(--texto);margin:4px 0}
+.rt-fase-b{height:8px;background:var(--fondo-hundido);border-radius:4px;overflow:hidden}
+.rt-fase-b span{display:block;height:100%;background:var(--azul)}
+.rt-fase-b span.rt-corr{background:var(--ambar)}
+.rt-fase b{font-variant-numeric:tabular-nums}
+.rt-scroll{overflow-x:auto}
+.rt-tabla{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px}
+.rt-tabla th{text-align:left;font-size:.7rem;color:var(--texto-tenue);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.rt-tabla td{padding:6px 8px;border-top:1px solid var(--borde);color:var(--texto);vertical-align:middle;font-variant-numeric:tabular-nums}
+.rt-nota-c{max-width:320px;overflow-wrap:anywhere;color:var(--texto-tenue)}
+.rt-costo{display:flex;gap:4px}
+.rt-costo input{width:90px}
+.rt-mini{display:block;width:60px;height:6px;border-radius:3px;background:var(--fondo-hundido);overflow:hidden;margin-bottom:2px}
+.rt-mini span{display:block;height:100%;background:var(--azul)}
+.rt-estim{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
+.rt-estim .rt-dl{flex:2 1 260px}
+.rt-sugerido{flex:1 1 180px;background:var(--azul-tinte);border-radius:10px;padding:10px 14px}
+.rt-vacio{color:var(--texto-tenue);font-size:.85rem;padding:14px 2px}
+@media (max-width:760px){
+  .rt-proy-cab{grid-template-columns:1fr auto;gap:8px}
+  .rt-proy-barra{grid-column:1/-1}
+  .rt-kpi-v{font-size:1.25rem}
+  .rt-reloj .of-btn{margin-left:0;min-height:40px}
+}
 /* ── Credenciales ─────────────────────────────────────────────────────────────
    Contraseñas de la empresa. Solo tokens, panel admin-only. */
 .cr-nota{font-size:.8rem;color:var(--rojo-texto);margin:-6px 0 12px}
@@ -5001,6 +5459,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
   <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Métricas financieras</div>
+  <div class="nav-item" id="nav-rentabilidad" onclick="showPanel('rentabilidad')"><i data-lucide="hourglass" class="nav-icon"></i> Rentabilidad</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
@@ -6376,6 +6835,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= RENTABILIDAD PANEL ======= -->
+  <!-- Rentabilidad de proyectos: horas por proyecto contra lo presupuestado
+       (services/rentabilidad.py). Tiene plata: panel `rentabilidad`, como Finanzas. -->
+  <div id="rentabilidad-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Rentabilidad</h1>
+        <div class="page-date">Horas reales contra lo presupuestado: cuánto se consumió de cada proyecto, qué margen deja y cuánto se cobra de verdad por hora.</div>
+      </div>
+      <div class="rt-cab">
+        <button type="button" class="of-btn prim" data-rt="cargar" aria-controls="rt-carga">Cargar horas</button>
+      </div>
+    </div>
+    <div class="cr-nota" id="rt-nota" role="status" aria-live="polite"></div>
+    <div id="rt-cuerpo"></div>
+  </div>
+  <!-- ======= FIN RENTABILIDAD PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8077,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'rentabilidad') rtCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,19 +13165,19 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','rentabilidad','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',rentabilidad:'hourglass',equipo:'network',
   ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',rentabilidad:'Rentabilidad',equipo:'Organigrama',
   ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
 };
 let _mobileNavOverflow = [];
@@ -12781,7 +13259,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','rentabilidad'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16673,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*RT_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23436,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*RT_JS*/", "/* {% raw %} */" + RT_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23559,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, rentabilidad_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -24133,14 +24613,14 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','rentabilidad'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',rentabilidad:'Rentabilidad'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
-// es generico, pero hoy solo Finanzas lo respeta en el servidor: mostrarlo en
+// es generico, pero hoy solo Finanzas y Rentabilidad lo respetan en el servidor: mostrarlo en
 // los demas prometeria algo que no pasa.
-const PANELES_CON_SOLO_LECTURA = ['finanzas'];
+const PANELES_CON_SOLO_LECTURA = ['finanzas', 'rentabilidad'];
 
 function makeChips(containerId, checkedArr, prefix, soloLecturaArr) {
   const el = document.getElementById(containerId);

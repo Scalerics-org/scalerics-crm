@@ -35,7 +35,7 @@ ORDEN = [
     ("WHATSAPP", ["oficina"]),   # Recordatorios wpp (20/10 era la Oficina; solo este agente desde el 22/10)
     ("AGENTES", ["agentes"]),    # lo que proponen las tareas nocturnas del equipo (22/10)
     ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "sombra"]),
-    ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
+    ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin", "rentabilidad"]),  # Rentabilidad: horas contra presupuesto (25/10)
     ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
