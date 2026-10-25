@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.qa_entrega import qa_entrega_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  qa: 'control calidad qa entrega revision checklist sitio links seo lanzamiento',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -1972,6 +1974,381 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('#gb')) gbCerrar(); });
+"""
+
+QA_JS = r"""// ========== Control de calidad ==========
+// services/qa_entrega.py revisa; acá solo se pinta. Los títulos, links y
+// textos vienen del sitio revisado: todo pasa por crEsc.
+const QA_ESTADO = {bloqueado: 'Con bloqueantes', sin_revisar: 'Sin revisar', falta_checklist: 'Falta probar a mano',
+                   listo: 'Listo para entregar', entregado: 'Entregado'};
+const QA_FILTROS = [['', 'Todos'], ['bloqueado', 'Con bloqueantes'], ['sin_revisar', 'Sin revisar'],
+                    ['falta_checklist', 'Falta probar a mano'], ['listo', 'Listos'], ['entregado', 'Entregados']];
+const QA_NIVEL = {bloqueante: 'Bloqueantes', aviso: 'Avisos', info: 'Para mejorar'};
+let qaDatos = [];
+let qaTipos = {};
+let qaClientes = [];
+let qaFiltro = '';
+let qaAbierto = null;
+let qaEditando = null;
+let qaTextos = {};
+
+function qaHace(utc) {
+  if (!utc) return 'nunca';
+  const d = new Date(String(utc).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'recién';
+  if (min < 60) return 'hace ' + min + ' min';
+  const h = Math.round(min / 60);
+  if (h < 48) return 'hace ' + h + ' h';
+  return 'hace ' + Math.round(h / 24) + ' días';
+}
+
+function qaColor(p) {
+  if (p === null || p === undefined) return '';
+  return p >= 85 ? 'bien' : (p >= 60 ? 'medio' : 'mal');
+}
+
+function qaSinEsquema(u) {
+  return String(u || '').replace(/^https?:[/][/]/, '').replace(/[/]$/, '');
+}
+
+function qaLink(u) {
+  const s = String(u || '');
+  if (!/^https?:/i.test(s)) return crEsc(s);
+  return '<a href="' + crEsc(s) + '" target="_blank" rel="noopener noreferrer">' + crEsc(qaSinEsquema(s)) + '</a>';
+}
+
+function qaHtml(p) {
+  const id = Number(p.id);
+  const u = p.ultima;
+  const meta = [crEsc(p.tipo_nombre)];
+  if (p.cliente) meta.push(crEsc(p.cliente));
+  if (u) {
+    meta.push('<b>' + u.bloqueante + '</b> bloqueante' + (u.bloqueante === 1 ? '' : 's') + ' · <b>' + u.aviso + '</b> aviso' + (u.aviso === 1 ? '' : 's'));
+    meta.push('revisado ' + crEsc(qaHace(u.hecha_en)));
+    const c = u.cambios || {};
+    if (c.hay_anterior && (c.nuevos.length || c.resueltos.length)) {
+      meta.push((c.resueltos.length ? '<span class="qa-mejor">' + c.resueltos.length + ' resuelto' + (c.resueltos.length === 1 ? '' : 's') + '</span>' : '')
+        + (c.resueltos.length && c.nuevos.length ? ' · ' : '')
+        + (c.nuevos.length ? '<span class="qa-peor">' + c.nuevos.length + ' nuevo' + (c.nuevos.length === 1 ? '' : 's') + '</span>' : ''));
+    }
+  } else if (p.url) {
+    meta.push('todavía sin revisión');
+  }
+  if (p.entregado_en) meta.push('entregado ' + crEsc(qaHace(p.entregado_en)) + (p.entregado_por ? ' por ' + crEsc(p.entregado_por) : ''));
+  const pct = p.checklist_total ? Math.round(100 * p.checklist_hechos / p.checklist_total) : 0;
+  const acc = [];
+  if (p.url) acc.push('<button type="button" class="of-btn prim" data-qa="revisar" data-id="' + id + '">' + (u ? 'Revisar de nuevo' : 'Revisar ahora') + '</button>');
+  acc.push('<button type="button" class="of-btn" data-qa="detalle" data-id="' + id + '" aria-expanded="' + (qaAbierto === id) + '" aria-controls="qa-det-' + id + '">' + (qaAbierto === id ? 'Cerrar' : 'Abrir') + '</button>');
+  return '<div class="qa-item ' + crEsc(p.estado) + '" id="qa-item-' + id + '">'
+    + '<div class="qa-fila">'
+    + '<div class="qa-puntaje ' + qaColor(u ? u.puntaje : null) + '" title="Puntaje de la última revisión">' + (u ? u.puntaje : (p.url ? '—' : '✓')) + '</div>'
+    + '<div class="qa-cuerpo">'
+    + '<div class="qa-cab"><span class="qa-pill ' + crEsc(p.estado) + '">' + crEsc(QA_ESTADO[p.estado] || p.estado) + '</span>'
+    + '<span class="qa-nombre">' + crEsc(p.nombre) + '</span>'
+    + (p.url ? '<span class="qa-url">' + qaLink(p.url) + '</span>' : '') + '</div>'
+    + '<div class="qa-meta">' + meta.join(' · ') + '</div>'
+    + '<div class="qa-check-barra" title="Checklist a mano"><span style="width:' + pct + '%"></span></div>'
+    + '<div class="qa-meta">Checklist <b>' + p.checklist_hechos + '/' + p.checklist_total + '</b>'
+    + (p.obligatorios_pendientes ? ' · faltan <b>' + p.obligatorios_pendientes + '</b> obligatorio' + (p.obligatorios_pendientes === 1 ? '' : 's') : ' · obligatorios completos') + '</div>'
+    + '</div>'
+    + '<div class="qa-acc">' + acc.join('') + '</div>'
+    + '</div>'
+    + '<div class="qa-det" id="qa-det-' + id + '" hidden></div>'
+    + '</div>';
+}
+
+function qaPintarKpis(r) {
+  const box = document.getElementById('qa-kpis');
+  const bloq = r.por_estado.bloqueado || 0;
+  const kpis = [
+    ['En curso', String(r.activos), 'proyectos sin entregar', ''],
+    ['Con bloqueantes', String(bloq), r.bloqueantes + ' problema' + (r.bloqueantes === 1 ? '' : 's') + ' que frenan la entrega', bloq ? 'mal' : ''],
+    ['Listos para entregar', String(r.por_estado.listo || 0), 'sin bloqueantes y con el checklist completo', ''],
+    ['Puntaje medio', r.puntaje_medio === null ? '—' : String(r.puntaje_medio), 'de la última revisión de cada uno', ''],
+  ];
+  box.innerHTML = kpis.map(([l, v, sub, c]) => '<div class="qa-kpi"><div class="qa-kpi-l">' + crEsc(l)
+    + '</div><div class="qa-kpi-v ' + c + '">' + crEsc(v) + '</div><div class="qa-kpi-s">' + crEsc(sub) + '</div></div>').join('');
+}
+
+function qaPintarLista() {
+  const filtros = document.getElementById('qa-filtros');
+  filtros.innerHTML = QA_FILTROS.map(([f, t]) => '<button type="button" class="qa-filtro" data-qa-filtro="' + f
+    + '" aria-pressed="' + (f === qaFiltro) + '">' + t + ' (' + qaDatos.filter(p => !f || p.estado === f).length + ')</button>').join('');
+  const lista = document.getElementById('qa-lista');
+  const ver = qaDatos.filter(p => !qaFiltro || p.estado === qaFiltro);
+  if (!qaDatos.length) {
+    lista.innerHTML = '<div class="qa-vacio">Todavía no hay proyectos. Cargá el sitio que estás por entregar con <b>+ Nuevo proyecto</b> y revisalo: tarda unos 20 segundos.</div>';
+    return;
+  }
+  lista.innerHTML = ver.length ? ver.map(qaHtml).join('') : '<div class="qa-vacio">Ninguno en este filtro.</div>';
+  if (qaAbierto && ver.some(p => p.id === qaAbierto)) qaDetalle(qaAbierto);
+}
+
+async function qaCargar() {
+  if (!document.getElementById('qa-lista')) return;
+  const nota = document.getElementById('qa-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/qa/proyectos');
+    qaDatos = d.proyectos;
+    qaTipos = d.tipos || {};
+    qaClientes = d.clientes || [];
+    qaPintarKpis(d.resumen);
+  } catch (e) {
+    qaDatos = [];
+    nota.textContent = e.message;
+  }
+  qaPintarLista();
+  document.getElementById('qa-filtros').onclick = e => {
+    const b = e.target.closest('[data-qa-filtro]');
+    if (!b) return;
+    qaFiltro = b.dataset.qaFiltro;
+    qaPintarLista();
+  };
+  document.getElementById('qa-lista').onclick = qaAccion;
+  document.getElementById('qa-lista').onchange = qaCambio;
+  document.getElementById('qa-nuevo').onclick = () => qaAbrirForm(null);
+  document.getElementById('qa-cancelar').onclick = () => qaCerrarForm();
+  document.getElementById('qa-form').onsubmit = qaGuardar;
+  document.getElementById('qa-tipo').onchange = qaAyudaTipo;
+}
+
+function qaHallazgo(h, nuevos, id) {
+  const na = h.no_aplica;
+  const donde = (h.donde || []).map(d => '<li>' + qaLink(d.url) + (d.extra ? ' <span class="qa-extra">' + crEsc(d.extra) + '</span>' : '') + '</li>').join('');
+  return '<details class="qa-hall ' + crEsc(h.nivel) + (na ? ' na' : '') + '">'
+    + '<summary><span class="qa-hall-t">' + crEsc(h.titulo) + '</span>'
+    + (h.n > 1 ? '<span class="qa-n">' + h.n + '</span>' : '')
+    + (nuevos.includes(h.clave) ? '<span class="qa-nuevo">nuevo</span>' : '')
+    + (na ? '<span class="qa-na">no aplica</span>' : '') + '</summary>'
+    + '<div class="qa-hall-c">'
+    + (h.detalle ? '<div class="qa-extra">' + crEsc(h.detalle) + '</div>' : '')
+    + '<div class="qa-como"><b>Cómo se arregla:</b> ' + crEsc(h.como) + '</div>'
+    + (donde ? '<ul class="qa-donde">' + donde + (h.n > (h.donde || []).length ? '<li class="qa-extra">y ' + (h.n - h.donde.length) + ' más</li>' : '') + '</ul>' : '')
+    + (na ? '<div class="qa-extra">No aplica: ' + crEsc(na.motivo) + ' · ' + crEsc(na.por || '') + '</div>' : '')
+    + '<button type="button" class="of-btn" data-qa="' + (na ? 'cuenta' : 'no_aplica') + '" data-id="' + id + '" data-clave="' + crEsc(h.clave) + '">'
+    + (na ? 'Que vuelva a contar' : 'No aplica a este proyecto') + '</button>'
+    + '</div></details>';
+}
+
+function qaDetalleHtml(p) {
+  const id = Number(p.id);
+  const u = p.ultima;
+  let izq = '';
+  if (!p.url) {
+    izq = '<div class="qa-extra">Este proyecto no tiene sitio para revisar: va solo con el checklist.</div>';
+  } else if (!u) {
+    izq = '<div class="qa-extra">Todavía no se revisó. Tocá <b>Revisar ahora</b>.</div>';
+  } else {
+    const nuevos = (u.cambios && u.cambios.nuevos) || [];
+    const vivos = u.hallazgos.filter(h => !h.no_aplica);
+    const na = u.hallazgos.filter(h => h.no_aplica);
+    izq = '<div class="qa-extra">Revisión ' + crEsc(qaHace(u.hecha_en)) + (u.hecha_por ? ' por ' + crEsc(u.hecha_por) : '')
+      + ' · ' + (u.paginas || []).length + ' páginas en ' + String(u.segundos || 0).replace('.', ',') + ' s'
+      + (u.ssl_vence ? ' · SSL hasta ' + crEsc(u.ssl_vence.slice(0, 10)) : '') + '</div>';
+    const res = (u.cambios && u.cambios.resueltos) || [];
+    const titulos = (u.cambios && u.cambios.titulos) || {};
+    if (res.length) izq += '<div class="qa-mejor qa-res">Resuelto desde la revisión anterior: ' + res.map(k => crEsc(titulos[k] || k)).join(' · ') + '</div>';
+    for (const nivel of ['bloqueante', 'aviso', 'info']) {
+      const del = vivos.filter(h => h.nivel === nivel);
+      if (!del.length) continue;
+      izq += '<h4>' + QA_NIVEL[nivel] + ' (' + del.length + ')</h4>' + del.map(h => qaHallazgo(h, nuevos, id)).join('');
+    }
+    if (!vivos.length) izq += '<div class="qa-mejor qa-res">Nada que arreglar en la revisión automática.</div>';
+    if (na.length) izq += '<h4>No aplica (' + na.length + ')</h4>' + na.map(h => qaHallazgo(h, nuevos, id)).join('');
+    izq += '<details class="qa-paginas"><summary>Páginas revisadas (' + (u.paginas || []).length + ')</summary><table><thead><tr><th>Página</th><th>Título</th><th>Tiempo</th></tr></thead><tbody>'
+      + (u.paginas || []).map(pg => '<tr><td>' + qaLink(pg.url) + '</td><td>' + crEsc(pg.titulo || '(sin título)') + '</td><td>'
+        + (pg.ms ? (pg.ms < 1000 ? pg.ms + ' ms' : (pg.ms / 1000).toFixed(1).replace('.', ',') + ' s') : '—') + '</td></tr>').join('')
+      + '</tbody></table></details>';
+  }
+  const check = (p.checklist || []).map(i => '<label class="qa-ck' + (i.hecho ? ' hecho' : '') + '"><input type="checkbox" data-qa-ck="' + crEsc(i.clave) + '" data-id="' + id + '"' + (i.hecho ? ' checked' : '') + '>'
+    + '<span>' + crEsc(i.texto) + (i.obligatorio ? ' <span class="qa-oblig">obligatorio</span>' : '')
+    + (i.hecho ? '<span class="qa-extra qa-quien">' + crEsc(i.por || '') + ' · ' + crEsc(qaHace(i.en)) + '</span>' : '') + '</span></label>').join('');
+  const hist = (p.historial || []).slice().reverse();
+  const histHtml = hist.length > 1 ? '<h4>Historial</h4><div class="qa-hist" aria-label="Puntaje de cada revisión">'
+    + hist.map(r => '<span class="' + qaColor(r.puntaje) + '" style="height:' + Math.max(6, r.puntaje) + '%" title="' + crEsc(r.hecha_en.slice(0, 16)) + ' · ' + r.puntaje + '/100"></span>').join('') + '</div>' : '';
+  const pie = ['<button type="button" class="of-btn" data-qa="copiar" data-id="' + id + '">Copiar resumen</button>',
+               '<button type="button" class="of-btn" data-qa="editar" data-id="' + id + '">Editar</button>',
+               '<button type="button" class="of-btn" data-qa="borrar" data-id="' + id + '">Borrar</button>'];
+  if (p.estado === 'entregado') pie.unshift('<button type="button" class="of-btn" data-qa="desentregar" data-id="' + id + '">Deshacer entrega</button>');
+  else pie.unshift('<button type="button" class="of-btn prim" data-qa="entregar" data-id="' + id + '"' + (p.estado === 'listo' ? '' : ' disabled title="Primero sin bloqueantes y con los obligatorios tildados"') + '>Marcar entregado</button>');
+  return '<div class="qa-det-grid"><div><h4 class="qa-sec">Revisión automática</h4>' + izq + '</div>'
+    + '<div><h4 class="qa-sec">A mano antes de entregar</h4><div class="qa-checklist">' + check + '</div>' + histHtml + '</div></div>'
+    + '<div class="qa-det-pie">' + pie.join('') + '<span class="of-ayuda" id="qa-det-estado-' + id + '" role="status" aria-live="polite"></span></div>';
+}
+
+async function qaDetalle(id) {
+  const box = document.getElementById('qa-det-' + id);
+  if (!box) return;
+  box.hidden = false;
+  if (!box.innerHTML) box.innerHTML = '<div class="qa-extra">Cargando…</div>';
+  try {
+    const d = await ofPedir('/api/qa/proyectos/' + id);
+    qaTextos[id] = d.texto;
+    box.innerHTML = qaDetalleHtml(d.proyecto);
+  } catch (e) {
+    box.innerHTML = '<div class="cr-nota">' + crEsc(e.message) + '</div>';
+  }
+}
+
+function qaActualizar(p, texto) {
+  qaTextos[p.id] = texto;
+  const i = qaDatos.findIndex(x => x.id === p.id);
+  if (i >= 0) qaDatos[i] = p; else qaDatos.unshift(p);
+  qaCargarSilencioso();
+}
+
+async function qaCargarSilencioso() {
+  try {
+    const d = await ofPedir('/api/qa/proyectos');
+    qaDatos = d.proyectos;
+    qaPintarKpis(d.resumen);
+    qaPintarLista();
+  } catch (e) { /* queda lo que había */ }
+}
+
+async function qaAccion(e) {
+  const b = e.target.closest('[data-qa]');
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const acc = b.dataset.qa;
+  const nota = document.getElementById('qa-nota');
+  nota.textContent = '';
+  if (acc === 'detalle') {
+    qaAbierto = qaAbierto === id ? null : id;
+    qaPintarLista();
+    return;
+  }
+  if (acc === 'editar') { qaAbrirForm(qaDatos.find(p => p.id === id)); return; }
+  if (acc === 'copiar') {
+    try {
+      await navigator.clipboard.writeText(qaTextos[id] || '');
+      b.textContent = 'Copiado';
+    } catch (err) { nota.textContent = 'No se pudo copiar: el navegador no dio permiso.'; }
+    return;
+  }
+  if (acc === 'borrar' && !confirm('¿Borrar el proyecto con sus revisiones y el checklist?')) return;
+  let motivo;
+  if (acc === 'no_aplica') {
+    motivo = prompt('¿Por qué no aplica? (queda escrito para el que revise después)');
+    if (motivo === null) return;
+  }
+  b.disabled = true;
+  const textoAntes = b.textContent;
+  if (acc === 'revisar') b.textContent = 'Revisando… (hasta 20 s)';
+  try {
+    let d;
+    if (acc === 'revisar') d = await ofPedir('/api/qa/proyectos/' + id + '/revisar', 'POST', {});
+    else if (acc === 'no_aplica') d = await ofPedir('/api/qa/proyectos/' + id + '/no-aplica', 'POST', {clave: b.dataset.clave, motivo: motivo});
+    else if (acc === 'cuenta') d = await ofPedir('/api/qa/proyectos/' + id + '/no-aplica', 'POST', {clave: b.dataset.clave, motivo: null});
+    else if (acc === 'entregar') d = await ofPedir('/api/qa/proyectos/' + id + '/entregar', 'POST', {});
+    else if (acc === 'desentregar') d = await ofPedir('/api/qa/proyectos/' + id + '/entregar', 'POST', {deshacer: true});
+    else if (acc === 'borrar') {
+      await ofPedir('/api/qa/proyectos/' + id, 'DELETE');
+      qaDatos = qaDatos.filter(p => p.id !== id);
+      if (qaAbierto === id) qaAbierto = null;
+      qaCargarSilencioso();
+      return;
+    }
+    if (d) {
+      if (acc === 'revisar') qaAbierto = id;
+      qaActualizar(d.proyecto, d.texto);
+    }
+  } catch (err) {
+    nota.textContent = err.message;
+    b.disabled = false;
+    b.textContent = textoAntes;
+  }
+}
+
+async function qaCambio(e) {
+  const c = e.target.closest('[data-qa-ck]');
+  if (!c) return;
+  const id = Number(c.dataset.id);
+  c.disabled = true;
+  try {
+    const d = await ofPedir('/api/qa/proyectos/' + id + '/checklist', 'POST', {clave: c.dataset.qaCk, hecho: c.checked});
+    qaActualizar(d.proyecto, d.texto);
+  } catch (err) {
+    c.checked = !c.checked;
+    c.disabled = false;
+    document.getElementById('qa-nota').textContent = err.message;
+  }
+}
+
+function qaAyudaTipo() {
+  const tipo = document.getElementById('qa-tipo').value;
+  const conSitio = tipo === 'web' || tipo === 'ecommerce';
+  document.getElementById('qa-url').required = conSitio;
+  document.getElementById('qa-url-ayuda').textContent = conSitio
+    ? 'La revisión recorre hasta 20 páginas de esta dirección.'
+    : 'Opcional: sin dirección, el proyecto va solo con el checklist.';
+}
+
+function qaAbrirForm(p) {
+  const f = document.getElementById('qa-form');
+  qaEditando = p ? p.id : null;
+  f.reset();
+  document.getElementById('qa-tipo').innerHTML = Object.entries(qaTipos).map(([k, v]) => '<option value="' + crEsc(k) + '">' + crEsc(v) + '</option>').join('');
+  document.getElementById('qa-cliente').innerHTML = '<option value="">Ninguno</option>'
+    + qaClientes.map(c => '<option value="' + Number(c.id) + '">' + crEsc(c.name) + '</option>').join('');
+  if (p) {
+    f.nombre.value = p.nombre;
+    f.tipo.value = p.tipo;
+    f.url.value = p.url || '';
+    f.url_prueba.value = p.url_prueba || '';
+    f.business_id.value = p.business_id || '';
+  } else {
+    f.tipo.value = 'web';
+  }
+  document.getElementById('qa-form-titulo').textContent = p ? 'Editar proyecto' : 'Nuevo proyecto';
+  document.getElementById('qa-guardar').textContent = p ? 'Guardar' : 'Crear y revisar';
+  document.getElementById('qa-form-estado').textContent = '';
+  qaAyudaTipo();
+  f.hidden = false;
+  document.getElementById('qa-nuevo').setAttribute('aria-expanded', 'true');
+  f.nombre.focus();
+}
+
+function qaCerrarForm() {
+  document.getElementById('qa-form').hidden = true;
+  document.getElementById('qa-nuevo').setAttribute('aria-expanded', 'false');
+  qaEditando = null;
+}
+
+async function qaGuardar(e) {
+  e.preventDefault();
+  const f = e.target;
+  const estado = document.getElementById('qa-form-estado');
+  const datos = {nombre: f.nombre.value, tipo: f.tipo.value, url: f.url.value, url_prueba: f.url_prueba.value,
+                 business_id: f.business_id.value || null};
+  const boton = document.getElementById('qa-guardar');
+  boton.disabled = true;
+  estado.textContent = 'Guardando…';
+  try {
+    let d;
+    if (qaEditando) {
+      d = await ofPedir('/api/qa/proyectos/' + qaEditando, 'PATCH', datos);
+    } else {
+      d = await ofPedir('/api/qa/proyectos', 'POST', datos);
+      if (d.proyecto.url) {
+        estado.textContent = 'Revisando el sitio… (hasta 20 s)';
+        try { d = await ofPedir('/api/qa/proyectos/' + d.proyecto.id + '/revisar', 'POST', {}); }
+        catch (err) { document.getElementById('qa-nota').textContent = 'Se creó, pero la revisión falló: ' + err.message; }
+      }
+    }
+    qaAbierto = d.proyecto.id;
+    qaCerrarForm();
+    qaActualizar(d.proyecto, d.texto);
+  } catch (err) {
+    estado.textContent = err.message;
+  } finally {
+    boton.disabled = false;
+  }
+}
+// ========== FIN Control de calidad ==========
 """
 
 PLEXO_JS = r"""// ========== Plexo: cobro automático ==========
@@ -3250,6 +3627,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-qa .nav-icon{stroke:#a3e635}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3664,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-qa.active .nav-icon{stroke:#d9f99d}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3697,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-qa .nav-icon{stroke:#4d7c0f}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3841,6 +4221,90 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-volver{display:inline-flex;margin-bottom:10px}
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
+}
+/* Control de calidad (25/10): revisión automática y checklist antes de entregar. */
+.qa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.qa-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.qa-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.qa-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.qa-kpi-v.mal{color:var(--rojo-texto)}
+.qa-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.qa-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.qa-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.qa-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.qa-vacio{padding:30px;text-align:center;color:var(--texto-tenue);font-size:.88rem;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:12px}
+.qa-lista{display:flex;flex-direction:column;gap:10px}
+.qa-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px}
+.qa-item.bloqueado{border-left:3px solid var(--rojo-texto)}
+.qa-item.listo{border-left:3px solid var(--verde-texto)}
+.qa-fila{display:flex;gap:14px;align-items:center}
+.qa-puntaje{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:1.05rem;font-variant-numeric:tabular-nums;border:3px solid var(--borde-fuerte);color:var(--texto-tenue)}
+.qa-puntaje.bien{border-color:var(--verde-texto);color:var(--verde-texto)}
+.qa-puntaje.medio{border-color:var(--ambar);color:var(--ambar)}
+.qa-puntaje.mal{border-color:var(--rojo-texto);color:var(--rojo-texto)}
+.qa-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.qa-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.qa-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.qa-url a,.qa-donde a,.qa-paginas a{font-size:.8rem;color:var(--azul-claro);text-decoration:none;overflow-wrap:anywhere}
+.qa-meta{font-size:.8rem;color:var(--texto-tenue)}
+.qa-meta b{color:var(--texto);font-weight:600;font-variant-numeric:tabular-nums}
+.qa-mejor{color:var(--verde-texto)}
+.qa-peor{color:var(--rojo-texto)}
+.qa-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto)}
+.qa-pill.bloqueado{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.qa-pill.falta_checklist{background:var(--ambar-tinte);color:var(--ambar)}
+.qa-pill.listo{background:var(--verde-tinte);color:var(--verde-texto)}
+.qa-pill.entregado,.qa-pill.sin_revisar{color:var(--texto-tenue)}
+.qa-check-barra{height:5px;border-radius:3px;background:var(--relleno);overflow:hidden;max-width:320px}
+.qa-check-barra span{display:block;height:100%;background:var(--azul)}
+.qa-acc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.qa-det{border-top:1px solid var(--borde);margin-top:12px;padding-top:12px}
+.qa-det-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px}
+.qa-det h4{margin:12px 0 6px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.qa-det h4.qa-sec{margin-top:0;color:var(--texto-fuerte);font-size:.8rem}
+.qa-extra{font-size:.78rem;color:var(--texto-tenue);overflow-wrap:anywhere}
+.qa-res{font-size:.8rem;margin-top:6px}
+.qa-hall{border:1px solid var(--borde);border-radius:8px;margin-bottom:6px;background:var(--relleno)}
+.qa-hall.bloqueante{border-left:3px solid var(--rojo-texto)}
+.qa-hall.aviso{border-left:3px solid var(--ambar)}
+.qa-hall.info{border-left:3px solid var(--borde-fuerte)}
+.qa-hall.na{opacity:.65}
+.qa-hall summary{cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:center;font-size:.84rem;color:var(--texto)}
+.qa-hall-t{flex:1}
+.qa-n{font-size:.72rem;font-weight:700;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:999px;padding:0 7px;font-variant-numeric:tabular-nums}
+.qa-nuevo{font-size:.68rem;font-weight:700;color:var(--rojo-texto);text-transform:uppercase}
+.qa-na{font-size:.68rem;font-weight:700;color:var(--texto-tenue);text-transform:uppercase}
+.qa-hall-c{padding:0 10px 10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.qa-como{font-size:.8rem;color:var(--texto)}
+.qa-donde{margin:0;padding-left:18px;font-size:.78rem;display:flex;flex-direction:column;gap:2px;max-width:100%}
+.qa-paginas{margin-top:10px;font-size:.8rem;color:var(--texto-tenue)}
+.qa-paginas summary{cursor:pointer}
+.qa-paginas table{width:100%;border-collapse:collapse;margin-top:6px;font-size:.78rem}
+.qa-paginas th{text-align:left;font-weight:600;color:var(--texto-tenue);padding:4px 6px}
+.qa-paginas td{border-top:1px solid var(--borde);padding:4px 6px;color:var(--texto);overflow-wrap:anywhere}
+.qa-checklist{display:flex;flex-direction:column;gap:6px}
+.qa-ck{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var(--texto);cursor:pointer;line-height:1.35}
+.qa-ck input{margin-top:3px;accent-color:var(--azul)}
+.qa-ck.hecho>span{color:var(--texto-tenue)}
+.qa-oblig{font-size:.66rem;font-weight:700;color:var(--ambar);text-transform:uppercase;margin-left:4px}
+.qa-quien{display:block}
+.qa-hist{display:flex;gap:3px;align-items:flex-end;height:46px;border-bottom:1px solid var(--borde)}
+.qa-hist span{flex:1;max-width:18px;border-radius:2px 2px 0 0;background:var(--borde-fuerte)}
+.qa-hist span.bien{background:var(--verde-texto)}
+.qa-hist span.medio{background:var(--ambar)}
+.qa-hist span.mal{background:var(--rojo-texto)}
+.qa-det-pie{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid var(--borde)}
+.qa-det-pie .of-btn[disabled]{opacity:.5;cursor:not-allowed}
+.qa-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.qa-form h3{margin:0 0 10px;font-size:.9rem;color:var(--texto-fuerte)}
+.qa-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.qa-form label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+.qa-form input,.qa-form select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:.85rem}
+.qa-form-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+@media (max-width:760px){
+  .qa-fila{flex-wrap:wrap}
+  .qa-acc{width:100%;justify-content:flex-start}
+  .qa-det-grid{grid-template-columns:1fr}
 }
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
@@ -5010,6 +5474,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <!-- Control de calidad (25/10): revisión del sitio y checklist antes de entregar. Panel "qa". -->
+  <div class="nav-item" id="nav-qa" onclick="showPanel('qa')"><i data-lucide="badge-check" class="nav-icon"></i> Control de calidad</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
@@ -6376,6 +6842,40 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= CONTROL DE CALIDAD PANEL ======= -->
+  <!-- Antes de entregar un sitio: la revisión automática (links rotos, noindex,
+       relleno, WhatsApp mal armado...) y lo que se prueba a mano, por tipo de
+       proyecto (services/qa_entrega.py). -->
+  <div id="qa-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Control de calidad</h1>
+        <div class="page-date">Antes de entregar: la revisión automática del sitio y lo que hay que probar a mano.</div>
+      </div>
+      <button type="button" class="of-btn prim" id="qa-nuevo" aria-expanded="false" aria-controls="qa-form">+ Nuevo proyecto</button>
+    </div>
+    <form class="qa-form" id="qa-form" hidden>
+      <h3 id="qa-form-titulo">Nuevo proyecto</h3>
+      <div class="qa-form-grid">
+        <label>Nombre<input name="nombre" maxlength="120" required placeholder="Tienda Bambú"></label>
+        <label>Tipo<select name="tipo" id="qa-tipo"></select></label>
+        <label>Dirección del sitio<input name="url" id="qa-url" maxlength="500" placeholder="tiendabambu.com.uy"><span class="of-ayuda" id="qa-url-ayuda"></span></label>
+        <label>Dirección de prueba (opcional)<input name="url_prueba" maxlength="500" placeholder="tiendabambu.hostingersite.com"><span class="of-ayuda">Avisa si quedó algún link apuntando ahí.</span></label>
+        <label>Cliente del CRM (opcional)<select name="business_id" id="qa-cliente"><option value="">Ninguno</option></select></label>
+      </div>
+      <div class="qa-form-pie">
+        <button type="submit" class="of-btn prim" id="qa-guardar">Crear y revisar</button>
+        <button type="button" class="of-btn" id="qa-cancelar">Cancelar</button>
+        <span class="of-ayuda" id="qa-form-estado" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <div class="qa-kpis" id="qa-kpis"></div>
+    <div class="qa-filtros" id="qa-filtros" role="group" aria-label="Filtrar proyectos"></div>
+    <div class="cr-nota" id="qa-nota" role="status" aria-live="polite"></div>
+    <div class="qa-lista" id="qa-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN CONTROL DE CALIDAD PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8100,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'qa') qaCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13188,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','qa','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',qa:'badge-check'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',qa:'Calidad'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13282,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','qa'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16696,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*QA_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23459,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*QA_JS*/", "/* {% raw %} */" + QA_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23582,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, qa_entrega_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -24133,8 +24636,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','qa'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',qa:'Control de calidad'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

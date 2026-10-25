@@ -804,7 +804,7 @@ def test_los_dos_daily_van_en_operacion_despues_de_tareas_con_lugar_para_las_per
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
     operacion = _entre(menu, '<div class="nav-section-label">OPERACIÓN</div>',
                        '<div class="nav-section-label">RECURSOS HUMANOS</div>')
-    assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "tasks", "daily", "daily_admin",
+    assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "qa", "tasks", "daily", "daily_admin",
                                                         "activity"]
     assert ("<div class=\"nav-item\" id=\"nav-daily\" onclick=\"showPanel('daily')\">"
             "<i data-lucide=\"clipboard-list\" class=\"nav-icon\"></i> Daily Programador</div>\n"
