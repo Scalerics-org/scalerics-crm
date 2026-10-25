@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.pedidos import PUBLICAS as PEDIDOS_PUBLICAS, pedidos_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  pedidos: 'pedidos delivery take away carta menu restaurante pizzeria rotiseria comision',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,363 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+PD_JS = r"""// ========== Pedidos directos ==========
+// services/pedidos.py calcula y guarda; acá solo se pinta.
+// Nombres, direcciones y notas los escribe el cliente final: todo pasa por crEsc.
+const PD_TABS = [['tablero', 'Tablero'], ['historial', 'Historial'], ['carta', 'Carta'], ['metricas', 'Métricas'], ['ajustes', 'Ajustes']];
+const PD_COLS = [['nuevo', 'Nuevos'], ['preparando', 'En preparación'], ['listo', 'Listos'], ['en_camino', 'En camino']];
+const PD_BOTON = {preparando: 'Aceptar', listo: 'Está listo', en_camino: 'Salió', entregado: 'Entregado'};
+let pdLista = [];
+let pdSel = null;
+let pdLocal = null;
+let pdTab = 'tablero';
+let pdDias = 30;
+let pdBuscar = '';
+let pdReloj = null;
+let pdEditando = null;
+
+function pdPlata(n) { return n === null || n === undefined ? '—' : '$ ' + Math.round(n).toLocaleString('es-UY'); }
+function pdNum(v, suf) { return v === null || v === undefined ? '—' : String(v).replace('.', ',') + (suf || ''); }
+function pdHora(s) { return String(s || '').slice(11, 16); }
+function pdMinutos(s) {
+  const d = new Date(String(s).replace(' ', 'T') + ':00-03:00');
+  return Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+}
+
+async function pdCargar() {
+  const panel = document.getElementById('pedidos-panel');
+  if (!panel) return;
+  panel.onclick = pdAccion;
+  panel.onsubmit = pdEnviar;
+  panel.onchange = pdCambio;
+  document.getElementById('pd-nota').textContent = '';
+  try {
+    pdLista = (await ofPedir('/api/pedidos')).locales;
+    if (!pdSel || !pdLista.some(l => l.id === pdSel)) pdSel = pdLista.length ? pdLista[0].id : null;
+  } catch (e) {
+    pdLista = [];
+    document.getElementById('pd-nota').textContent = e.message;
+  }
+  const sel = document.getElementById('pd-local');
+  sel.innerHTML = pdLista.map(l => '<option value="' + Number(l.id) + '"' + (l.id === pdSel ? ' selected' : '') + '>'
+    + crEsc(l.nombre) + (l.nuevos ? ' · ' + Number(l.nuevos) + ' nuevos' : '') + '</option>').join('');
+  sel.hidden = !pdLista.length;
+  const nuevos = pdLista.reduce((a, l) => a + Number(l.nuevos || 0), 0);
+  const badge = document.getElementById('pd-badge');
+  if (badge) { badge.textContent = nuevos; badge.style.display = nuevos ? '' : 'none'; }
+  await pdCargarLocal();
+  if (!pdReloj) pdReloj = setInterval(pdRefrescar, 20000);
+}
+
+function pdVisible() {
+  const p = document.getElementById('pedidos-panel');
+  return p && p.classList.contains('active') && !document.hidden;
+}
+
+async function pdRefrescar() {
+  if (!pdVisible() || pdTab !== 'tablero' || !pdSel || pdEditando) return;
+  try { await pdPintarTablero(); } catch (e) { /* la próxima vuelta reintenta */ }
+}
+
+async function pdCargarLocal() {
+  const cuerpo = document.getElementById('pd-cuerpo');
+  if (!pdSel) {
+    pdLocal = null;
+    cuerpo.innerHTML = '<div class="pd-vacio">Todavía no hay locales. Con "+ Nuevo local" armás su carta y su link para pedir.</div>';
+    return;
+  }
+  try {
+    const d = await ofPedir('/api/pedidos/locales/' + pdSel);
+    pdLocal = d.local;
+    pdLocal.carta = d.carta;
+  } catch (e) {
+    document.getElementById('pd-nota').textContent = e.message;
+    return;
+  }
+  pdPintar();
+}
+
+function pdPintar() {
+  const l = pdLocal;
+  const modos = [['auto', 'Según horario'], ['abierto', 'Abierto ya'], ['cerrado', 'Pausado']];
+  const info = pdLista.find(x => x.id === l.id) || {};
+  document.getElementById('pd-cuerpo').innerHTML =
+    '<div class="pd-link"><span>Link para pedir</span><a href="' + crEsc(l.link) + '" target="_blank" rel="noopener">' + crEsc(l.link) + '</a>'
+    + '<button type="button" class="of-btn prim" data-pd="copiar" data-link="' + crEsc(l.link) + '">Copiar link</button>'
+    + '<span class="pd-pill ' + (l.apertura.abierto ? 'ok' : 'no') + '">' + crEsc(l.apertura.texto) + '</span><span class="pd-sep"></span>'
+    + '<label class="pd-meta">Toma pedidos <select id="pd-modo">' + modos.map(([k, t]) => '<option value="' + k + '"' + (l.modo === k ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></label></div>'
+    + '<div class="pd-tabs" role="tablist" aria-label="Vista">' + PD_TABS.map(([k, t]) => '<button type="button" role="tab" class="pd-tab' + (pdTab === k ? ' activo' : '')
+      + '" aria-selected="' + (pdTab === k) + '" data-pd="tab" data-tab="' + k + '">' + t
+      + (k === 'tablero' && info.nuevos ? ' <span class="pd-badge">' + Number(info.nuevos) + '</span>' : '') + '</button>').join('') + '</div>'
+    + '<div id="pd-vista"></div>';
+  if (pdTab === 'tablero') return pdPintarTablero();
+  if (pdTab === 'historial') return pdPintarHistorial();
+  if (pdTab === 'metricas') return pdPintarMetricas();
+  document.getElementById('pd-vista').innerHTML = pdTab === 'carta' ? pdCartaHtml() : pdAjustesHtml();
+}
+
+// ── tablero ──
+function pdTarjeta(p) {
+  const id = Number(p.id);
+  const items = p.items.map(i => '<li><b>' + Number(i.cantidad) + '×</b> ' + crEsc(i.nombre) + (i.opciones ? ' <span class="pd-meta">' + crEsc(i.opciones) + '</span>' : '') + '</li>').join('');
+  const espera = pdMinutos(p.creado_en);
+  const tarde = p.estado === 'nuevo' && espera >= 5;
+  let acc = '';
+  if (p.siguiente === 'preparando') {
+    const def = p.tipo === 'delivery' ? pdLocal.demora_delivery : pdLocal.demora_retiro;
+    const ops = [15, 20, 25, 30, 40, 45, 60, 75, 90].concat([def]).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+    acc += '<select class="pd-demora" id="pd-demora-' + id + '" aria-label="Demora">' + ops.map(m => '<option value="' + m + '"' + (m === def ? ' selected' : '') + '>' + m + ' min</option>').join('') + '</select>';
+  }
+  if (p.siguiente) acc += '<button type="button" class="of-btn prim" data-pd="avanzar" data-estado="' + crEsc(p.siguiente) + '" data-id="' + id + '">' + crEsc(PD_BOTON[p.siguiente] || p.siguiente) + '</button>';
+  acc += '<a class="of-btn" href="' + crEsc(p.whatsapp) + '" target="_blank" rel="noopener" title="Abre WhatsApp con el mensaje del estado">WhatsApp</a>'
+    + '<a class="of-btn" href="/pedidos/comanda/' + Number(pdLocal.id) + '/' + id + '" target="_blank" rel="noopener">Comanda</a>'
+    + '<button type="button" class="of-btn" data-pd="cancelar" data-id="' + id + '" aria-label="Cancelar pedido ' + Number(p.numero) + '">✕</button>';
+  return '<div class="pd-card' + (tarde ? ' tarde' : '') + '"><div class="pd-card-cab"><b class="pd-numero">#' + Number(p.numero) + '</b>'
+    + '<span class="pd-pill ' + (p.tipo === 'delivery' ? 'del' : 'ret') + '">' + (p.tipo === 'delivery' ? 'Delivery' : 'Retira') + '</span>'
+    + '<span class="pd-meta">' + crEsc(pdHora(p.creado_en)) + (p.estado === 'nuevo' ? ' · hace ' + espera + ' min' : '')
+    + (p.listo_estimado ? ' · listo ' + crEsc(p.listo_estimado) : '') + '</span></div>'
+    + '<div class="pd-cli">' + crEsc(p.cliente) + ' <a class="pd-meta" href="tel:+' + crEsc(p.telefono) + '">' + crEsc(p.telefono_lindo) + '</a></div>'
+    + (p.tipo === 'delivery' ? '<div class="pd-meta">' + crEsc(p.direccion || '') + (p.zona ? ' · ' + crEsc(p.zona) : '') + '</div>' : '')
+    + '<ul class="pd-items">' + items + '</ul>'
+    + (p.nota ? '<div class="pd-nota-cli">' + crEsc(p.nota) + '</div>' : '')
+    + '<div class="pd-total">' + pdPlata(p.total) + ' <span class="pd-meta">' + crEsc(p.pago_texto) + (p.paga_con ? ' · con ' + pdPlata(p.paga_con) : '') + '</span></div>'
+    + '<div class="pd-acc">' + acc + '</div></div>';
+}
+
+async function pdPintarTablero() {
+  const d = await ofPedir('/api/pedidos/locales/' + pdSel + '/tablero');
+  const vista = document.getElementById('pd-vista');
+  if (!vista || pdTab !== 'tablero') return;
+  const c = d.columnas;
+  const kpis = [['Pedidos hoy', String(d.hoy.pedidos)], ['Vendido hoy', pdPlata(d.hoy.ventas)], ['Entregados', String(d.hoy.entregados)],
+    ['En curso', String(c.nuevo.length + c.preparando.length + c.listo.length + c.en_camino.length)]];
+  const cols = PD_COLS.filter(([k]) => k !== 'en_camino' || pdLocal.delivery).map(([k, t]) => '<div class="pd-col pd-col-' + k + '"><h3 class="pd-h">' + t
+    + ' <span class="pd-meta">' + c[k].length + '</span></h3>' + (c[k].length ? c[k].map(pdTarjeta).join('') : '<div class="pd-meta pd-col-vacia">—</div>') + '</div>').join('');
+  const cerrados = c.cerrados.length ? '<details class="pd-cerrados"><summary>Cerrados hoy (' + c.cerrados.length + ')</summary><table class="pd-tabla"><tbody>'
+    + c.cerrados.map(p => '<tr><td>#' + Number(p.numero) + '</td><td>' + crEsc(pdHora(p.creado_en)) + '</td><td>' + crEsc(p.cliente) + '</td><td>' + pdPlata(p.total)
+      + '</td><td><span class="pd-pill e-' + crEsc(p.estado) + '">' + crEsc(p.estado_texto) + '</span>' + (p.motivo ? ' <span class="pd-meta">' + crEsc(p.motivo) + '</span>' : '') + '</td></tr>').join('')
+    + '</tbody></table></details>' : '';
+  vista.innerHTML = '<div class="pd-kpis">' + kpis.map(([a, b]) => '<div class="pd-kpi"><div class="pd-kpi-l">' + a + '</div><div class="pd-kpi-v">' + crEsc(b) + '</div></div>').join('') + '</div>'
+    + '<div class="pd-meta">Se actualiza solo cada 20 segundos. Un pedido nuevo con más de 5 minutos sin aceptar se marca en rojo.</div>'
+    + '<div class="pd-cols">' + cols + '</div>' + cerrados;
+}
+
+// ── historial ──
+async function pdPintarHistorial() {
+  const vista = document.getElementById('pd-vista');
+  const d = await ofPedir('/api/pedidos/locales/' + pdSel + '/historial?dias=' + pdDias + '&q=' + encodeURIComponent(pdBuscar));
+  const filas = d.pedidos.map(p => '<tr><td>#' + Number(p.numero) + '</td><td>' + crEsc(p.creado_en) + '</td><td>' + crEsc(p.cliente) + '<div class="pd-meta">' + crEsc(p.telefono_lindo) + '</div></td>'
+    + '<td>' + (p.tipo === 'delivery' ? 'Delivery' + (p.zona ? ' · ' + crEsc(p.zona) : '') : 'Retiro') + '</td><td>' + p.items.map(i => Number(i.cantidad) + '× ' + crEsc(i.nombre)).join('<br>') + '</td>'
+    + '<td class="pd-num">' + pdPlata(p.total) + '</td><td><span class="pd-pill e-' + crEsc(p.estado) + '">' + crEsc(p.estado_texto) + '</span></td>'
+    + '<td><a class="of-btn" href="' + crEsc(p.link) + '" target="_blank" rel="noopener">Ver</a></td></tr>').join('');
+  vista.innerHTML = '<form class="pd-fila" data-pd-form="buscar"><input name="q" value="' + crEsc(pdBuscar) + '" placeholder="Nombre, celular o número" aria-label="Buscar">'
+    + pdSelectDias() + '<button type="submit" class="of-btn prim">Buscar</button></form>'
+    + (filas ? '<div class="pd-scroll"><table class="pd-tabla"><thead><tr><th>#</th><th>Cuándo</th><th>Cliente</th><th>Entrega</th><th>Qué</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+      : '<div class="pd-vacio">No hay pedidos en este período.</div>');
+}
+
+function pdSelectDias() {
+  return '<select id="pd-dias" aria-label="Período">' + [7, 30, 90, 365].map(d => '<option value="' + d + '"' + (d === pdDias ? ' selected' : '') + '>' + d + ' días</option>').join('') + '</select>';
+}
+
+// ── carta ──
+function pdProductoForm(p) {
+  const v = k => crEsc(p && p[k] !== null && p[k] !== undefined ? p[k] : '');
+  const cats = '<option value="">Otros</option>' + pdLocal.categorias.map(c => '<option value="' + Number(c.id) + '"' + (p && p.categoria_id === c.id ? ' selected' : '') + '>' + crEsc(c.nombre) + '</option>').join('');
+  return '<form class="pd-form" data-pd-form="producto"' + (p ? ' data-id="' + Number(p.id) + '"' : '') + '>'
+    + '<label>Nombre<input name="nombre" value="' + v('nombre') + '" maxlength="80" required></label>'
+    + '<label>Precio<input name="precio" value="' + v('precio') + '" inputmode="numeric" required placeholder="450"></label>'
+    + '<label>Categoría<select name="categoria_id">' + cats + '</select></label>'
+    + '<label class="pd-chk"><input type="checkbox" name="destacado"' + (p && p.destacado ? ' checked' : '') + '> Recomendado</label>'
+    + '<label class="pd-ancho">Descripción<input name="descripcion" value="' + v('descripcion') + '" maxlength="300" placeholder="Muzzarella, salsa de tomate y orégano"></label>'
+    + '<label class="pd-ancho">Opciones: un grupo por renglón. "(varios)" deja elegir más de una; "+120" suma al precio.'
+    + '<textarea name="opciones" rows="3" placeholder="Tamaño: chica, grande +250&#10;Extras (varios): huevo +60, jamón +90">' + v('opciones_texto') + '</textarea></label>'
+    + '<div class="pd-acc pd-ancho"><button type="submit" class="of-btn prim">' + (p ? 'Guardar' : '+ Agregar a la carta') + '</button>'
+    + (p ? '<button type="button" class="of-btn" data-pd="editar" data-id="">Cancelar</button>' : '') + '</div></form>';
+}
+
+function pdCartaHtml() {
+  const secciones = pdLocal.carta;
+  const prod = p => pdEditando === p.id ? pdProductoForm(p)
+    : '<div class="pd-prod' + (p.disponible ? '' : ' agotado') + '"><div class="pd-prod-t"><b>' + crEsc(p.nombre) + '</b>' + (p.destacado ? ' <span class="pd-pill ok">Recomendado</span>' : '')
+      + (p.descripcion ? '<div class="pd-meta">' + crEsc(p.descripcion) + '</div>' : '')
+      + (p.opciones_texto ? '<div class="pd-meta pd-ops">' + crEsc(p.opciones_texto).replace(/\n/g, '<br>') + '</div>' : '') + '</div>'
+      + '<div class="pd-num">' + pdPlata(p.precio) + '</div><div class="pd-acc">'
+      + '<button type="button" class="of-btn' + (p.disponible ? '' : ' prim') + '" data-pd="disponible" data-id="' + Number(p.id) + '" data-valor="' + (p.disponible ? '0' : '1') + '">' + (p.disponible ? 'Agotado' : 'Volvió') + '</button>'
+      + '<button type="button" class="of-btn" data-pd="editar" data-id="' + Number(p.id) + '">Editar</button>'
+      + '<button type="button" class="of-btn" data-pd="borrar-producto" data-id="' + Number(p.id) + '" aria-label="Borrar ' + crEsc(p.nombre) + '">✕</button></div></div>';
+  const cats = pdLocal.categorias.map(c => '<span class="pd-chip">' + crEsc(c.nombre)
+    + ' <button type="button" class="pd-x" data-pd="borrar-categoria" data-id="' + Number(c.id) + '" aria-label="Borrar categoría ' + crEsc(c.nombre) + '">✕</button></span>').join('');
+  return '<div class="pd-meta">"Agotado" lo saca de la carta al instante, sin borrarlo. Los cambios se ven en el link apenas se guardan.</div>'
+    + '<div class="pd-caja"><h3 class="pd-h">Categorías</h3><div class="pd-chips">' + (cats || '<span class="pd-meta">Sin categorías: todo va a "Otros".</span>') + '</div>'
+    + '<form class="pd-fila" data-pd-form="categoria"><input name="nombre" maxlength="60" required placeholder="Pizzas, Empanadas, Bebidas…" aria-label="Categoría nueva"><button type="submit" class="of-btn prim">+ Categoría</button></form></div>'
+    + (secciones.length ? secciones.map(s => '<h3 class="pd-h pd-sec">' + crEsc(s.nombre) + '</h3>' + s.productos.map(prod).join('')).join('') : '<div class="pd-vacio">La carta está vacía.</div>')
+    + '<div class="pd-caja"><h3 class="pd-h">Producto nuevo</h3>' + (pdEditando === 'nuevo' || !secciones.length ? pdProductoForm(null)
+      : '<button type="button" class="of-btn prim" data-pd="editar" data-id="nuevo">+ Producto</button>') + '</div>';
+}
+
+// ── métricas ──
+async function pdPintarMetricas() {
+  const vista = document.getElementById('pd-vista');
+  const m = (await ofPedir('/api/pedidos/locales/' + pdSel + '/metricas?dias=' + pdDias)).metricas;
+  const k = [
+    ['Vendido', pdPlata(m.ventas), m.pedidos + ' pedidos', ''],
+    ['Ticket promedio', pdPlata(m.ticket), pdNum(m.delivery_pct, '%') + ' delivery', ''],
+    ['Ahorro en comisiones', pdPlata(m.ahorro), 'vs. una app que cobra ' + m.comision_pct + '%', 'pd-bien'],
+    ['Clientes', String(m.clientes), pdNum(m.repiten_pct, '%') + ' ya repitieron', ''],
+    ['Cocina', m.minutos_preparacion === null ? '—' : m.minutos_preparacion + ' min', 'de pedido a listo (mediana)' + (m.minutos_aceptar !== null ? ' · se acepta en ' + pdNum(m.minutos_aceptar) + ' min' : ''), ''],
+    ['Cancelados', String(m.cancelados), pdNum(m.cancelados_pct, '%') + ' de los pedidos', m.cancelados_pct > 10 ? 'pd-mal' : ''],
+  ];
+  const topeV = Math.max(1, ...m.serie.map(s => s.ventas));
+  const barras = m.serie.map(s => '<div class="pd-barra" title="' + crEsc(s.fecha + ': ' + s.pedidos + ' pedidos, ' + pdPlata(s.ventas)) + '"><div class="pd-barra-col" style="height:' + Math.round(100 * s.ventas / topeV) + '%"></div>'
+    + (m.serie.length <= 31 ? '<div class="pd-barra-l">' + crEsc(s.fecha.slice(8, 10)) + '</div>' : '') + '</div>').join('');
+  const topeH = Math.max(1, ...m.horas);
+  const horas = m.horas.map((n, h) => '<div class="pd-barra" title="' + h + ' h: ' + n + ' pedidos"><div class="pd-barra-col h" style="height:' + Math.round(100 * n / topeH) + '%"></div><div class="pd-barra-l">' + (h % 3 === 0 ? h : '') + '</div></div>').join('');
+  const top = m.top.length ? '<table class="pd-tabla"><thead><tr><th>Producto</th><th>Unidades</th><th>Vendido</th></tr></thead><tbody>'
+    + m.top.map(t => '<tr><td>' + crEsc(t.nombre) + '</td><td class="pd-num">' + Number(t.cantidad) + '</td><td class="pd-num">' + pdPlata(t.ventas) + '</td></tr>').join('') + '</tbody></table>' : '<div class="pd-meta">Sin ventas todavía.</div>';
+  const zonas = m.zonas.length ? '<table class="pd-tabla"><thead><tr><th>Zona</th><th>Pedidos</th><th>Vendido</th></tr></thead><tbody>'
+    + m.zonas.map(z => '<tr><td>' + crEsc(z.nombre) + '</td><td class="pd-num">' + Number(z.pedidos) + '</td><td class="pd-num">' + pdPlata(z.ventas) + '</td></tr>').join('') + '</tbody></table>' : '<div class="pd-meta">Sin deliverys en el período.</div>';
+  vista.innerHTML = '<div class="pd-fila"><span class="pd-meta">Período</span>' + pdSelectDias() + '</div>'
+    + '<div class="pd-kpis">' + k.map(([l, v, s, c]) => '<div class="pd-kpi"><div class="pd-kpi-l">' + crEsc(l) + '</div><div class="pd-kpi-v ' + c + '">' + crEsc(v) + '</div><div class="pd-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>'
+    + '<div class="pd-graf"><div class="pd-caja pd-ancha"><h3 class="pd-h">Ventas por día</h3><div class="pd-barras">' + barras + '</div></div>'
+    + '<div class="pd-caja"><h3 class="pd-h">A qué hora piden</h3><div class="pd-barras">' + horas + '</div></div>'
+    + '<div class="pd-caja"><h3 class="pd-h">Lo más pedido</h3>' + top + '</div>'
+    + '<div class="pd-caja"><h3 class="pd-h">Delivery por zona</h3>' + zonas + '</div></div>'
+    + '<div class="pd-meta">El ahorro es lo que se habría llevado una app de delivery sobre la comida vendida por este link (sin el envío). La comisión se cambia en Ajustes.</div>';
+}
+
+// ── ajustes ──
+function pdAjustesHtml() {
+  const l = pdLocal;
+  const v = k => crEsc(l[k] === null || l[k] === undefined ? '' : l[k]);
+  const pagos = Object.entries(l.pagos_disponibles).map(([k, t]) => '<label class="pd-chk"><input type="checkbox" name="pago_' + k + '"' + (l.pagos.includes(k) ? ' checked' : '') + '> ' + crEsc(t) + '</label>').join('');
+  const zonas = l.zonas.map(z => '<form class="pd-fila" data-pd-form="zona" data-id="' + Number(z.id) + '"><input name="nombre" value="' + crEsc(z.nombre) + '" maxlength="80" required aria-label="Zona">'
+    + '<input name="costo" class="pd-corto" value="' + Number(z.costo) + '" inputmode="numeric" aria-label="Costo de envío"><input name="minimo" class="pd-corto" value="' + Number(z.minimo) + '" inputmode="numeric" aria-label="Mínimo">'
+    + '<button type="submit" class="of-btn">Guardar</button><button type="button" class="of-btn" data-pd="borrar-zona" data-id="' + Number(z.id) + '" aria-label="Borrar zona ' + crEsc(z.nombre) + '">✕</button></form>').join('');
+  return '<form class="pd-form" data-pd-form="ajustes">'
+    + '<label>Nombre<input name="nombre" value="' + v('nombre') + '" maxlength="120" required></label>'
+    + '<label>Rubro<input name="rubro" value="' + v('rubro') + '" maxlength="80" placeholder="Pizzería"></label>'
+    + '<label>Dirección (para retirar)<input name="direccion" value="' + v('direccion') + '" maxlength="200"></label>'
+    + '<label>WhatsApp del local<input name="whatsapp" value="' + v('whatsapp') + '" inputmode="tel" placeholder="099 123 456"></label>'
+    + '<label>Link (/pedir/…)<input name="slug" value="' + v('slug') + '" maxlength="40"></label>'
+    + '<label>Color<input type="color" name="color" value="' + v('color') + '"></label>'
+    + '<label class="pd-ancho">Horario (ej. "mar-dom 11:30-15:00 19:00-00:30; lun 19:00-23:00")<input name="horarios" value="' + v('horarios_texto') + '" maxlength="300"></label>'
+    + '<label class="pd-chk"><input type="checkbox" name="delivery"' + (l.delivery ? ' checked' : '') + '> Hace delivery</label>'
+    + '<label class="pd-chk"><input type="checkbox" name="retiro"' + (l.retiro ? ' checked' : '') + '> Se puede retirar</label>'
+    + '<label>Demora delivery (min)<input name="demora_delivery" value="' + v('demora_delivery') + '" inputmode="numeric"></label>'
+    + '<label>Demora retiro (min)<input name="demora_retiro" value="' + v('demora_retiro') + '" inputmode="numeric"></label>'
+    + '<label>Pedido mínimo delivery<input name="pedido_minimo" value="' + v('pedido_minimo') + '" inputmode="numeric"></label>'
+    + '<label>Comisión de la app que reemplaza (%)<input name="comision_app" value="' + v('comision_app') + '" inputmode="numeric"></label>'
+    + '<div class="pd-ancho pd-pagos"><span class="pd-meta">Formas de pago</span>' + pagos + '</div>'
+    + '<label class="pd-ancho">Datos para transferir (se muestran al confirmar)<input name="alias_transferencia" value="' + v('alias_transferencia') + '" maxlength="200" placeholder="BROU caja de ahorro 001234567-00001 · a nombre de …"></label>'
+    + '<label class="pd-ancho">Link de cobro de Mercado Pago (opcional)<input name="link_mercadopago" value="' + v('link_mercadopago') + '" maxlength="250" placeholder="https://mpago.la/…"></label>'
+    + '<label class="pd-ancho">Mensaje arriba de la carta<input name="mensaje" value="' + v('mensaje') + '" maxlength="400" placeholder="Los viernes 2x1 en muzzarella."></label>'
+    + '<label class="pd-chk"><input type="checkbox" name="activo"' + (l.activo ? ' checked' : '') + '> Link activo</label>'
+    + '<div class="pd-acc pd-ancho"><button type="submit" class="of-btn prim">Guardar</button><button type="button" class="of-btn" data-pd="borrar-local">Borrar local</button></div></form>'
+    + '<div class="pd-caja"><h3 class="pd-h">Zonas de delivery</h3><div class="pd-meta">Nombre · costo de envío · pedido mínimo de la zona (0 = el general).</div>' + zonas
+    + '<form class="pd-fila" data-pd-form="zona"><input name="nombre" maxlength="80" required placeholder="Pocitos" aria-label="Zona nueva"><input name="costo" class="pd-corto" inputmode="numeric" placeholder="Envío $" aria-label="Costo de envío">'
+    + '<input name="minimo" class="pd-corto" inputmode="numeric" placeholder="Mínimo $" aria-label="Mínimo"><button type="submit" class="of-btn prim">+ Zona</button></form></div>';
+}
+
+async function pdAccion(e) {
+  const b = e.target.closest('[data-pd]');
+  if (!b) return;
+  const a = b.dataset.pd;
+  const nota = document.getElementById('pd-nota');
+  nota.textContent = '';
+  const id = Number(b.dataset.id);
+  const base = '/api/pedidos/locales/' + pdSel;
+  try {
+    if (a === 'nuevo') { const f = document.getElementById('pd-form-nuevo'); f.hidden = !f.hidden; return; }
+    if (a === 'tab') { pdTab = b.dataset.tab; pdEditando = null; return pdPintar(); }
+    if (a === 'copiar') {
+      await navigator.clipboard.writeText(b.dataset.link);
+      const t = b.textContent;
+      b.textContent = 'Copiado ✓';
+      setTimeout(() => { b.textContent = t; }, 1600);
+      return;
+    }
+    if (a === 'avanzar') {
+      const dem = document.getElementById('pd-demora-' + id);
+      b.disabled = true;
+      await ofPedir(base + '/pedidos/' + id, 'PATCH', {estado: b.dataset.estado, demora_min: dem ? Number(dem.value) : undefined});
+      return pdCargar();
+    }
+    if (a === 'cancelar') {
+      const motivo = prompt('¿Por qué se cancela? (se agotó, no contesta, fuera de zona…)');
+      if (!motivo) return;
+      await ofPedir(base + '/pedidos/' + id, 'PATCH', {estado: 'cancelado', motivo});
+      return pdCargar();
+    }
+    if (a === 'editar') { pdEditando = b.dataset.id === 'nuevo' ? 'nuevo' : (id || null); return pdPintar(); }
+    if (a === 'disponible') { await ofPedir(base + '/productos/' + id, 'PATCH', {disponible: b.dataset.valor === '1'}); return pdCargarLocal(); }
+    if (a === 'borrar-producto') { if (!confirm('¿Borrar el producto de la carta? Si solo se terminó por hoy, usá "Agotado".')) return; await ofPedir(base + '/productos/' + id, 'DELETE'); return pdCargarLocal(); }
+    if (a === 'borrar-categoria') { if (!confirm('¿Borrar la categoría? Sus productos pasan a "Otros".')) return; await ofPedir(base + '/categorias/' + id, 'DELETE'); return pdCargarLocal(); }
+    if (a === 'borrar-zona') { await ofPedir(base + '/zonas/' + id, 'DELETE'); return pdCargarLocal(); }
+    if (a === 'borrar-local') {
+      if (!confirm('¿Borrar el local con su carta y todos sus pedidos? No se puede deshacer. El link deja de andar.')) return;
+      await ofPedir(base, 'DELETE');
+      pdSel = null;
+      return pdCargar();
+    }
+  } catch (err) {
+    nota.textContent = err.message;
+    b.disabled = false;
+  }
+}
+
+async function pdCambio(e) {
+  const nota = document.getElementById('pd-nota');
+  try {
+    if (e.target.id === 'pd-local') { pdSel = Number(e.target.value); pdTab = 'tablero'; pdEditando = null; return await pdCargarLocal(); }
+    if (e.target.id === 'pd-dias') { pdDias = Number(e.target.value); return await (pdTab === 'metricas' ? pdPintarMetricas() : pdPintarHistorial()); }
+    if (e.target.id === 'pd-modo') { await ofPedir('/api/pedidos/locales/' + pdSel, 'PATCH', {modo: e.target.value}); return await pdCargar(); }
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+
+async function pdEnviar(e) {
+  const f = e.target.closest('form[data-pd-form]');
+  if (!f) return;
+  e.preventDefault();
+  const tipo = f.dataset.pdForm;
+  const nota = document.getElementById('pd-nota');
+  nota.textContent = '';
+  const datos = Object.fromEntries(new FormData(f).entries());
+  f.querySelectorAll('input[type=checkbox]').forEach(c => { datos[c.name] = c.checked; });
+  const base = '/api/pedidos/locales/' + pdSel;
+  try {
+    if (tipo === 'nuevo') {
+      const d = await ofPedir('/api/pedidos/locales', 'POST', datos);
+      pdSel = d.local.id;
+      pdTab = 'carta';
+      f.reset();
+      f.hidden = true;
+      return pdCargar();
+    }
+    if (tipo === 'buscar') { pdBuscar = datos.q || ''; return pdPintarHistorial(); }
+    if (tipo === 'categoria') await ofPedir(base + '/categorias', 'POST', datos);
+    if (tipo === 'zona') await ofPedir(base + '/zonas' + (f.dataset.id ? '/' + Number(f.dataset.id) : ''), f.dataset.id ? 'PUT' : 'POST', datos);
+    if (tipo === 'producto') {
+      await ofPedir(base + '/productos' + (f.dataset.id ? '/' + Number(f.dataset.id) : ''), f.dataset.id ? 'PATCH' : 'POST', datos);
+      pdEditando = null;
+    }
+    if (tipo === 'ajustes') {
+      datos.pagos = Object.keys(pdLocal.pagos_disponibles).filter(k => datos['pago_' + k]);
+      Object.keys(datos).filter(k => k.startsWith('pago_')).forEach(k => delete datos[k]);
+      await ofPedir(base, 'PATCH', datos);
+      return pdCargar();
+    }
+    return pdCargarLocal();
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+// ========== FIN Pedidos directos ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3609,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-pedidos .nav-icon{stroke:#fb923c}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3646,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-pedidos.active .nav-icon{stroke:#fed7aa}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3679,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-pedidos .nav-icon{stroke:#c2410c}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3990,6 +4352,81 @@ body.light .mobile-header-title{color:#0f172a}
 .mas-sheet-icon{width:22px;height:22px;stroke:#64748b;stroke-width:1.8;fill:none;flex-shrink:0}
 .mas-sheet-label{font-size:.82rem;font-weight:600;color:#e2e8f0}
 /* Mobile FAB */
+/* Pedidos directos (25/10): la carta online con pedidos que vendemos a restaurantes. */
+.pd-cab{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pd-cab select,.pd-link select,#pd-dias,.pd-demora{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 8px;font-family:inherit;font-size:.8rem;max-width:100%}
+.pd-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin:0 0 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end}
+.pd-form label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--texto-tenue)}
+.pd-form input,.pd-form select,.pd-form textarea,.pd-fila input{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
+.pd-form input[type=color]{padding:2px;height:32px}
+.pd-form .pd-ancho{grid-column:1/-1}
+.pd-form[hidden]{display:none}
+.pd-form label.pd-chk,.pd-pagos label.pd-chk{flex-direction:row;align-items:center;gap:6px;font-size:.78rem}
+.pd-pagos{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.pd-link{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--azul-tinte);border:1px solid var(--borde);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:var(--texto-tenue)}
+.pd-link a{color:var(--azul-claro);overflow-wrap:anywhere;font-weight:600}
+.pd-sep{flex:1}
+.pd-tabs{display:flex;gap:6px;border-bottom:1px solid var(--borde);margin-bottom:12px;flex-wrap:wrap}
+.pd-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);padding:8px 12px;font-family:inherit;font-size:.85rem;cursor:pointer}
+.pd-tab.activo{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.pd-badge{background:var(--rojo-tinte);color:var(--rojo-texto);border-radius:10px;padding:0 6px;font-size:.66rem;font-weight:700}
+.pd-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+.pd-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.pd-kpi-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.5px}
+.pd-kpi-v{font-size:1.4rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--texto-fuerte)}
+.pd-kpi-s{font-size:.72rem;color:var(--texto-debil)}
+.pd-bien{color:var(--verde-texto)!important}
+.pd-mal{color:var(--rojo-texto)!important}
+.pd-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0;align-items:start}
+.pd-col{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;padding:10px;min-width:0}
+.pd-col-vacia{text-align:center;padding:10px}
+.pd-card{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid var(--azul);border-radius:10px;padding:10px;margin-top:8px}
+.pd-col-nuevo .pd-card{border-left-color:var(--ambar)}
+.pd-col-listo .pd-card{border-left-color:var(--verde)}
+.pd-card.tarde{border-left-color:var(--rojo);box-shadow:0 0 0 1px var(--rojo-tinte)}
+.pd-card-cab{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pd-numero{font-size:1.05rem;color:var(--texto-fuerte)}
+.pd-cli{font-weight:600;margin-top:4px;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.pd-items{margin:6px 0;padding-left:16px;font-size:.82rem}
+.pd-nota-cli{background:var(--ambar-tinte,var(--relleno));border-radius:6px;padding:4px 8px;font-size:.78rem;overflow-wrap:anywhere}
+.pd-total{font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.pd-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.pd-acc a.of-btn{text-decoration:none}
+.pd-pill{border-radius:999px;padding:1px 8px;font-size:.68rem;font-weight:700;background:var(--relleno);color:var(--texto-tenue)}
+.pd-pill.ok,.pd-pill.e-entregado{background:var(--verde-tinte);color:var(--verde-texto)}
+.pd-pill.no,.pd-pill.e-cancelado{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.pd-pill.del{background:var(--azul-tinte);color:var(--azul-claro)}
+.pd-meta{font-size:.74rem;color:var(--texto-tenue);overflow-wrap:anywhere}
+.pd-h{font-size:.88rem;margin:0 0 4px;color:var(--texto-fuerte)}
+.pd-sec{margin-top:16px}
+.pd-caja{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;margin:10px 0;min-width:0}
+.pd-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.pd-chip{background:var(--relleno);border-radius:999px;padding:3px 6px 3px 10px;font-size:.78rem}
+.pd-x{background:none;border:0;color:var(--texto-tenue);cursor:pointer;font-size:.72rem}
+.pd-prod{display:flex;gap:10px;align-items:center;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-top:6px;flex-wrap:wrap}
+.pd-prod.agotado{opacity:.6}
+.pd-prod-t{flex:1 1 220px;min-width:0}
+.pd-prod .pd-acc{margin-top:0}
+.pd-ops{font-style:italic}
+.pd-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pd-fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.pd-fila input{flex:1 1 180px}
+.pd-fila input.pd-corto{flex:0 0 100px;width:100px;min-width:0}
+.pd-tabla{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:6px}
+.pd-tabla th{text-align:left;color:var(--texto-tenue);font-weight:600;font-size:.72rem;padding:4px 8px}
+.pd-tabla td{border-top:1px solid var(--borde);padding:6px 8px;vertical-align:top}
+.pd-scroll{overflow-x:auto}
+.pd-cerrados summary{cursor:pointer;color:var(--texto-tenue);font-size:.82rem;margin:8px 0}
+.pd-graf{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pd-graf .pd-caja{margin:0}
+.pd-ancha{grid-column:1/-1}
+.pd-barras{display:flex;gap:3px;align-items:flex-end;height:130px;margin-top:8px}
+.pd-barra{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:0;text-align:center}
+.pd-barra-col{background:var(--azul);border-radius:4px 4px 0 0;min-height:2px}
+.pd-barra-col.h{background:var(--verde)}
+.pd-barra-l{font-size:.6rem;color:var(--texto-debil);margin-top:3px;height:12px}
+.pd-vacio{color:var(--texto-tenue);font-size:.85rem;padding:14px 2px}
+@media(max-width:760px){.pd-graf{grid-template-columns:1fr}}
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
 .sc-antes{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--borde)}
@@ -4990,6 +5427,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
   <div class="nav-section-label">AGENTES</div>
   <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
+  <!-- Pedidos directos (25/10): la carta online con pedidos que vendemos a restaurantes. Panel "pedidos". -->
+  <div class="nav-section-label">PRODUCTOS</div>
+  <div class="nav-item" id="nav-pedidos" onclick="showPanel('pedidos')"><i data-lucide="shopping-bag" class="nav-icon"></i> Pedidos <span id="pd-badge" style="display:none;background:#f97316;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6376,6 +6816,31 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= PEDIDOS PANEL ======= -->
+  <!-- Pedidos directos: los locales a los que les armamos la carta online con
+       pedidos para delivery y retiro, sin comisión (services/pedidos.py). -->
+  <div id="pedidos-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Pedidos directos</h1>
+        <div class="page-date">La carta online del local: su cliente pide por un link, el pedido cae en este tablero y el local no le paga comisión a ninguna app.</div>
+      </div>
+      <div class="pd-cab">
+        <select id="pd-local" aria-label="Local" hidden></select>
+        <button type="button" class="of-btn prim" data-pd="nuevo" aria-controls="pd-form-nuevo">+ Nuevo local</button>
+      </div>
+    </div>
+    <form id="pd-form-nuevo" class="pd-form" data-pd-form="nuevo" hidden>
+      <label>Nombre del local<input name="nombre" maxlength="120" required placeholder="Pizzería La Esquina"></label>
+      <label>Rubro<input name="rubro" maxlength="80" placeholder="Pizzería"></label>
+      <label>WhatsApp del local<input name="whatsapp" inputmode="tel" placeholder="099 123 456"></label>
+      <div class="pd-acc pd-ancho"><button type="submit" class="of-btn prim">Crear y armar la carta</button><button type="button" class="of-btn" data-pd="nuevo">Cancelar</button></div>
+    </form>
+    <div class="cr-nota" id="pd-nota" role="status" aria-live="polite"></div>
+    <div id="pd-cuerpo"></div>
+  </div>
+  <!-- ======= FIN PEDIDOS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8065,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'pedidos') pdCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12781,7 +13247,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','pedidos','agentes'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16661,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*PD_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23424,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*PD_JS*/", "/* {% raw %} */" + PD_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23547,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, pedidos_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23574,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Pedidos directos: la carta del local (/pedir/<slug>) es pública a
+        # propósito, va en su Instagram y en un QR; ver routes/pedidos.py.
+        if request.path.startswith(PEDIDOS_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24605,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','pedidos','agentes'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',pedidos:'Pedidos directos'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
