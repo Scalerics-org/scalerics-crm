@@ -2365,7 +2365,7 @@ function rtEstimacionHtml(e) {
   if (e.horas_corregidas) filas.push(['Lo que tu estimación termina llevando', rtHs(e.horas_corregidas) + (e.desvio_pct > 0 ? ' (las de este tipo se pasan ' + Math.round(e.desvio_pct) + '%)' : '')]);
   filas.push(['Costo por hora del equipo', e.costo_medio_hora ? rtPlata(e.costo_medio_hora) : 'falta cargar costos en Equipo']);
   return '<div class="rt-estim"><dl class="rt-dl">' + filas.map(([a, b]) => '<dt>' + crEsc(a) + '</dt><dd>' + crEsc(b) + '</dd>').join('') + '</dl>'
-    + (e.precio_uyu ? '<div class="rt-precio"><div class="rt-kpi-l">Precio para ' + rtPct(e.margen_objetivo) + ' de margen</div><div class="rt-kpi-v">' + rtPlata(e.precio_uyu) + '</div><div class="rt-kpi-s">US$ ' + Number(e.precio_usd).toLocaleString('es-UY') + ' a ' + crEsc(e.tipo_cambio) + '</div></div>' : '') + '</div>';
+    + (e.precio_uyu ? '<div class="rt-sugerido"><div class="rt-kpi-l">Precio para ' + rtPct(e.margen_objetivo) + ' de margen</div><div class="rt-kpi-v">' + rtPlata(e.precio_uyu) + '</div><div class="rt-kpi-s">US$ ' + Number(e.precio_usd).toLocaleString('es-UY') + ' a ' + crEsc(e.tipo_cambio) + '</div></div>' : '') + '</div>';
 }
 
 // ── ajustes ──
@@ -3604,7 +3604,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas .nav-icon{stroke:#f59e0b}
 #nav-simulador .nav-icon{stroke:#fb923c}
 #nav-inteligencia_fin .nav-icon{stroke:#86efac}
-#nav-rentabilidad .nav-icon{stroke:#fbbf24}
+#nav-rentabilidad .nav-icon{stroke:#eab308}
 #nav-notion_clients .nav-icon{stroke:#10b981}
 #nav-demos .nav-icon{stroke:#22d3ee}
 #nav-sdr .nav-icon{stroke:#f87171}
@@ -3639,7 +3639,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
 #nav-inteligencia_fin.active .nav-icon{stroke:#bbf7d0}
-#nav-rentabilidad.active .nav-icon{stroke:#fde68a}
+#nav-rentabilidad.active .nav-icon{stroke:#fef08a}
 #nav-daily.active .nav-icon{stroke:#7dd3fc}
 #nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
@@ -3672,7 +3672,7 @@ body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
 body.light #nav-inteligencia_fin .nav-icon{stroke:#15803d}
-body.light #nav-rentabilidad .nav-icon{stroke:#b45309}
+body.light #nav-rentabilidad .nav-icon{stroke:#854d0e}
 body.light #nav-daily .nav-icon{stroke:#0284c7}
 body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
@@ -5180,7 +5180,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .rt-mini span{display:block;height:100%;background:var(--azul)}
 .rt-estim{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
 .rt-estim .rt-dl{flex:2 1 260px}
-.rt-precio{flex:1 1 180px;background:var(--azul-tinte);border-radius:10px;padding:10px 14px}
+.rt-sugerido{flex:1 1 180px;background:var(--azul-tinte);border-radius:10px;padding:10px 14px}
 .rt-vacio{color:var(--texto-tenue);font-size:.85rem;padding:14px 2px}
 @media (max-width:760px){
   .rt-proy-cab{grid-template-columns:1fr auto;gap:8px}
