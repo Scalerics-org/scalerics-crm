@@ -495,7 +495,10 @@ def test_el_editor_muestra_el_check_solo_en_finanzas_y_lo_manda(app, admin, tmp_
     s = json.loads(r.stdout.strip().splitlines()[-1])
 
     assert re.search(r'id="r7-sl-finanzas" checked', s["chips"])
-    assert s["chips"].count("-sl-chip-") == 1, "el check va solo al lado de Finanzas"
+    # Rentabilidad (25/10) también respeta la marca en el servidor, así que
+    # lleva su check; el resto de los paneles no.
+    assert s["chips"].count("-sl-chip-") == 2, "el check va solo al lado de Finanzas y Rentabilidad"
+    assert "Rentabilidad: solo lectura" in s["chips"]
     assert "Finanzas: solo lectura" in s["chips"]
     assert [c["paneles_solo_lectura"] for c in s["cuerpos"]] == [["finanzas"], [], [], ["finanzas"]]
     assert s["cuerpos"][-1]["name"] == "Auditor"
