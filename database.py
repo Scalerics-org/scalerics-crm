@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Reseñas (25/10): el QR para juntar reseñas de Google y quejas
+        # privadas de los comercios (services/resenas.py).
+        from services.resenas import init_resenas
+        init_resenas(conn)
+        _grant_panel_to_existing_roles(conn, "resenas", si_tiene=("clientes", "projects"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)

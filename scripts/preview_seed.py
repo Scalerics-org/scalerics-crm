@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash
 
 from database import create_user, get_user_by_email, init_db
 from services import agentes as ag
+from services import resenas as rs
 
 LARGO_MINIMO_CLAVE = 12
 
@@ -58,6 +59,93 @@ def sembrar(db: str, email: str, clave: str) -> None:
         ag.proponer(db, autor, "crm", "Propuesta de ejemplo",
                     "Así se ve una propuesta en el panel Agentes de la vista previa.",
                     clave="preview-ejemplo")
+    sembrar_resenas(db)
+
+
+# Comercios inventados para Reseñas. El slug y el código de la opinión de
+# ejemplo son fijos para poder linkearlos desde la PR.
+COMENTARIOS_BAJOS = [
+    ("Esperamos 50 minutos la comida y nadie nos avisó.", "Lucía", "099 000 401"),
+    ("La carne vino fría y cuando lo dijimos nos pusieron mala cara.", "Martín", "099 000 402"),
+    ("El baño estaba sucio.", None, None),
+    ("Nos cobraron dos veces el postre.", "Carolina", "099 000 404"),
+    ("Mucho ruido, no se podía hablar.", None, None),
+]
+COMENTARIOS_ALTOS = [
+    "El asado espectacular y la atención de Rodrigo de diez.",
+    "Volvemos seguro, la mollejita increíble.",
+    "Rápidos y amables, aunque estaba lleno.",
+    "Muy rico todo. Las papas fritas podrían venir más calientes.",
+    None, None, None,
+]
+
+
+def sembrar_resenas(db: str) -> None:
+    from datetime import timedelta
+
+    conn = sqlite3.connect(db)
+    try:
+        if conn.execute("SELECT 1 FROM rs_negocios LIMIT 1").fetchone():
+            return
+    finally:
+        conn.close()
+    n = rs.crear_negocio(db, {"nombre": "Parrilla El Fogón", "slug": "vista-previa-parrilla", "rubro": "Restaurante",
+                              "whatsapp": "099 000 400", "color": "#b45309",
+                              "google_url": "https://search.google.com/local/writereview?placeid=ChIJvistaPreviaEjemplo"},
+                         "Vista previa")
+    nid = n["id"]
+    fuentes = [rs.crear_fuente(db, nid, x)["id"] for x in ("Mostrador", "Mesas", "Ticket", "WhatsApp post-venta")]
+    ahora = rs.ahora_uy()
+    conn = sqlite3.connect(db)
+    k = 0
+    for dia in range(55, -1, -1):
+        d = ahora - timedelta(days=dia)
+        # Arranca de a poco y crece cuando se suman los QR de las mesas.
+        cuantas = 1 + (k % 3) + (2 if dia < 35 else 0)
+        for j in range(cuantas):
+            k += 1
+            puntaje = 5 if k % 3 else (4 if k % 7 else (k % 4) or 2)
+            if k % 11 == 0:
+                puntaje = 1
+            fuente = fuentes[(k + j) % 4] if dia < 35 else fuentes[0]
+            creado = d.replace(hour=13 + (k % 9) % 10, minute=(k * 7) % 60)
+            comentario, nombre, contacto, quiere, estado, nota, resuelta = None, None, None, 0, "sin_accion", None, None
+            if puntaje <= 3:
+                comentario, nombre, contacto = COMENTARIOS_BAJOS[k % len(COMENTARIOS_BAJOS)]
+                quiere = 1 if contacto else 0
+                if dia > 6:
+                    estado, nota = "resuelta", "Lo llamamos, pedimos disculpas y lo invitamos a volver."
+                    resuelta = rs._txt(creado + timedelta(hours=3 + k % 20))
+                else:
+                    estado = "abierta" if k % 2 else "en_curso"
+            else:
+                comentario = COMENTARIOS_ALTOS[k % len(COMENTARIOS_ALTOS)]
+            google = rs._txt(creado + timedelta(minutes=1)) if (puntaje >= 4 and k % 5 < 3) or (puntaje <= 3 and k % 4 == 0) else None
+            conn.execute(
+                "INSERT INTO rs_opiniones (negocio_id, fuente_id, codigo, puntaje, comentario, nombre, contacto, "
+                "quiere_contacto, fue_a_google_en, estado, nota, atendido_por, resuelta_en, creado_en) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (nid, fuente, f"vista-previa-op-{k:04d}", puntaje, comentario, nombre, contacto, quiere, google, estado,
+                 nota, "Vista previa" if nota or estado == "en_curso" else None, resuelta, rs._txt(creado)))
+        # Abren más de los que puntúan: unas 3 vistas por opinión, distinto en cada QR.
+        for i, fid in enumerate(fuentes if dia < 35 else fuentes[:1]):
+            conn.execute("INSERT INTO rs_vistas (negocio_id, fuente_id, dia, n) VALUES (?,?,?,?)",
+                         (nid, fid, d.date().isoformat(), 2 + i + (k + i) % 4 + (cuantas if i == 0 else 1)))
+    for dias_atras, rating, cantidad in ((56, 4.1, 86), (28, 4.2, 104), (0, 4.4, 131)):
+        conn.execute("INSERT INTO rs_google (negocio_id, fecha, rating, cantidad, cargado_por) VALUES (?,?,?,?,?)",
+                     (nid, (ahora - timedelta(days=dias_atras)).date().isoformat(), rating, cantidad, "Vista previa"))
+    conn.commit()
+    conn.close()
+    # La opinión de ejemplo para la PR: una de 2 estrellas recién hecha, para ver la página de gracias.
+    o = rs.opinar(db, nid, 2, "mesas", "vista-previa")
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE rs_opiniones SET codigo = 'vista-previa-opinion-baja' WHERE id = ?", (o["id"],))
+    conn.commit()
+    conn.close()
+
+    p = rs.crear_negocio(db, {"nombre": "Peluquería Estilo", "slug": "vista-previa-peluqueria", "rubro": "Peluquería",
+                              "pregunta": "¿Cómo quedó tu corte?"}, "Vista previa")
+    rs.crear_fuente(db, p["id"], "Espejo")
 
 
 def main() -> int:
