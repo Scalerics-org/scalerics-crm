@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.planos import PUBLICAS as PLANOS_PUBLICAS, planos_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  planos: 'planificador mapa sitio sitemap secciones textos brief seo wireframe aprobacion cliente',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -1972,6 +1974,471 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('#gb')) gbCerrar(); });
+"""
+
+PLANOS_JS = r"""// ========== Planificador de sitios ==========
+// services/planos.py arma y valida; acá se pinta y se edita. Los textos los
+// escribe el equipo y los comentarios el cliente: todo pasa por crEsc.
+let mpDatos = [];
+let mpCat = null;
+let mpClientes = [];
+let mpEd = null;          // {plano, paginas, sel, sucio}
+let mpBriefDe = null;     // id del plano cuyo brief se edita; null = nuevo
+let mpPrevT = null;
+
+function mpHoras(h) { return String(h).replace('.', ',') + ' h'; }
+
+function mpPill(p) {
+  return '<span class="mp-pill ' + crEsc(p.estado) + '">' + crEsc(p.estado_nombre) + '</span>';
+}
+
+function mpTarjeta(p) {
+  const meta = [crEsc(p.familia_nombre), p.n_paginas + ' páginas', p.n_secciones + ' secciones', '~' + mpHoras(p.horas) + ' de armado'];
+  if (p.estado !== 'borrador') meta.push('<b>' + p.aprobadas + '/' + p.n_paginas + '</b> aprobadas');
+  if (p.sin_resolver) meta.push('<span class="mp-alerta">' + p.sin_resolver + ' cambio' + (p.sin_resolver === 1 ? '' : 's') + ' pedido' + (p.sin_resolver === 1 ? '' : 's') + '</span>');
+  return '<div class="mp-item ' + crEsc(p.estado) + '"><div class="mp-cuerpo"><div class="mp-cab">' + mpPill(p)
+    + '<span class="mp-nombre">' + crEsc(p.nombre) + '</span></div><div class="mp-meta">' + meta.join(' · ') + '</div></div>'
+    + '<div class="mp-acc"><button type="button" class="of-btn prim" data-mp="abrir" data-id="' + Number(p.id) + '">Abrir</button></div></div>';
+}
+
+function mpPintarLista(resumen) {
+  const k = document.getElementById('mp-kpis');
+  if (resumen) {
+    const e = resumen.por_estado;
+    k.innerHTML = [['Planos', resumen.total, 'sitios planificados'],
+      ['Esperando al cliente', e.enviado || 0, 'con el link ya pasado'],
+      ['Con cambios pedidos', resumen.sin_resolver, 'pedidos del cliente sin resolver'],
+      ['Armado por delante', mpHoras(resumen.horas), 'estimado de los no aprobados']]
+      .map(([l, v, s]) => '<div class="mp-kpi"><div class="mp-kpi-l">' + crEsc(l) + '</div><div class="mp-kpi-v">' + crEsc(v)
+        + '</div><div class="mp-kpi-s">' + crEsc(s) + '</div></div>').join('');
+  }
+  const lista = document.getElementById('mp-lista');
+  lista.innerHTML = mpDatos.length ? mpDatos.map(mpTarjeta).join('')
+    : '<div class="mp-vacio">Todavía no hay planos. Tocá <b>+ Nuevo plano</b>, cargá el brief del cliente y en un segundo tenés el mapa del sitio con los textos para revisar.</div>';
+}
+
+async function mpCargar() {
+  if (!document.getElementById('mp-lista')) return;
+  const nota = document.getElementById('mp-nota');
+  nota.textContent = '';
+  try {
+    const d = await ofPedir('/api/planos');
+    mpDatos = d.planos;
+    mpCat = d.catalogo;
+    mpClientes = d.clientes || [];
+    mpPintarLista(d.resumen);
+  } catch (e) {
+    nota.textContent = e.message;
+  }
+  document.getElementById('mp-nuevo').onclick = () => mpAbrirBrief(null);
+  document.getElementById('mp-lista').onclick = ev => {
+    const b = ev.target.closest('[data-mp="abrir"]');
+    if (b) mpAbrir(Number(b.dataset.id));
+  };
+  const f = document.getElementById('mp-form');
+  f.onsubmit = mpGuardarBrief;
+  f.oninput = mpPrevistaLuego;
+  f.onchange = mpPrevistaLuego;
+  document.getElementById('mp-cancelar').onclick = mpCerrarBrief;
+  document.getElementById('mp-rubro').oninput = mpAdivinar;
+}
+
+// ── brief ────────────────────────────────────────────────────────────────────
+
+const MP_PISTAS = {
+  turnos: ['clinic','odonto','dent','veterin','pelu','barber','estetic','spa','fisio','psico','medic','nutri','salud'],
+  gastronomia: ['restaur','parrill','pizz','cafe','rotiser','bar','heladeri','panader','sushi','hamburgues','comida'],
+  comercio: ['ferret','optic','ropa','tienda','librer','repuesto','jugueter','calzado','muebler','bazar','farmacia'],
+  profesional: ['contab','contador','escriban','abogad','inmobil','consult','estudio','seguro','arquitect'],
+  oficios: ['constru','electric','sanitar','plomer','aire','climatiz','mudanz','pintor','herrer','carpinter','taller','mecanic'],
+  educacion: ['academ','instituto','idioma','gimnas','escuela','musica','danza','yoga','pilates','clases','curso'],
+};
+
+function mpAdivinar() {
+  const r = document.getElementById('mp-rubro').value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const sel = document.getElementById('mp-familia');
+  if (sel.dataset.tocado) return;
+  for (const [fam, pistas] of Object.entries(MP_PISTAS)) {
+    if (pistas.some(p => r.includes(p))) { sel.value = fam; return; }
+  }
+}
+
+function mpOpciones(obj, valor, vacio) {
+  return (vacio ? '<option value="">' + crEsc(vacio) + '</option>' : '')
+    + Object.entries(obj).map(([k, v]) => '<option value="' + crEsc(k) + '"' + (k === valor ? ' selected' : '') + '>'
+      + crEsc(typeof v === 'string' ? v : v.nombre) + '</option>').join('');
+}
+
+function mpAbrirBrief(p) {
+  if (!mpCat) return;
+  mpBriefDe = p ? p.id : null;
+  const b = p ? p.brief : {tipo: 'web', tono: 'cercano'};
+  const f = document.getElementById('mp-form');
+  document.getElementById('mp-form-titulo').textContent = p ? 'Brief de ' + p.nombre : 'Nuevo plano';
+  document.getElementById('mp-familia').innerHTML = mpOpciones(mpCat.familias, b.familia, 'Elegí…');
+  document.getElementById('mp-familia').onchange = e => { e.target.dataset.tocado = '1'; };
+  delete document.getElementById('mp-familia').dataset.tocado;
+  document.getElementById('mp-tipo').innerHTML = mpOpciones(mpCat.tipos, b.tipo);
+  document.getElementById('mp-objetivo').innerHTML = mpOpciones(mpCat.objetivos, p ? b.objetivo : '', 'El de siempre para el rubro');
+  document.getElementById('mp-tono').innerHTML = mpOpciones(mpCat.tonos, b.tono);
+  document.getElementById('mp-cliente').innerHTML = '<option value="">Ninguno</option>' + mpClientes.map(c =>
+    '<option value="' + Number(c.id) + '"' + (p && p.business_id === c.id ? ' selected' : '') + '>' + crEsc(c.name) + '</option>').join('');
+  for (const k of ['nombre', 'rubro', 'ciudad', 'direccion', 'whatsapp', 'dominio', 'anios', 'diferencial']) {
+    f.elements[k].value = b[k] === null || b[k] === undefined ? '' : b[k];
+  }
+  f.elements.servicios.value = (b.servicios || []).join('\n');
+  document.getElementById('mp-regenerar-fila').hidden = !p;
+  f.elements.regenerar.checked = false;
+  document.getElementById('mp-guardar').textContent = p ? 'Guardar brief' : 'Crear plano';
+  document.getElementById('mp-form-estado').textContent = '';
+  document.getElementById('mp-previa').textContent = '';
+  f.hidden = false;
+  document.getElementById('mp-nuevo').setAttribute('aria-expanded', 'true');
+  f.elements.nombre.focus();
+  if (p) mpPrevistaLuego();
+}
+
+function mpCerrarBrief() {
+  document.getElementById('mp-form').hidden = true;
+  document.getElementById('mp-nuevo').setAttribute('aria-expanded', 'false');
+  mpBriefDe = null;
+}
+
+function mpBriefDatos() {
+  const f = document.getElementById('mp-form');
+  const d = {};
+  for (const k of ['nombre', 'rubro', 'familia', 'tipo', 'objetivo', 'tono', 'ciudad', 'direccion', 'whatsapp', 'dominio', 'anios', 'diferencial', 'servicios']) {
+    d[k] = f.elements[k].value;
+  }
+  d.business_id = f.elements.business_id.value || null;
+  return d;
+}
+
+function mpPrevistaLuego() {
+  clearTimeout(mpPrevT);
+  mpPrevT = setTimeout(async () => {
+    const out = document.getElementById('mp-previa');
+    const d = mpBriefDatos();
+    if (!d.nombre.trim() || !d.familia) { out.textContent = ''; return; }
+    try {
+      const r = await ofPedir('/api/planos/vista-previa', 'POST', d);
+      out.textContent = 'Saldrían ' + r.paginas.length + ' páginas: ' + r.paginas.map(p => p.nombre).join(', ')
+        + ' · armado estimado ' + mpHoras(r.estimacion.total);
+    } catch (e) {
+      out.textContent = e.message;
+    }
+  }, 350);
+}
+
+async function mpGuardarBrief(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const estado = document.getElementById('mp-form-estado');
+  const d = mpBriefDatos();
+  if (mpBriefDe && f.elements.regenerar.checked) {
+    if (!confirm('Rehacer el mapa desde cero borra los cambios que le hiciste a las páginas y los textos. ¿Seguimos?')) return;
+    d.regenerar = true;
+  }
+  estado.textContent = 'Guardando…';
+  try {
+    const r = mpBriefDe ? await ofPedir('/api/planos/' + mpBriefDe + '/brief', 'PUT', d)
+                        : await ofPedir('/api/planos', 'POST', d);
+    mpCerrarBrief();
+    await mpCargarSilencioso();
+    mpMostrarEditor(r.plano);
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+}
+
+async function mpCargarSilencioso() {
+  try {
+    const d = await ofPedir('/api/planos');
+    mpDatos = d.planos;
+    mpPintarLista(d.resumen);
+  } catch (e) { /* la lista se refresca la próxima vez */ }
+}
+
+// ── editor ───────────────────────────────────────────────────────────────────
+
+async function mpAbrir(id) {
+  if (mpEd && mpEd.sucio && mpEd.plano.id !== id && !confirm('Hay cambios sin guardar en ' + mpEd.plano.nombre + '. ¿Descartarlos?')) return;
+  try {
+    const d = await ofPedir('/api/planos/' + id);
+    mpMostrarEditor(d.plano);
+  } catch (e) {
+    document.getElementById('mp-nota').textContent = e.message;
+  }
+}
+
+function mpMostrarEditor(plano) {
+  const sel = mpEd && mpEd.plano.id === plano.id && plano.paginas.some(p => p.clave === mpEd.sel) ? mpEd.sel : plano.paginas[0].clave;
+  mpEd = {plano: plano, paginas: JSON.parse(JSON.stringify(plano.paginas)), sel: sel, sucio: false};
+  document.getElementById('mp-inicio').hidden = true;
+  const ed = document.getElementById('mp-editor');
+  ed.hidden = false;
+  ed.onclick = mpAccion;
+  ed.oninput = mpCampo;
+  ed.onchange = mpCampo;
+  mpPintarEditor();
+  window.scrollTo(0, 0);
+}
+
+function mpCerrarEditor() {
+  if (mpEd && mpEd.sucio && !confirm('Hay cambios sin guardar. ¿Salir igual?')) return;
+  mpEd = null;
+  document.getElementById('mp-editor').hidden = true;
+  document.getElementById('mp-inicio').hidden = false;
+  mpCargarSilencioso();
+}
+
+function mpIdx() { return mpEd.paginas.findIndex(p => p.clave === mpEd.sel); }
+
+function mpSucio() {
+  mpEd.sucio = true;
+  const b = document.getElementById('mp-guardar-mapa');
+  if (b) { b.disabled = false; b.textContent = 'Guardar cambios'; }
+}
+
+function mpHorasPagina(p) {
+  return 0.5 + p.secciones.reduce((t, s) => t + ((mpCat.bloques[s.bloque] || {}).horas || 0), 0);
+}
+
+function mpArbol() {
+  const eps = mpEd.plano.estado_paginas || {};
+  const tarjeta = (p, hijo) => {
+    const ep = mpEd.plano.estado !== 'borrador' ? (eps[p.clave] || 'pendiente') : '';
+    return '<button type="button" class="mp-nodo' + (hijo ? ' hijo' : '') + (p.clave === mpEd.sel ? ' sel' : '') + (ep ? ' ' + ep : '')
+      + '" data-mp="sel" data-clave="' + crEsc(p.clave) + '" aria-pressed="' + (p.clave === mpEd.sel) + '">'
+      + '<span class="mp-nodo-n">' + crEsc(p.nombre) + '</span><span class="mp-nodo-r">' + crEsc(p.slug) + '</span>'
+      + '<span class="mp-chips">' + p.secciones.map(s => '<i>' + crEsc((mpCat.bloques[s.bloque] || {}).nombre || s.bloque) + '</i>').join('') + '</span>'
+      + '<span class="mp-nodo-h">' + mpHoras(mpHorasPagina(p)) + (ep === 'aprobada' ? ' · ✓ aprobada' : ep === 'cambios' ? ' · cambios' : '') + '</span></button>';
+  };
+  const raiz = mpEd.paginas.filter(p => !p.padre);
+  const [inicio, ...resto] = raiz;
+  const col = p => '<div class="mp-col">' + tarjeta(p, false)
+    + mpEd.paginas.filter(h => h.padre === p.clave).map(h => tarjeta(h, true)).join('') + '</div>';
+  return '<div class="mp-arbol"><div class="mp-raiz">' + (inicio ? tarjeta(inicio, false) : '') + '</div>'
+    + '<div class="mp-ramas">' + resto.map(col).join('')
+    + '<div class="mp-col"><button type="button" class="mp-nodo nuevo" data-mp="pag-nueva">+ Página</button></div></div></div>';
+}
+
+function mpItemsTexto(items) { return items.map(i => i.titulo + (i.texto ? ': ' + i.texto : '')).join('\n'); }
+
+function mpItemsDe(txt) {
+  return String(txt).split('\n').map(l => l.trim()).filter(Boolean).slice(0, 12).map(l => {
+    const i = l.indexOf(': ');
+    return i > 0 ? {titulo: l.slice(0, i).trim(), texto: l.slice(i + 2).trim()} : {titulo: l, texto: ''};
+  });
+}
+
+function mpContador(n, ideal) {
+  return '<span class="mp-cont' + (n > ideal ? ' mal' : '') + '">' + n + '/' + ideal + '</span>';
+}
+
+function mpSeccionHtml(s, j, total) {
+  const b = mpCat.bloques[s.bloque] || {nombre: s.bloque, guia: ''};
+  return '<div class="mp-sec"><div class="mp-sec-cab"><span class="mp-sec-tipo">' + crEsc(b.nombre) + '</span>'
+    + '<span class="mp-sec-guia">' + crEsc(b.guia) + '</span>'
+    + '<span class="mp-sec-acc"><button type="button" class="of-btn" data-mp="sec-subir" data-j="' + j + '"' + (j ? '' : ' disabled') + ' aria-label="Subir sección">↑</button>'
+    + '<button type="button" class="of-btn" data-mp="sec-bajar" data-j="' + j + '"' + (j < total - 1 ? '' : ' disabled') + ' aria-label="Bajar sección">↓</button>'
+    + '<button type="button" class="of-btn" data-mp="sec-borrar" data-j="' + j + '" aria-label="Quitar sección">✕</button></span></div>'
+    + '<label>Título<input data-sec="' + j + '" data-campo="titulo" maxlength="140" value="' + crEsc(s.titulo) + '"></label>'
+    + '<label>Texto<textarea data-sec="' + j + '" data-campo="texto" maxlength="1200" rows="2">' + crEsc(s.texto) + '</textarea></label>'
+    + '<label>Elementos <span class="mp-ayuda">uno por línea, "Título: texto"</span><textarea data-sec="' + j + '" data-campo="items" rows="' + Math.min(6, Math.max(2, s.items.length)) + '">' + crEsc(mpItemsTexto(s.items)) + '</textarea></label>'
+    + '<label>Botón<input data-sec="' + j + '" data-campo="boton" maxlength="40" value="' + crEsc(s.boton) + '"></label></div>';
+}
+
+function mpPaginaHtml() {
+  const i = mpIdx();
+  const p = mpEd.paginas[i];
+  if (!p) return '';
+  const padres = mpEd.paginas.filter(x => !x.padre && x.clave !== p.clave && i !== 0);
+  const dominio = mpEd.plano.brief.dominio || 'tusitio.com.uy';
+  const resp = (mpEd.plano.respuestas || []).filter(r => r.pagina === p.clave && (r.comentario || r.decision === 'cambios'));
+  return '<div class="mp-pag"><div class="mp-pag-cab"><h3>' + crEsc(p.nombre) + '</h3><span class="mp-ayuda">~' + mpHoras(mpHorasPagina(p)) + ' de armado</span>'
+    + '<span class="mp-sec-acc"><button type="button" class="of-btn" data-mp="pag-subir"' + (i > 1 ? '' : ' disabled') + '>↑ Mover</button>'
+    + '<button type="button" class="of-btn" data-mp="pag-bajar"' + (i > 0 && i < mpEd.paginas.length - 1 ? '' : ' disabled') + '>↓ Mover</button>'
+    + '<button type="button" class="of-btn" data-mp="pag-borrar"' + (i ? '' : ' disabled title="Inicio no se borra"') + '>Borrar página</button></span></div>'
+    + (resp.length ? '<div class="mp-resps">' + resp.map(r => '<div class="mp-resp ' + crEsc(r.decision) + (r.resuelta ? ' hecha' : '') + '"><b>'
+      + crEsc(r.nombre || 'El cliente') + '</b> · ' + crEsc(r.creado_en.slice(0, 16)) + '<br>' + crEsc(r.comentario || 'Aprobada')
+      + (r.decision === 'cambios' ? ' <button type="button" class="of-btn" data-mp="resolver" data-rid="' + Number(r.id) + '" data-resuelta="' + (r.resuelta ? 0 : 1) + '">'
+        + (r.resuelta ? 'Reabrir' : 'Marcar resuelto') + '</button>' : '') + '</div>').join('') + '</div>' : '')
+    + '<div class="mp-grid">'
+    + '<label>Nombre en el menú<input data-pg="nombre" maxlength="60" value="' + crEsc(p.nombre) + '"></label>'
+    + '<label>Dirección<input data-pg="slug" maxlength="80" value="' + crEsc(p.slug) + '"' + (i ? '' : ' disabled') + '></label>'
+    + (i ? '<label>Cuelga de<select data-pg="padre"><option value="">Menú principal</option>' + padres.map(x => '<option value="' + crEsc(x.clave) + '"'
+      + (x.clave === p.padre ? ' selected' : '') + '>' + crEsc(x.nombre) + '</option>').join('') + '</select></label>' : '')
+    + '<label>H1<input data-pg="h1" maxlength="140" value="' + crEsc(p.h1) + '"></label>'
+    + '<label>Título SEO ' + mpContador(p.seo.titulo.length, 60) + '<input data-pg="seo.titulo" maxlength="90" value="' + crEsc(p.seo.titulo) + '"></label>'
+    + '<label class="ancho">Descripción SEO ' + mpContador(p.seo.descripcion.length, 155) + '<textarea data-pg="seo.descripcion" maxlength="300" rows="2">' + crEsc(p.seo.descripcion) + '</textarea></label>'
+    + '</div><div class="mp-google" aria-label="Así se vería en Google"><div class="u">' + crEsc(dominio + (p.slug === '/' ? '' : p.slug)) + '</div>'
+    + '<div class="t" id="mp-g-t">' + crEsc(p.seo.titulo) + '</div><div class="d" id="mp-g-d">' + crEsc(p.seo.descripcion) + '</div></div>'
+    + '<h4>Secciones</h4>' + p.secciones.map((s, j) => mpSeccionHtml(s, j, p.secciones.length)).join('')
+    + '<div class="mp-sumar"><select id="mp-bloque-nuevo" aria-label="Tipo de sección">' + mpOpciones(mpCat.bloques, 'cta') + '</select>'
+    + '<button type="button" class="of-btn" data-mp="sec-nueva">+ Sumar sección</button></div></div>';
+}
+
+function mpPintarEditor() {
+  const p = mpEd.plano;
+  const est = p.estimacion;
+  const totalH = Math.round(mpEd.paginas.reduce((t, x) => t + mpHorasPagina(x), 0) * 1.2 * 2) / 2;
+  const chequeos = (p.chequeos || []);
+  document.getElementById('mp-editor').innerHTML = '<div class="mp-ed-cab"><button type="button" class="of-btn" data-mp="volver">← Planos</button>'
+    + '<div class="mp-ed-tit"><h2>' + crEsc(p.nombre) + '</h2>' + mpPill(p) + '</div>'
+    + '<div class="mp-ed-acc"><button type="button" class="of-btn prim" id="mp-guardar-mapa" data-mp="guardar"' + (mpEd.sucio ? '' : ' disabled') + '>'
+    + (mpEd.sucio ? 'Guardar cambios' : 'Guardado') + '</button>'
+    + '<button type="button" class="of-btn" data-mp="link">' + (p.estado === 'borrador' ? 'Abrir para el cliente' : 'Copiar link del cliente') + '</button>'
+    + '<button type="button" class="of-btn" data-mp="copiar">Copiar brief</button>'
+    + '<button type="button" class="of-btn" data-mp="brief">Editar brief</button>'
+    + '<button type="button" class="of-btn" data-mp="borrar">Borrar</button></div></div>'
+    + '<div class="mp-ed-meta">' + crEsc(p.familia_nombre) + ' · ' + crEsc(mpCat.objetivos[p.brief.objetivo] || '') + ' · '
+    + mpEd.paginas.length + ' páginas · armado estimado <b>' + mpHoras(mpEd.sucio ? totalH : est.total) + '</b>'
+    + (p.estado !== 'borrador' ? ' · <b>' + p.aprobadas + '/' + p.n_paginas + '</b> aprobadas por el cliente'
+      + ' · <a href="' + crEsc(p.link) + '" target="_blank" rel="noopener noreferrer">ver como el cliente</a>' : '')
+    + '<span class="of-ayuda" id="mp-ed-estado" role="status" aria-live="polite"></span></div>'
+    + mpArbol()
+    + (chequeos.length ? '<details class="mp-chequeos"><summary>Para mirar antes de mandarlo (' + chequeos.length + ')</summary><ul>'
+      + chequeos.map(c => '<li class="' + crEsc(c.nivel || '') + '">' + crEsc(c.texto) + '</li>').join('') + '</ul></details>' : '')
+    + mpPaginaHtml();
+}
+
+function mpCampo(ev) {
+  if (!mpEd) return;
+  const t = ev.target;
+  const p = mpEd.paginas[mpIdx()];
+  if (!p) return;
+  if (t.dataset.pg) {
+    const k = t.dataset.pg;
+    if (k === 'seo.titulo') { p.seo.titulo = t.value; document.getElementById('mp-g-t').textContent = t.value; }
+    else if (k === 'seo.descripcion') { p.seo.descripcion = t.value; document.getElementById('mp-g-d').textContent = t.value; }
+    else if (k === 'padre') { p.padre = t.value || null; mpSucio(); mpPintarEditor(); return; }
+    else p[k] = t.value;
+    if (k.startsWith('seo.')) {
+      const c = t.parentElement.querySelector('.mp-cont');
+      const ideal = k === 'seo.titulo' ? 60 : 155;
+      if (c) { c.textContent = t.value.length + '/' + ideal; c.classList.toggle('mal', t.value.length > ideal); }
+    }
+    mpSucio();
+  } else if (t.dataset.sec !== undefined) {
+    const s = p.secciones[Number(t.dataset.sec)];
+    if (!s) return;
+    if (t.dataset.campo === 'items') s.items = mpItemsDe(t.value); else s[t.dataset.campo] = t.value;
+    mpSucio();
+  }
+}
+
+function mpMover(lista, i, d) {
+  const j = i + d;
+  if (j < 0 || j >= lista.length) return;
+  [lista[i], lista[j]] = [lista[j], lista[i]];
+}
+
+async function mpAccion(ev) {
+  const b = ev.target.closest('[data-mp]');
+  if (!b || !mpEd) return;
+  const a = b.dataset.mp;
+  const i = mpIdx();
+  const p = mpEd.paginas[i];
+  const estado = document.getElementById('mp-ed-estado');
+  const j = Number(b.dataset.j);
+  if (a === 'volver') return mpCerrarEditor();
+  if (a === 'sel') { mpEd.sel = b.dataset.clave; return mpPintarEditor(); }
+  if (a === 'sec-subir' || a === 'sec-bajar') { mpMover(p.secciones, j, a === 'sec-subir' ? -1 : 1); mpSucio(); return mpPintarEditor(); }
+  if (a === 'sec-borrar') { p.secciones.splice(j, 1); mpSucio(); return mpPintarEditor(); }
+  if (a === 'sec-nueva') {
+    const bloque = document.getElementById('mp-bloque-nuevo').value;
+    p.secciones.push({id: p.clave + '-n' + Date.now(), bloque: bloque, titulo: mpCat.bloques[bloque].nombre, texto: '', items: [], boton: ''});
+    mpSucio();
+    return mpPintarEditor();
+  }
+  if (a === 'pag-subir' || a === 'pag-bajar') {
+    if (a === 'pag-subir' && i <= 1) return;
+    mpMover(mpEd.paginas, i, a === 'pag-subir' ? -1 : 1);
+    mpSucio();
+    return mpPintarEditor();
+  }
+  if (a === 'pag-borrar') {
+    if (!i || !confirm('¿Borrar la página ' + p.nombre + '?' + (mpEd.paginas.some(x => x.padre === p.clave) ? ' Sus subpáginas pasan al menú principal.' : ''))) return;
+    mpEd.paginas.forEach(x => { if (x.padre === p.clave) x.padre = null; });
+    mpEd.paginas.splice(i, 1);
+    mpEd.sel = mpEd.paginas[0].clave;
+    mpSucio();
+    return mpPintarEditor();
+  }
+  if (a === 'pag-nueva') {
+    const nombre = (prompt('Nombre de la página nueva') || '').trim();
+    if (!nombre) return;
+    const base = nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pagina';
+    let clave = base, n = 2;
+    while (mpEd.paginas.some(x => x.clave === clave)) clave = base + '-' + (n++);
+    mpEd.paginas.push({clave: clave, nombre: nombre, slug: '/' + clave, padre: null, h1: nombre,
+      seo: {titulo: nombre + ' | ' + mpEd.plano.nombre, descripcion: ''},
+      secciones: [{id: clave + '-1', bloque: 'hero', titulo: nombre, texto: '', items: [], boton: ''}]});
+    mpEd.sel = clave;
+    mpSucio();
+    return mpPintarEditor();
+  }
+  if (a === 'guardar') {
+    b.disabled = true;
+    estado.textContent = 'Guardando…';
+    try {
+      const d = await ofPedir('/api/planos/' + mpEd.plano.id + '/mapa', 'PUT', {paginas: mpEd.paginas});
+      mpEd.sucio = false;
+      mpMostrarEditor(d.plano);
+      document.getElementById('mp-ed-estado').textContent = 'Guardado.';
+    } catch (e) {
+      b.disabled = false;
+      estado.textContent = e.message;
+    }
+    return;
+  }
+  if (a === 'link') {
+    if (mpEd.sucio) { estado.textContent = 'Primero guardá los cambios: el cliente ve lo guardado.'; return; }
+    try {
+      const d = mpEd.plano.estado === 'borrador' ? await ofPedir('/api/planos/' + mpEd.plano.id + '/enviar', 'POST') : {plano: mpEd.plano};
+      if (d.plano !== mpEd.plano) mpMostrarEditor(d.plano);
+      await navigator.clipboard.writeText(d.plano.link);
+      document.getElementById('mp-ed-estado').textContent = 'Link copiado. Pasáselo al cliente por WhatsApp o mail.';
+    } catch (e) {
+      document.getElementById('mp-ed-estado').textContent = e.message || 'No se pudo copiar.';
+    }
+    return;
+  }
+  if (a === 'copiar') {
+    try {
+      const d = await ofPedir('/api/planos/' + mpEd.plano.id + '/texto');
+      await navigator.clipboard.writeText(d.texto);
+      estado.textContent = 'Brief copiado en Markdown' + (mpEd.sucio ? ' (sin los cambios sin guardar)' : '') + '.';
+    } catch (e) { estado.textContent = e.message || 'No se pudo copiar.'; }
+    return;
+  }
+  if (a === 'brief') {
+    if (mpEd.sucio && !confirm('Hay cambios sin guardar en el mapa. ¿Seguir igual?')) return;
+    const plano = mpEd.plano;
+    mpEd.sucio = false;
+    mpCerrarEditor();
+    return mpAbrirBrief(plano);
+  }
+  if (a === 'borrar') {
+    if (!confirm('¿Borrar el plano de ' + mpEd.plano.nombre + '? El link del cliente deja de andar.')) return;
+    try {
+      await ofPedir('/api/planos/' + mpEd.plano.id, 'DELETE');
+      mpEd.sucio = false;
+      mpCerrarEditor();
+    } catch (e) { estado.textContent = e.message; }
+    return;
+  }
+  if (a === 'resolver') {
+    try {
+      const d = await ofPedir('/api/planos/' + mpEd.plano.id + '/respuestas/' + Number(b.dataset.rid), 'PATCH', {resuelta: b.dataset.resuelta === '1'});
+      const sucio = mpEd.sucio, paginas = mpEd.paginas;
+      mpMostrarEditor(d.plano);
+      if (sucio) { mpEd.paginas = paginas; mpSucio(); mpPintarEditor(); }
+    } catch (e) { estado.textContent = e.message; }
+  }
+}
+// ========== FIN Planificador de sitios ==========
 """
 
 PLEXO_JS = r"""// ========== Plexo: cobro automático ==========
@@ -3250,6 +3717,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-planos .nav-icon{stroke:#818cf8}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3754,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-planos.active .nav-icon{stroke:#c7d2fe}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3787,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-planos .nav-icon{stroke:#4338ca}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3841,6 +4311,93 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-volver{display:inline-flex;margin-bottom:10px}
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
+}
+/* Planificador de sitios (26/10): mapa del sitio, secciones y textos antes de diseñar. */
+.mp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.mp-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.mp-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mp-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.mp-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.mp-vacio{padding:30px;text-align:center;color:var(--texto-tenue);font-size:.88rem;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:12px}
+.mp-lista{display:flex;flex-direction:column;gap:10px}
+.mp-item{display:flex;gap:14px;align-items:center;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px}
+.mp-item.cambios{border-left:3px solid var(--ambar)}
+.mp-item.aprobado{border-left:3px solid var(--verde-texto)}
+.mp-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.mp-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mp-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.mp-meta{font-size:.8rem;color:var(--texto-tenue)}
+.mp-meta b{color:var(--texto);font-variant-numeric:tabular-nums}
+.mp-alerta{color:var(--ambar);font-weight:600}
+.mp-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto-tenue)}
+.mp-pill.enviado{background:var(--azul-tinte);color:var(--azul-claro)}
+.mp-pill.cambios{background:var(--ambar-tinte);color:var(--ambar)}
+.mp-pill.aprobado{background:var(--verde-tinte);color:var(--verde-texto)}
+.mp-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.mp-form h3{margin:0 0 10px;font-size:.9rem;color:var(--texto-fuerte)}
+.mp-form-grid,.mp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.mp-form label,.mp-pag label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+.mp-form .ancho,.mp-pag .ancho{grid-column:1/-1}
+.mp-form input,.mp-form select,.mp-form textarea,.mp-pag input,.mp-pag select,.mp-pag textarea,.mp-sumar select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:.85rem}
+.mp-pag textarea,.mp-form textarea{resize:vertical}
+.mp-form label.mp-chk{flex-direction:row;align-items:center;gap:6px;font-size:.8rem;color:var(--texto)}
+.mp-form-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.mp-previa{font-size:.8rem;color:var(--texto-tenue);margin-top:10px;min-height:1em}
+.mp-ayuda{font-size:.72rem;color:var(--texto-tenue);font-weight:400}
+.mp-ed-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.mp-ed-tit{display:flex;gap:10px;align-items:center;flex:1;min-width:200px}
+.mp-ed-tit h2{margin:0;font-size:1.2rem;color:var(--texto-fuerte)}
+.mp-ed-acc{display:flex;gap:6px;flex-wrap:wrap}
+.mp-ed-acc .of-btn[disabled]{opacity:.55;cursor:default}
+.mp-ed-meta{font-size:.82rem;color:var(--texto-tenue);margin-bottom:14px;display:flex;gap:4px 8px;flex-wrap:wrap;align-items:center}
+.mp-ed-meta b{color:var(--texto)}
+.mp-ed-meta a{color:var(--azul-claro)}
+.mp-arbol{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;overflow-x:auto;margin-bottom:14px}
+.mp-raiz{display:flex;justify-content:center;padding-bottom:14px;margin-bottom:14px;border-bottom:1px dashed var(--borde-fuerte)}
+.mp-ramas{display:flex;gap:10px;align-items:flex-start}
+.mp-col{display:flex;flex-direction:column;gap:8px;flex:1 0 170px;max-width:240px}
+.mp-nodo{display:flex;flex-direction:column;gap:4px;text-align:left;width:100%;min-width:170px;max-width:260px;background:var(--relleno);border:1px solid var(--borde-fuerte);border-top:3px solid var(--azul);border-radius:10px;padding:9px 10px;font-family:inherit;color:var(--texto);cursor:pointer}
+.mp-nodo.hijo{margin-left:12px;width:calc(100% - 12px);min-width:0;border-top-color:var(--borde-fuerte);border-style:dashed}
+.mp-nodo.sel{outline:2px solid var(--azul);outline-offset:1px}
+.mp-nodo.aprobada{border-top-color:var(--verde-texto)}
+.mp-nodo.cambios{border-top-color:var(--ambar)}
+.mp-nodo.nuevo{align-items:center;justify-content:center;color:var(--texto-tenue);border-style:dashed;border-top-width:1px;min-height:60px}
+.mp-nodo-n{font-weight:600;font-size:.85rem;color:var(--texto-fuerte)}
+.mp-nodo-r{font-family:ui-monospace,Menlo,monospace;font-size:.7rem;color:var(--texto-tenue);overflow-wrap:anywhere}
+.mp-nodo-h{font-size:.7rem;color:var(--texto-tenue)}
+.mp-chips{display:flex;flex-direction:column;gap:2px}
+.mp-chips i{font-style:normal;font-size:.7rem;background:var(--superficie);border:1px solid var(--borde);border-radius:4px;padding:1px 6px;color:var(--texto-tenue)}
+.mp-chequeos{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-bottom:14px;font-size:.82rem;color:var(--texto)}
+.mp-chequeos summary{cursor:pointer;color:var(--ambar);font-weight:600}
+.mp-chequeos ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.mp-chequeos li.pendiente{color:var(--texto-tenue)}
+.mp-pag{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
+.mp-pag h4{margin:16px 0 8px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mp-pag-cab{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.mp-pag-cab h3{margin:0;font-size:1rem;color:var(--texto-fuerte)}
+.mp-sec-acc{display:flex;gap:4px;margin-left:auto}
+.mp-sec-acc .of-btn[disabled]{opacity:.4;cursor:default}
+.mp-cont{font-variant-numeric:tabular-nums;margin-left:4px}
+.mp-cont.mal{color:var(--rojo-texto);font-weight:600}
+.mp-google{border:1px solid var(--borde);border-radius:10px;padding:10px 12px;margin-top:10px;background:var(--relleno)}
+.mp-google .u{font-size:.74rem;color:var(--verde-texto)}
+.mp-google .t{font-size:1rem;color:var(--azul-claro)}
+.mp-google .d{font-size:.8rem;color:var(--texto-tenue)}
+.mp-sec{border:1px solid var(--borde);border-left:3px solid var(--azul);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px;background:var(--relleno)}
+.mp-sec-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mp-sec-tipo{font-weight:700;font-size:.78rem;color:var(--texto-fuerte);text-transform:uppercase;letter-spacing:.03em}
+.mp-sec-guia{font-size:.74rem;color:var(--texto-tenue);flex:1;min-width:160px}
+.mp-sumar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mp-resps{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.mp-resp{font-size:.82rem;color:var(--texto);border-left:3px solid var(--ambar);background:var(--ambar-tinte);border-radius:6px;padding:6px 10px}
+.mp-resp.aprobada{border-left-color:var(--verde-texto);background:var(--verde-tinte)}
+.mp-resp.hecha{opacity:.6}
+.mp-resp .of-btn{margin-top:4px}
+@media (max-width:760px){
+  .mp-ramas{flex-direction:column}
+  .mp-col{max-width:none;width:100%}
+  .mp-nodo{max-width:none}
+  .mp-item{flex-direction:column;align-items:stretch}
 }
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
@@ -5010,6 +5567,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <!-- Planificador (26/10): mapa del sitio, secciones y textos aprobados por el cliente. Panel "planos". -->
+  <div class="nav-item" id="nav-planos" onclick="showPanel('planos')"><i data-lucide="map" class="nav-icon"></i> Planificador de sitios</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
@@ -6376,6 +6935,52 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= PLANIFICADOR PANEL ======= -->
+  <!-- Del brief al mapa del sitio con secciones y textos, y el link para que el
+       cliente apruebe página por página antes de diseñar (services/planos.py). -->
+  <div id="planos-panel" class="panel">
+    <div id="mp-inicio">
+      <div class="page-header">
+        <div>
+          <h1>Planificador de sitios</h1>
+          <div class="page-date">Del brief al mapa del sitio con los textos de cada sección, aprobado por el cliente antes de diseñar.</div>
+        </div>
+        <button type="button" class="of-btn prim" id="mp-nuevo" aria-expanded="false" aria-controls="mp-form">+ Nuevo plano</button>
+      </div>
+      <form class="mp-form" id="mp-form" hidden>
+        <h3 id="mp-form-titulo">Nuevo plano</h3>
+        <div class="mp-form-grid">
+          <label>Negocio<input name="nombre" maxlength="80" required placeholder="Clínica Sonrisa"></label>
+          <label>Rubro<input name="rubro" id="mp-rubro" maxlength="80" placeholder="Odontología"></label>
+          <label>Tipo de negocio<select name="familia" id="mp-familia" required></select></label>
+          <label>Sitio<select name="tipo" id="mp-tipo"></select></label>
+          <label>Qué tiene que lograr<select name="objetivo" id="mp-objetivo"></select></label>
+          <label>Tono<select name="tono" id="mp-tono"></select></label>
+          <label>Ciudad o barrio<input name="ciudad" maxlength="60" placeholder="Salto"></label>
+          <label>Dirección (opcional)<input name="direccion" maxlength="120"></label>
+          <label>WhatsApp (opcional)<input name="whatsapp" maxlength="30" placeholder="099 123 456"></label>
+          <label>Dominio (opcional)<input name="dominio" maxlength="120" placeholder="clinicasonrisa.com.uy"></label>
+          <label>Años en el rubro (opcional)<input name="anios" type="number" min="1" max="149"></label>
+          <label>Cliente del CRM (opcional)<select name="business_id" id="mp-cliente"></select></label>
+          <label class="ancho">Servicios, productos o cursos <span class="mp-ayuda">uno por línea, hasta 12; con 2 o más, cada uno puede tener su página</span><textarea name="servicios" rows="4" placeholder="Implantes&#10;Ortodoncia&#10;Blanqueamiento"></textarea></label>
+          <label class="ancho">Qué los hace distintos (opcional) <span class="mp-ayuda">va como bajada de la portada</span><input name="diferencial" maxlength="240" placeholder="Atendemos sábados y con todas las mutualistas"></label>
+        </div>
+        <label class="mp-chk" id="mp-regenerar-fila" hidden><input type="checkbox" name="regenerar"> Rehacer el mapa desde cero con este brief (borra lo editado)</label>
+        <div class="mp-previa" id="mp-previa" aria-live="polite"></div>
+        <div class="mp-form-pie">
+          <button type="submit" class="of-btn prim" id="mp-guardar">Crear plano</button>
+          <button type="button" class="of-btn" id="mp-cancelar">Cancelar</button>
+          <span class="of-ayuda" id="mp-form-estado" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+      <div class="mp-kpis" id="mp-kpis"></div>
+      <div class="cr-nota" id="mp-nota" role="status" aria-live="polite"></div>
+      <div class="mp-lista" id="mp-lista" aria-live="polite"></div>
+    </div>
+    <div id="mp-editor" hidden></div>
+  </div>
+  <!-- ======= FIN PLANIFICADOR PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8205,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'planos') mpCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13293,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','planos','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',planos:'map'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',planos:'Planificador'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13387,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','planos'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16801,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*PLANOS_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22956,6 +23563,7 @@ async function loadActivity() {
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
+).replace("/*PLANOS_JS*/", "/* {% raw %} */" + PLANOS_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
@@ -23079,7 +23687,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, planos_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23714,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Planificador: el link donde el cliente revisa y aprueba el plan de su
+        # sitio (/plano/<token>). El token al azar es el acceso; ver routes/planos.py.
+        if request.path.startswith(PLANOS_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24745,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','planos'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',planos:'Planificador de sitios'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
