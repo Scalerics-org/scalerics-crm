@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Diagnóstico web gratuito (26/10): services/diagnostico.py. Va a
+        # quien ya vende (Seguimiento de leads o Proceso de venta).
+        from services.diagnostico import init_diagnostico
+        init_diagnostico(conn)
+        _grant_panel_to_existing_roles(conn, "diagnostico", si_tiene=("seg_leads", "notion_clients"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
