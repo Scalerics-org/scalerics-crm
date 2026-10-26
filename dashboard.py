@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.diagnostico import PUBLICAS as DIAGNOSTICO_PUBLICAS, diagnostico_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  diagnostico: 'diagnostico web auditoria sitio puntaje seo velocidad whatsapp informe grader',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2102,6 +2104,165 @@ async function plxPausar(id, pausada) {
   plxCargar();
 }
 // ========== FIN Plexo: cobro automático ==========
+"""
+
+DIAGNOSTICO_JS = r"""// ========== Diagnóstico web ==========
+// services/diagnostico.py analiza; acá solo se pinta. Dominios, nombres y
+// títulos los escribe cualquiera desde la página pública: todo pasa por crEsc.
+const DG_SEG = [['nuevo', 'Nuevo'], ['hablado', 'Hablado'], ['propuesta', 'Con propuesta'], ['descartado', 'Descartado']];
+let dgPublica = '';
+let dgLead = null;
+let dgTimer = null;
+let dgDatos = [];
+
+function dgNivel(p) { return p >= 80 ? 'bien' : (p >= 55 ? 'mejorable' : 'mal'); }
+
+async function dgCargar() {
+  const lista = document.getElementById('dg-lista');
+  if (!lista) return;
+  const nota = document.getElementById('dg-nota');
+  nota.textContent = '';
+  let d;
+  try {
+    d = await ofPedir('/api/diagnosticos?filtro=' + encodeURIComponent(document.getElementById('dg-filtro').value));
+  } catch (e) {
+    nota.textContent = e.message;
+    return;
+  }
+  dgPublica = d.publica_url;
+  dgDatos = d.diagnosticos;
+  const r = d.resumen;
+  document.getElementById('dg-kpis').innerHTML = [
+    ['Últimos 30 días', r.mes, r.web + ' desde la página pública'],
+    ['Puntaje promedio', r.promedio === null ? '—' : r.promedio, 'de los que abrieron'],
+    ['Perdiendo clientes', r.perdiendo, 'menos de 55 puntos', r.perdiendo ? 'mal' : ''],
+    ['Sin WhatsApp', r.sin_whatsapp, 'no tienen el botón', r.sin_whatsapp ? 'mal' : ''],
+    ['Abrieron el informe', r.abiertos, 'al menos una vez'],
+    ['Pedidos sin atender', r.nuevos, 'de la web, en "Nuevo"', r.nuevos ? 'ojo' : ''],
+  ].map(([l, v, s, c]) => '<div class="dg-kpi"><div class="dg-kpi-l">' + crEsc(l) + '</div><div class="dg-kpi-v '
+    + (c || '') + '">' + crEsc(v) + '</div><div class="dg-kpi-s">' + crEsc(s) + '</div></div>').join('');
+  lista.innerHTML = dgDatos.length ? dgDatos.map(dgItem).join('')
+    : '<div class="dg-vacio">Todavía no hay diagnósticos. Probá con el sitio de un lead arriba, o compartí la página '
+      + 'pública: cada comercio que la usa queda acá y como lead.</div>';
+}
+
+function dgItem(x) {
+  const ok = x.estado === 'ok';
+  const nombre = x.lead || x.nombre || '';
+  const score = ok ? '<div class="dg-score ' + dgNivel(x.puntaje) + '" title="' + crEsc((x.nivel || {}).texto || '')
+    + '">' + x.puntaje + '</div>' : '<div class="dg-score error" title="El sitio no abrió">!</div>';
+  const llamada = !ok ? '<div class="dg-error">' + crEsc(x.error || 'El sitio no abrió') + '</div>'
+    : (x.prioridades.length ? '<div class="dg-llamada"><div class="dg-sub">Para la llamada</div><ol>'
+      + x.prioridades.map(p => '<li><span class="dg-punto ' + crEsc(p.estado) + '"></span>' + crEsc(p.titulo)
+        + (p.servicio ? ' <span class="dg-serv">' + crEsc(p.servicio) + '</span>' : '') + '</li>').join('')
+      + '</ol></div>' : '<div class="of-ayuda">Sin problemas importantes: buen candidato para medir contactos.</div>');
+  const cats = ok ? '<div class="dg-cats">' + x.categorias.map(c => '<div class="dg-cat" title="' + crEsc(c.nombre + ': '
+    + c.puntaje + '/100') + '"><span>' + crEsc(c.nombre) + '</span><div class="dg-barra"><i class="' + dgNivel(c.puntaje)
+    + '" style="width:' + Math.max(3, c.puntaje) + '%"></i></div></div>').join('') + '</div>' : '';
+  const contacto = [x.telefono, x.email].filter(Boolean).map(crEsc).join(' · ');
+  const meta = [
+    '<span class="dg-pill ' + (x.origen === 'web' ? 'web' : '') + '">' + (x.origen === 'web' ? 'Pedido desde la web' : 'Del equipo') + '</span>',
+    crEsc(ofFecha(x.creado_en)),
+    x.plataforma ? crEsc(x.plataforma) : '',
+    x.aperturas ? 'Abrió el informe ' + x.aperturas + (x.aperturas === 1 ? ' vez' : ' veces') : (x.origen === 'web' ? '' : 'Informe sin abrir'),
+  ].filter(Boolean).join('<span class="dg-sep">·</span>');
+  return '<article class="dg-item" id="dg-item-' + x.id + '">' + score
+    + '<div class="dg-cuerpo"><div class="dg-cab"><span class="dg-dom">' + crEsc(x.dominio) + '</span>'
+    + (nombre ? '<span class="dg-nombre">' + crEsc(nombre) + '</span>' : '') + '</div>'
+    + '<div class="dg-meta">' + meta + '</div>'
+    + (contacto ? '<div class="dg-contacto">' + contacto + '</div>' : '')
+    + '<div class="dg-dos">' + llamada + cats + '</div>'
+    + '<div class="dg-acc">'
+    + '<a class="of-btn prim" href="' + crEsc(x.informe_url) + '" target="_blank" rel="noopener">Ver informe</a>'
+    + '<button type="button" class="of-btn" onclick="dgCopiar(this, ' + x.id + ')">Copiar link</button>'
+    + '<button type="button" class="of-btn" onclick="dgRepetir(this, ' + x.id + ')">Repetir</button>'
+    + '<label class="dg-seg"><span class="dg-sr">Seguimiento</span><select onchange="dgEditar(' + x.id
+    + ', {seguimiento: this.value})">' + DG_SEG.map(([v, l]) => '<option value="' + v + '"' + (x.seguimiento === v
+      ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>'
+    + '<button type="button" class="of-btn dg-borrar" onclick="dgBorrar(' + x.id + ')">Borrar</button></div>'
+    + '<textarea class="dg-notatxt" maxlength="2000" placeholder="Nota (qué se habló, qué se ofreció)" aria-label="Nota" '
+    + 'onchange="dgEditar(' + x.id + ', {nota: this.value})">' + crEsc(x.nota || '') + '</textarea>'
+    + '</div></article>';
+}
+
+async function dgDiagnosticar() {
+  const url = document.getElementById('dg-url');
+  const btn = document.getElementById('dg-correr');
+  const nota = document.getElementById('dg-nota');
+  if (!url.value.trim()) { url.focus(); return; }
+  btn.disabled = true;
+  btn.textContent = 'Analizando…';
+  nota.textContent = '';
+  try {
+    const d = (await ofPedir('/api/diagnosticos', 'POST', {url: url.value, business_id: dgLead ? dgLead.id : null})).diagnostico;
+    nota.textContent = d.estado === 'ok' ? 'Listo: ' + d.dominio + ' sacó ' + d.puntaje + '/100.' : 'No abrió: ' + d.error;
+    url.value = '';
+    dgElegirLead(null);
+    await dgCargar();
+  } catch (e) {
+    nota.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Diagnosticar';
+  }
+}
+
+function dgBuscarLead(q) {
+  clearTimeout(dgTimer);
+  const caja = document.getElementById('dg-sug');
+  if (q.trim().length < 2) { caja.hidden = true; return; }
+  dgTimer = setTimeout(async () => {
+    let d;
+    try { d = await ofPedir('/api/diagnosticos/leads?q=' + encodeURIComponent(q)); } catch (e) { return; }
+    caja.innerHTML = d.leads.map((l, i) => '<button type="button" onclick="dgElegirLead(' + i + ')">' + crEsc(l.name)
+      + (l.website ? ' <span>' + crEsc(l.website) + '</span>' : '') + '</button>').join('')
+      || '<div class="of-ayuda">Ningún lead con ese nombre.</div>';
+    caja._leads = d.leads;
+    caja.hidden = false;
+  }, 250);
+}
+
+function dgElegirLead(i) {
+  const caja = document.getElementById('dg-sug');
+  const busca = document.getElementById('dg-lead');
+  const chip = document.getElementById('dg-lead-chip');
+  dgLead = i === null ? null : caja._leads[i];
+  caja.hidden = true;
+  if (!dgLead) { chip.hidden = true; busca.hidden = false; busca.value = ''; return; }
+  if (dgLead.website && !document.getElementById('dg-url').value.trim()) document.getElementById('dg-url').value = dgLead.website;
+  chip.hidden = false;
+  busca.hidden = true;
+  chip.querySelector('span').textContent = dgLead.name;
+}
+
+async function dgEditar(id, cambios) {
+  try { await ofPedir('/api/diagnosticos/' + id, 'PATCH', cambios); }
+  catch (e) { document.getElementById('dg-nota').textContent = e.message; }
+}
+
+async function dgRepetir(btn, id) {
+  btn.disabled = true;
+  btn.textContent = 'Analizando…';
+  try { await ofPedir('/api/diagnosticos/' + id + '/repetir', 'POST', {}); await dgCargar(); }
+  catch (e) { document.getElementById('dg-nota').textContent = e.message; btn.disabled = false; btn.textContent = 'Repetir'; }
+}
+
+async function dgBorrar(id) {
+  if (!confirm('¿Borrar este diagnóstico? El link del informe deja de andar. El lead queda en el CRM.')) return;
+  try { await ofPedir('/api/diagnosticos/' + id, 'DELETE'); await dgCargar(); }
+  catch (e) { document.getElementById('dg-nota').textContent = e.message; }
+}
+
+function dgCopiar(btn, id) {
+  const x = id === null ? {informe_url: dgPublica} : dgDatos.find(d => d.id === id);
+  if (!x) return;
+  navigator.clipboard.writeText(x.informe_url).then(() => {
+    const antes = btn.textContent;
+    btn.textContent = 'Copiado';
+    setTimeout(() => { btn.textContent = antes; }, 1500);
+  }).catch(() => prompt('Copiá el link:', x.informe_url));
+}
+// ========== FIN Diagnóstico web ==========
 """
 
 WA_MEDIOS_JS = r"""
@@ -3250,6 +3411,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-diagnostico .nav-icon{stroke:#84cc16}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3448,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-diagnostico.active .nav-icon{stroke:#d9f99d}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3481,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-diagnostico .nav-icon{stroke:#3f6212}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3842,6 +4006,61 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
 }
+/* Diagnóstico web (26/10) */
+.dg-pub{display:flex;gap:8px;flex-wrap:wrap}
+.dg-nuevo{display:grid;grid-template-columns:minmax(200px,1.4fr) minmax(180px,1fr) auto auto;gap:8px;margin:0 0 14px;align-items:start}
+.dg-nuevo input,.dg-nuevo select{width:100%;box-sizing:border-box;background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px 10px;font:inherit;font-size:.85rem}
+.dg-nuevo .of-btn{padding:8px 14px;font-size:.82rem}
+.dg-lead-caja{position:relative}
+.dg-chip[hidden],.dg-sug[hidden]{display:none}
+.dg-chip{display:flex;align-items:center;justify-content:space-between;gap:6px;border:1px solid var(--azul);border-radius:8px;padding:7px 10px;font-size:.85rem;color:var(--texto-fuerte)}
+.dg-chip button{all:unset;cursor:pointer;color:var(--texto-tenue)}
+.dg-sug{position:absolute;z-index:20;top:calc(100% + 4px);left:0;right:0;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:10px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.dg-sug button{all:unset;box-sizing:border-box;display:block;width:100%;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:.84rem;color:var(--texto-fuerte)}
+.dg-sug button:hover{background:var(--hover)}.dg-sug span{color:var(--texto-tenue);font-size:.76rem}
+.dg-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:6px 0 16px}
+.dg-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.dg-kpi-l{font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--texto-tenue)}
+.dg-kpi-v{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);margin:2px 0}
+.dg-kpi-v.mal{color:var(--rojo)}.dg-kpi-v.ojo{color:var(--ambar)}
+.dg-kpi-s{font-size:.74rem;color:var(--texto-tenue)}
+.dg-lista{display:flex;flex-direction:column;gap:10px}
+.dg-vacio{border:1px dashed var(--borde-fuerte);border-radius:12px;padding:28px;text-align:center;color:var(--texto-tenue);font-size:.88rem}
+.dg-item{display:grid;grid-template-columns:56px 1fr;gap:14px;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:14px 16px}
+.dg-score{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;font-size:1.25rem;font-weight:800}
+.dg-score.bien{background:rgba(16,185,129,.14);color:var(--verde)}
+.dg-score.mejorable{background:rgba(245,158,11,.14);color:var(--ambar)}
+.dg-score.mal,.dg-score.error{background:rgba(248,113,113,.14);color:var(--rojo)}
+.dg-cuerpo{min-width:0}
+.dg-cab{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.dg-dom{font-size:1rem;font-weight:700;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.dg-nombre{font-size:.85rem;color:var(--texto)}
+.dg-meta{font-size:.76rem;color:var(--texto-tenue);margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:0 2px}
+.dg-sep{margin:0 6px}
+.dg-pill{border-radius:999px;padding:1px 8px;background:var(--relleno);font-weight:600}
+.dg-pill.web{background:rgba(0,136,204,.16);color:var(--azul-claro)}
+.dg-contacto{font-size:.8rem;color:var(--texto);margin-top:4px;overflow-wrap:anywhere}
+.dg-dos{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-top:10px}
+.dg-sub{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue);margin-bottom:4px}
+.dg-llamada ol{margin:0;padding-left:18px;font-size:.84rem;color:var(--texto-fuerte)}
+.dg-llamada li{margin:3px 0}
+.dg-punto{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dg-punto.mal{background:var(--rojo)}.dg-punto.aviso{background:var(--ambar)}
+.dg-serv{font-size:.74rem;color:var(--azul-claro);white-space:nowrap}
+.dg-error{font-size:.84rem;color:var(--rojo)}
+.dg-cats{display:grid;gap:5px;align-content:start}
+.dg-cat{display:grid;grid-template-columns:78px 1fr;gap:8px;align-items:center;font-size:.74rem;color:var(--texto-tenue)}
+.dg-barra{height:6px;border-radius:6px;background:var(--relleno);overflow:hidden}
+.dg-barra i{display:block;height:100%;border-radius:6px}
+.dg-barra i.bien{background:var(--verde)}.dg-barra i.mejorable{background:var(--ambar)}.dg-barra i.mal{background:var(--rojo)}
+.dg-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.dg-acc a.of-btn{text-decoration:none}
+.dg-seg select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:5px 8px;font:inherit;font-size:.76rem}
+.dg-borrar{margin-left:auto}
+.dg-notatxt{width:100%;box-sizing:border-box;margin-top:8px;min-height:34px;resize:vertical;background:transparent;border:1px solid var(--borde);border-radius:8px;color:var(--texto);padding:6px 9px;font:inherit;font-size:.8rem}
+@media (max-width:900px){.dg-kpis{grid-template-columns:repeat(3,1fr)}.dg-nuevo{grid-template-columns:1fr 1fr}.dg-dos{grid-template-columns:1fr}}
+@media (max-width:560px){.dg-kpis{grid-template-columns:repeat(2,1fr)}.dg-nuevo{grid-template-columns:1fr}.dg-item{grid-template-columns:1fr}.dg-borrar{margin-left:0}}
+.dg-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -5006,6 +5225,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
+  <!-- Diagnóstico web gratuito (26/10): los comercios ponen su sitio y queda como lead. Panel "diagnostico". -->
+  <div class="nav-item" id="nav-diagnostico" onclick="showPanel('diagnostico')"><i data-lucide="gauge" class="nav-icon"></i> Diagnósticos web</div>
   <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
@@ -6376,6 +6597,43 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= DIAGNÓSTICO WEB PANEL ======= -->
+  <!-- Diagnóstico web gratuito (26/10): services/diagnostico.py y routes/diagnostico.py.
+       Panel "diagnostico". La página pública es /diagnostico. -->
+  <div id="diagnostico-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Diagnósticos web</h1>
+        <div class="page-date">Los comercios ponen su sitio en la página pública y reciben un informe con puntaje. Cada pedido queda acá y como lead, con lo que hay que hablar en la llamada.</div>
+      </div>
+      <div class="dg-pub">
+        <a class="of-btn" href="/diagnostico" target="_blank" rel="noopener">Abrir la página pública</a>
+        <button type="button" class="of-btn" onclick="dgCopiar(this, null)">Copiar link público</button>
+      </div>
+    </div>
+    <form class="dg-nuevo" onsubmit="event.preventDefault();dgDiagnosticar()">
+      <label class="dg-sr" for="dg-url">Dirección del sitio</label>
+      <input id="dg-url" type="text" inputmode="url" placeholder="Dirección del sitio, ej. barberia.com.uy" autocomplete="off">
+      <div class="dg-lead-caja">
+        <label class="dg-sr" for="dg-lead">Lead (opcional)</label>
+        <input id="dg-lead" type="text" placeholder="Lead del CRM (opcional)" autocomplete="off" oninput="dgBuscarLead(this.value)">
+        <div class="dg-chip" id="dg-lead-chip" hidden><span></span><button type="button" aria-label="Sacar el lead" onclick="dgElegirLead(null)">✕</button></div>
+        <div class="dg-sug" id="dg-sug" hidden></div>
+      </div>
+      <button type="submit" class="of-btn prim" id="dg-correr">Diagnosticar</button>
+      <label class="dg-sr" for="dg-filtro">Mostrar</label>
+      <select id="dg-filtro" onchange="dgCargar()">
+        <option value="">Todos</option><option value="web">Pedidos desde la web</option><option value="equipo">Del equipo</option>
+        <option value="nuevo">Nuevos</option><option value="hablado">Hablados</option><option value="propuesta">Con propuesta</option>
+        <option value="descartado">Descartados</option>
+      </select>
+    </form>
+    <div class="cr-nota" id="dg-nota" role="status" aria-live="polite"></div>
+    <div class="dg-kpis" id="dg-kpis"></div>
+    <div class="dg-lista" id="dg-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN DIAGNÓSTICO WEB PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +7858,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'diagnostico') dgCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12693,14 +12952,14 @@ const NAV_ICONS = {
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',diagnostico:'gauge'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',diagnostico:'Diagnósticos'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13040,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','diagnostico'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16454,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*DIAGNOSTICO_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23217,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*DIAGNOSTICO_JS*/", "/* {% raw %} */" + DIAGNOSTICO_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23340,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, diagnostico_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23367,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Diagnóstico web: el formulario público, su versión JSON para
+        # scalerics.com y el informe que abre el comercio. Ver routes/diagnostico.py.
+        if request.path == "/diagnostico" or request.path.startswith(tuple(p + "/" for p in DIAGNOSTICO_PUBLICAS)):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24398,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','diagnostico'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',diagnostico:'Diagnósticos web'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
