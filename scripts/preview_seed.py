@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash
 
 from database import create_user, get_user_by_email, init_db
 from services import agentes as ag
+from services import planos as pl
 
 LARGO_MINIMO_CLAVE = 12
 
@@ -58,6 +59,45 @@ def sembrar(db: str, email: str, clave: str) -> None:
         ag.proponer(db, autor, "crm", "Propuesta de ejemplo",
                     "Así se ve una propuesta en el panel Agentes de la vista previa.",
                     clave="preview-ejemplo")
+    sembrar_planos(db)
+
+
+# Planos inventados para el Planificador. El token del de ejemplo es fijo para
+# poder linkear la página del cliente desde la PR.
+TOKEN_PLANO = "vista-previa-plano-clinica"
+
+
+def sembrar_planos(db: str) -> None:
+    conn = sqlite3.connect(db)
+    try:
+        if conn.execute("SELECT 1 FROM pl_planos LIMIT 1").fetchone():
+            return
+    finally:
+        conn.close()
+    clinica = pl.crear(db, {"nombre": "Clínica Dental Sonrisa", "rubro": "Odontología", "ciudad": "Salto",
+                            "servicios": "Implantes\nOrtodoncia\nBlanqueamiento\nOdontopediatría",
+                            "whatsapp": "099 000 500", "anios": 12, "dominio": "clinicasonrisa.com.uy",
+                            "diferencial": "Atendemos los sábados y con las principales mutualistas"}, "Vista previa")
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE pl_planos SET token = ? WHERE id = ?", (TOKEN_PLANO, clinica["id"]))
+    conn.commit()
+    conn.close()
+    pl.marcar_enviado(db, clinica["id"])
+    pl.responder(db, TOKEN_PLANO, "inicio", "aprobada", "", "Laura")
+    pl.responder(db, TOKEN_PLANO, "equipo", "aprobada", "", "Laura")
+    pl.responder(db, TOKEN_PLANO, "servicio-ortodoncia", "cambios",
+                 "Hacemos ortodoncia invisible también, que es lo que más nos piden. ¿Lo pueden sumar?", "Laura")
+
+    pl.crear(db, {"nombre": "Climatiza Norte", "rubro": "Aire acondicionado", "ciudad": "Maldonado",
+                  "servicios": "Instalación\nService y limpieza\nVenta de equipos", "tono": "profesional"},
+             "Vista previa")
+    tienda = pl.crear(db, {"nombre": "Tienda Bambú", "rubro": "Ropa", "tipo": "ecommerce", "ciudad": "Colonia",
+                           "servicios": "Remeras\nBuzos\nAccesorios"}, "Vista previa")
+    pl.marcar_enviado(db, tienda["id"])
+    conn = sqlite3.connect(db)
+    token = conn.execute("SELECT token FROM pl_planos WHERE id = ?", (tienda["id"],)).fetchone()[0]
+    conn.close()
+    pl.responder(db, token, "*", "aprobada", "", "Martina")
 
 
 def main() -> int:
