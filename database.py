@@ -2267,6 +2267,11 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Fábrica de asistentes (26/10, services/asistentes.py): el bot de
+        # WhatsApp de cada comercio. Va a quien ya ve Proyectos o WhatsApp.
+        from services.asistentes import init_asistentes
+        init_asistentes(conn)
+        _grant_panel_to_existing_roles(conn, "asistentes", si_tiene=("projects", "wa"))
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)
