@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.analitica import PUBLICAS as ANALITICA_PUBLICAS, analitica_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  analitica: 'analitica visitas contactos whatsapp conversion informe sitios trafico',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,284 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+ANALITICA_JS = r"""// ========== Analítica de contactos ==========
+// services/analitica.py cuenta; acá solo se pinta. Las páginas, orígenes y
+// campañas los escribe cualquiera que visite el sitio del cliente: todo pasa
+// por crEsc.
+const AN_TIPOS = [['whatsapp', 'WhatsApp'], ['llamada', 'Llamadas'], ['formulario', 'Formularios'],
+                  ['mail', 'Mails'], ['compra', 'Compras']];
+const AN_ESTADO = {ok: 'Midiendo', sin_instalar: 'Falta instalar', sin_datos: 'Sin datos hace días',
+                   pausado: 'Pausado'};
+let anDias = 30;
+let anDatos = [];
+let anAbierto = null;
+
+function anNum(n) { return Number(n || 0).toLocaleString('es-UY'); }
+function anPct(v) { return v === null || v === undefined ? '—' : (v * 100).toFixed(1).replace('.', ',') + '%'; }
+function anVar(v) {
+  if (v === null || v === undefined) return '';
+  const sube = v >= 0;
+  return '<span class="an-var ' + (sube ? 'sube' : 'baja') + '">' + (sube ? '▲' : '▼') + ' '
+    + Math.abs(Math.round(v * 100)) + '%</span>';
+}
+function anBarras(valores, clase, titulos) {
+  const max = Math.max(1, ...valores);
+  return '<div class="an-barras ' + clase + '">' + valores.map((n, i) =>
+    '<span title="' + crEsc(titulos ? titulos[i] : n) + '"><i style="height:' + Math.max(n ? 6 : 2, Math.round(n * 100 / max))
+    + '%"' + (n ? '' : ' class="cero"') + '></i></span>').join('') + '</div>';
+}
+
+async function anCargar() {
+  const nota = document.getElementById('an-nota');
+  const lista = document.getElementById('an-lista');
+  if (!lista) return;
+  if (nota) nota.textContent = '';
+  anPintarPeriodo();
+  let d;
+  try {
+    d = await ofPedir('/api/analitica/sitios?dias=' + anDias);
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  anDatos = d.sitios;
+  const r = d.resumen;
+  document.getElementById('an-kpis').innerHTML = [
+    ['Contactos', anNum(r.contactos), 'WhatsApp, llamadas, formularios y mails'],
+    ['De WhatsApp', anNum(r.whatsapp), 'personas que tocaron el botón'],
+    ['Visitas', anNum(r.visitas), 'en ' + anNum(r.sitios) + ' sitio(s)'],
+    ['Conversión', anPct(r.conversion), 'visitas que terminan en contacto'],
+    ['Sin datos', anNum(r.sin_datos), 'sitios con el script caído o sin poner'],
+  ].map(([l, v, s], i) => '<div class="mon-kpi"><div class="mon-kpi-l">' + crEsc(l) + '</div><div class="mon-kpi-v'
+    + (i === 4 && r.sin_datos ? ' mal' : '') + '">' + crEsc(v) + '</div><div class="mon-kpi-s">' + crEsc(s)
+    + '</div></div>').join('');
+  if (!anDatos.length) {
+    lista.innerHTML = '<div class="an-vacio">Todavía no hay sitios. Agregá uno, pegá el script en su cabecera y '
+      + 'en unos minutos empiezan a aparecer las visitas y los contactos.</div>';
+    return;
+  }
+  lista.innerHTML = anDatos.map(anItem).join('');
+  if (anAbierto && anDatos.some(s => s.id === anAbierto)) anAbrir(anAbierto, true);
+}
+
+function anItem(s) {
+  const tipos = AN_TIPOS.filter(([t]) => s.por_tipo[t]).map(([t, l]) =>
+    '<span>' + crEsc(l) + ' <b>' + anNum(s.por_tipo[t]) + '</b></span>').join('');
+  return '<div class="an-item" id="an-item-' + s.id + '">'
+    + '<div class="mon-cab"><span class="mon-nombre">' + crEsc(s.nombre) + '</span>'
+    + '<span class="mon-pill ' + (s.estado === 'ok' ? 'ok' : (s.estado === 'pausado' ? 'pausado' : 'ssl')) + '">'
+    + crEsc(AN_ESTADO[s.estado] || s.estado) + '</span>'
+    + '<span class="an-dom">' + crEsc(s.dominios.join(', ')) + '</span>'
+    + (s.cliente ? '<span class="mon-plan">' + crEsc(s.cliente) + '</span>' : '') + '</div>'
+    + '<div class="an-fila">'
+    + '<div class="an-cifra"><div class="an-cifra-v">' + anNum(s.contactos) + ' ' + anVar(s.var_contactos)
+    + '</div><div class="an-cifra-l">contactos</div></div>'
+    + '<div class="an-cifra"><div class="an-cifra-v">' + anNum(s.visitas) + ' ' + anVar(s.var_visitas)
+    + '</div><div class="an-cifra-l">visitas</div></div>'
+    + '<div class="an-cifra"><div class="an-cifra-v">' + anPct(s.conversion) + '</div><div class="an-cifra-l">conversión</div></div>'
+    + (s.valor_estimado ? '<div class="an-cifra"><div class="an-cifra-v">$ ' + anNum(s.valor_estimado)
+       + '</div><div class="an-cifra-l">valor estimado</div></div>' : '')
+    + '<div class="an-spark-caja">' + anBarras(s.serie, 'chica') + '<div class="an-cifra-l">contactos por día</div></div>'
+    + '</div>'
+    + (tipos ? '<div class="mon-meta">' + tipos + '</div>' : '')
+    + '<div class="mon-acc">'
+    + '<button type="button" class="of-btn" onclick="anAbrir(' + s.id + ')" aria-expanded="' + (anAbierto === s.id)
+    + '">' + (anAbierto === s.id ? 'Cerrar' : 'Ver detalle') + '</button>'
+    + '<a class="of-btn" href="' + crEsc(s.informe_url) + '" target="_blank" rel="noopener">Informe del mes</a>'
+    + '<button type="button" class="of-btn" onclick="anCopiar(this, ' + s.id + ', \'informe_url\')">Copiar link del informe</button>'
+    + '</div><div class="an-det" id="an-det-' + s.id + '" hidden></div></div>';
+}
+
+async function anAbrir(id, recargar) {
+  const caja = document.getElementById('an-det-' + id);
+  if (!caja) return;
+  if (anAbierto === id && !recargar) {
+    anAbierto = null;
+    caja.hidden = true;
+    anCargar();
+    return;
+  }
+  if (anAbierto && anAbierto !== id) {
+    const vieja = document.getElementById('an-det-' + anAbierto);
+    if (vieja) { vieja.hidden = true; vieja.innerHTML = ''; }
+  }
+  anAbierto = id;
+  caja.hidden = false;
+  caja.innerHTML = '<div class="of-ayuda">Cargando…</div>';
+  const boton = document.querySelector('#an-item-' + id + ' .mon-acc button');
+  if (boton) { boton.textContent = 'Cerrar'; boton.setAttribute('aria-expanded', 'true'); }
+  let d;
+  try {
+    d = (await ofPedir('/api/analitica/sitios/' + id + '?dias=' + anDias)).sitio;
+  } catch (e) {
+    caja.innerHTML = '<div class="cr-nota">' + crEsc(e.message) + '</div>';
+    return;
+  }
+  caja.innerHTML = anDetalle(d);
+}
+
+function anTabla(cols, filas) {
+  if (!filas.length) return '<div class="of-ayuda">Sin datos en el período.</div>';
+  return '<table class="an-tabla"><thead><tr>' + cols.map((c, i) => '<th' + (i ? ' class="n"' : '') + '>'
+    + crEsc(c) + '</th>').join('') + '</tr></thead><tbody>' + filas.map(f => '<tr>' + f.map((v, i) =>
+    '<td' + (i ? ' class="n"' : '') + '>' + crEsc(v) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+}
+
+function anDetalle(s) {
+  const n = s.numeros;
+  const fecha = d => d.slice(8) + '/' + d.slice(5, 7);
+  const tipos = AN_TIPOS.map(([t, l]) => '<li>' + crEsc(l) + ' <b>' + anNum(n.por_tipo[t]) + '</b></li>').join('');
+  const instalado = s.estado === 'ok';
+  return '<div class="an-graf"><h4>Visitas y contactos por día</h4>'
+    + anBarras(n.dias.map(d => d.visitas), 'visitas', n.dias.map(d => fecha(d.dia) + ': ' + d.visitas + ' visitas'))
+    + anBarras(n.dias.map(d => d.contactos), 'contactos', n.dias.map(d => fecha(d.dia) + ': ' + d.contactos + ' contactos'))
+    + '<div class="mon-barras-pie"><span>' + crEsc(fecha(n.desde)) + '</span><span>' + crEsc(fecha(n.hasta)) + '</span></div></div>'
+    + '<div class="mon-det">'
+    + '<div><h4>Contactos</h4><ul>' + tipos + '<li>Clics en total <b>' + anNum(n.clics) + '</b></li>'
+    + '<li>Visitantes distintos <b>' + anNum(n.visitantes) + '</b></li>'
+    + '<li>Páginas vistas <b>' + anNum(n.paginas_vistas) + '</b></li>'
+    + (n.movil_pct !== null ? '<li>Desde el celular <b>' + n.movil_pct + '%</b></li>' : '')
+    + '<li>Fuera de horario (antes de 9 o después de 19) <b>' + anNum(n.fuera_de_hora) + '</b></li></ul></div>'
+    + '<div><h4>De dónde vienen</h4>' + anTabla(['Origen', 'Visitas', 'Contactos', 'Conv.'],
+        n.canales.map(c => [c.canal, anNum(c.visitas), anNum(c.contactos), anPct(c.conversion)])) + '</div>'
+    + '<div><h4>Páginas que traen contactos</h4>' + anTabla(['Página', 'Vistas', 'Contactos'],
+        n.paginas.map(p => [p.pagina, anNum(p.vistas), anNum(p.contactos)])) + '</div>'
+    + (n.campanas.length ? '<div><h4>Campañas (utm_campaign)</h4>' + anTabla(['Campaña', 'Visitas', 'Contactos'],
+        n.campanas.map(c => [c.campana, anNum(c.visitas), anNum(c.contactos)])) + '</div>' : '')
+    + '<div><h4>A qué hora escriben</h4>' + anBarras(n.por_hora, 'horas', n.por_hora.map((v, h) => h + ' h: ' + v))
+    + '<div class="mon-barras-pie"><span>0 h</span><span>12 h</span><span>23 h</span></div></div>'
+    + '</div>'
+    + '<div class="mon-det">'
+    + '<div class="an-instalar"><h4>Instalación ' + (instalado ? '· funcionando' : '· ' + crEsc(AN_ESTADO[s.estado] || '')) + '</h4>'
+    + '<p class="of-ayuda">Pegalo en la cabecera de todas las páginas. En WordPress: plugin WPCode → Header. '
+    + 'Sin cookies: no hace falta banner. Cuenta solo los clics a wa.me, tel:, mailto: y los formularios enviados.</p>'
+    + '<textarea readonly rows="3" aria-label="Código para pegar en el sitio">' + crEsc(s.snippet) + '</textarea>'
+    + '<div class="mon-acc"><button type="button" class="of-btn prim" onclick="anCopiar(this, ' + s.id + ', \'snippet\')">Copiar código</button>'
+    + '<a class="of-btn" href="' + crEsc(s.prueba_url) + '" target="_blank" rel="noopener">Probar en una página de prueba</a></div></div>'
+    + '<form class="an-config" onsubmit="anGuardar(event, ' + s.id + ')"><h4>Configuración</h4>'
+    + '<label>Nombre<input name="nombre" maxlength="120" value="' + crEsc(s.nombre) + '"></label>'
+    + '<label>Dominios (separados por coma)<input name="dominios" value="' + crEsc(s.dominios.join(', ')) + '"></label>'
+    + '<div class="an-dos"><label>Ticket medio ($)<input name="ticket_medio" inputmode="numeric" value="' + crEsc(s.ticket_medio ?? '') + '"></label>'
+    + '<label>De cada 100 contactos, compran<input name="cierre_pct" inputmode="numeric" value="' + crEsc(s.cierre_pct ?? '') + '"></label></div>'
+    + '<p class="of-ayuda">Con ticket y cierre, el informe muestra cuánta plata le trajo la web.</p>'
+    + '<label class="an-check"><input type="checkbox" name="activo"' + (s.activo ? ' checked' : '') + '> Midiendo</label>'
+    + '<div class="mon-acc"><button type="submit" class="of-btn prim">Guardar</button>'
+    + '<button type="button" class="of-btn" onclick="anNuevoLink(' + s.id + ')">Cambiar link del informe</button>'
+    + '<button type="button" class="of-btn" onclick="anBorrar(' + s.id + ')">Borrar sitio</button></div>'
+    + '<span class="of-ayuda" id="an-config-estado-' + s.id + '" role="status" aria-live="polite"></span></form>'
+    + '</div>';
+}
+
+async function anCopiar(boton, id, campo) {
+  let s = anDatos.find(x => x.id === id);
+  if (!s) return;
+  try {
+    await navigator.clipboard.writeText(s[campo]);
+    const antes = boton.textContent;
+    boton.textContent = 'Copiado';
+    setTimeout(() => { boton.textContent = antes; }, 1500);
+  } catch (e) {
+    window.prompt('Copialo de acá:', s[campo]);
+  }
+}
+
+async function anGuardar(ev, id) {
+  ev.preventDefault();
+  const f = ev.target;
+  const estado = document.getElementById('an-config-estado-' + id);
+  try {
+    await ofPedir('/api/analitica/sitios/' + id, 'PATCH', {
+      nombre: f.nombre.value, dominios: f.dominios.value, ticket_medio: f.ticket_medio.value,
+      cierre_pct: f.cierre_pct.value, activo: f.activo.checked});
+    estado.textContent = 'Guardado';
+    anCargar();
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+}
+
+async function anNuevoLink(id) {
+  if (!confirm('El link del informe que ya mandaste deja de funcionar. ¿Seguimos?')) return;
+  try {
+    await ofPedir('/api/analitica/sitios/' + id + '/nuevo-link', 'POST', {});
+    anCargar();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function anBorrar(id) {
+  if (!confirm('Se borra el sitio con todas sus visitas y contactos. ¿Seguimos?')) return;
+  try {
+    await ofPedir('/api/analitica/sitios/' + id, 'DELETE');
+    anAbierto = null;
+    anCargar();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function anPintarPeriodo() {
+  const caja = document.getElementById('an-periodo');
+  if (!caja) return;
+  caja.innerHTML = [[7, '7 días'], [30, '30 días'], [90, '90 días']].map(([d, l]) =>
+    '<button type="button" class="mon-filtro" aria-pressed="' + (anDias === d) + '" onclick="anDias=' + d
+    + ';anCargar()">' + l + '</button>').join('');
+}
+
+async function anAbrirForm(abrir) {
+  const f = document.getElementById('an-form');
+  f.hidden = !abrir;
+  document.getElementById('an-nuevo').setAttribute('aria-expanded', String(abrir));
+  if (!abrir) return;
+  f.nombre.focus();
+  const sug = document.getElementById('an-sug');
+  sug.innerHTML = '';
+  try {
+    const d = await ofPedir('/api/analitica/sugeridos');
+    if (d.clientes.length) {
+      sug.innerHTML = 'Clientes con web: ' + d.clientes.map((c, i) => '<button type="button" class="mon-filtro" data-i="'
+        + i + '">' + crEsc(c.nombre) + '</button>').join('');
+      sug.querySelectorAll('button').forEach(b => b.onclick = () => {
+        const c = d.clientes[Number(b.dataset.i)];
+        f.nombre.value = c.nombre;
+        f.dominios.value = c.dominio;
+        f.business_id.value = c.business_id;
+      });
+    }
+  } catch (e) { /* las sugerencias son una ayuda: sin ellas se carga a mano */ }
+}
+
+async function anCrear(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const estado = document.getElementById('an-form-estado');
+  estado.textContent = '';
+  try {
+    const d = await ofPedir('/api/analitica/sitios', 'POST', {
+      nombre: f.nombre.value, dominios: f.dominios.value, business_id: f.business_id.value,
+      ticket_medio: f.ticket_medio.value, cierre_pct: f.cierre_pct.value});
+    f.reset();
+    f.business_id.value = '';
+    anAbrirForm(false);
+    anAbierto = d.sitio.id;
+    await anCargar();
+  } catch (e) {
+    estado.textContent = e.message;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const nuevo = document.getElementById('an-nuevo');
+  if (!nuevo) return;
+  nuevo.onclick = () => anAbrirForm(document.getElementById('an-form').hidden);
+  document.getElementById('an-cancelar').onclick = () => anAbrirForm(false);
+  document.getElementById('an-form').onsubmit = anCrear;
+});
+// ========== FIN Analítica de contactos ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3530,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-analitica .nav-icon{stroke:#10b981}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3567,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-analitica.active .nav-icon{stroke:#6ee7b7}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3600,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-analitica .nav-icon{stroke:#047857}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3842,6 +4125,68 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
 }
+/* Analítica de contactos (26/10): visitas y contactos de los sitios de clientes.
+   Reusa .mon-* (KPIs, pills, filtros) del mismo estilo de tarjetas. */
+.mon-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.mon-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.mon-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mon-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.mon-kpi-v.mal{color:var(--rojo-texto)}
+.mon-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.mon-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.mon-filtro{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:999px;padding:5px 12px;font-size:.78rem;font-family:inherit;cursor:pointer}
+.mon-filtro[aria-pressed="true"]{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro);font-weight:600}
+.mon-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mon-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.mon-plan{margin-left:auto;font-size:.72rem;color:var(--texto-tenue);border:1px solid var(--borde-fuerte);border-radius:999px;padding:1px 8px}
+.mon-meta{font-size:.8rem;color:var(--texto-tenue);display:flex;gap:6px 14px;flex-wrap:wrap}
+.mon-meta b{color:var(--texto);font-weight:600;font-variant-numeric:tabular-nums}
+.mon-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto)}
+.mon-pill.ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.mon-pill.ssl{background:var(--ambar-tinte);color:var(--ambar)}
+.mon-pill.pausado{color:var(--texto-tenue)}
+.mon-barras-pie{display:flex;justify-content:space-between;font-size:.68rem;color:var(--texto-debil)}
+.mon-acc{display:flex;gap:6px;flex-wrap:wrap}
+.mon-det{border-top:1px solid var(--borde);padding-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;font-size:.8rem}
+.mon-det h4{margin:0 0 6px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.mon-det ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;color:var(--texto-tenue)}
+.mon-det ul b{color:var(--texto);font-weight:600}
+.mon-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.mon-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.mon-form label,.an-config label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+.mon-form input,.an-config input:not([type=checkbox]){background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:.85rem}
+.mon-sug{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;font-size:.76rem;color:var(--texto-tenue);align-items:center}
+.mon-form-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.an-cab-acc{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.an-lista{display:flex;flex-direction:column;gap:10px}
+.an-item{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:9px}
+.an-dom{font-size:.8rem;color:var(--azul-claro);overflow-wrap:anywhere}
+.an-fila{display:flex;gap:10px 26px;align-items:flex-end;flex-wrap:wrap}
+.an-cifra-v{font-size:1.2rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;white-space:nowrap}
+.an-cifra-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.an-var{font-size:.72rem;font-weight:600;margin-left:2px}
+.an-var.sube{color:var(--verde-texto)}.an-var.baja{color:var(--rojo-texto)}
+.an-spark-caja{flex:1;min-width:160px;max-width:320px;margin-left:auto}
+.an-barras{display:flex;gap:2px;align-items:flex-end;height:64px}
+.an-barras span{flex:1;height:100%;display:flex;align-items:flex-end}
+.an-barras i{display:block;width:100%;border-radius:2px;background:var(--azul);opacity:.55}
+.an-barras i.cero{background:var(--relleno);opacity:1}
+.an-barras.chica{height:30px}
+.an-barras.chica i,.an-barras.contactos i,.an-barras.horas i{background:var(--verde-texto);opacity:.9}
+.an-barras.contactos{height:40px;margin-top:4px}
+.an-barras.horas{height:44px}
+.an-det{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--borde);padding-top:12px}
+.an-graf h4{margin:0 0 6px;font-size:.74rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.an-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
+.an-tabla th{text-align:left;color:var(--texto-tenue);font-weight:600;font-size:.7rem;padding:0 6px 4px 0}
+.an-tabla td{border-top:1px solid var(--borde);padding:5px 6px 5px 0;color:var(--texto);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.an-tabla .n{text-align:right;white-space:nowrap}
+.an-instalar textarea{width:100%;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:8px;font-family:ui-monospace,monospace;font-size:.76rem;resize:vertical;margin:6px 0}
+.an-config{display:flex;flex-direction:column;gap:8px}
+.an-config h4{margin:0}
+.an-dos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.an-check{flex-direction:row!important;align-items:center;gap:6px!important}
+.an-vacio{background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:12px;padding:22px;color:var(--texto-tenue);font-size:.88rem;text-align:center}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .filter-row-1{display:flex;gap:8px}
@@ -5009,6 +5354,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
+  <!-- Analítica de contactos (26/10): cuántos clientes le trae la web a cada comercio. Panel "analitica". -->
+  <div class="nav-item" id="nav-analitica" onclick="showPanel('analitica')"><i data-lucide="mouse-pointer-click" class="nav-icon"></i> Analítica de sitios</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
@@ -6376,6 +6723,42 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= ANALÍTICA DE CONTACTOS PANEL ======= -->
+  <!-- Visitas y contactos (WhatsApp, llamadas, formularios) de los sitios que
+       entregamos, medidos con un script sin cookies, y el informe del mes
+       para el dueño del comercio (services/analitica.py). -->
+  <div id="analitica-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Analítica de sitios</h1>
+        <div class="page-date">Cuántos clientes le trae la web a cada comercio: WhatsApp, llamadas y formularios, por página y por origen.</div>
+      </div>
+      <div class="an-cab-acc">
+        <div class="mon-filtros" id="an-periodo" role="group" aria-label="Período"></div>
+        <button type="button" class="of-btn prim" id="an-nuevo" aria-expanded="false" aria-controls="an-form">+ Agregar sitio</button>
+      </div>
+    </div>
+    <form class="mon-form" id="an-form" hidden>
+      <div class="mon-form-grid">
+        <label>Nombre<input name="nombre" maxlength="120" required placeholder="Barbería Don Julio"></label>
+        <label>Dominios<input name="dominios" maxlength="400" required placeholder="barberiadonjulio.com.uy"></label>
+        <label>Ticket medio en $ (opcional)<input name="ticket_medio" inputmode="numeric" placeholder="1200"></label>
+        <label>De cada 100 contactos, compran (opcional)<input name="cierre_pct" inputmode="numeric" placeholder="30"></label>
+        <input type="hidden" name="business_id">
+      </div>
+      <div class="mon-sug" id="an-sug"></div>
+      <div class="mon-form-pie">
+        <button type="submit" class="of-btn prim">Agregar</button>
+        <button type="button" class="of-btn" id="an-cancelar">Cancelar</button>
+        <span class="of-ayuda" id="an-form-estado" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    <div class="mon-kpis" id="an-kpis"></div>
+    <div class="cr-nota" id="an-nota" role="status" aria-live="polite"></div>
+    <div class="an-lista" id="an-lista" aria-live="polite"></div>
+  </div>
+  <!-- ======= FIN ANALÍTICA DE CONTACTOS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +7983,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'analitica') anCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +13071,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','analitica','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',analitica:'mouse-pointer-click'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',analitica:'Analítica'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +13165,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','analitica'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16579,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*ANALITICA_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23342,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*ANALITICA_JS*/", "/* {% raw %} */" + ANALITICA_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23465,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, analitica_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23492,11 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Analítica de sitios: el script que se pega en el sitio del cliente,
+        # adonde manda los eventos, su página de prueba y el informe del mes
+        # que abre el dueño. Ver routes/analitica.py.
+        if request.path.startswith(ANALITICA_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24524,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','analitica'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',analitica:'Analítica de sitios'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
