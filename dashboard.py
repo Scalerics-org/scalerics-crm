@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.asistentes import PUBLICAS as ASISTENTES_PUBLICAS, asistentes_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  asistentes: 'asistente bot whatsapp chatbot fichas conocimiento pruebas evaluaciones derivar respuestas comercio',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -3250,6 +3252,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-asistentes .nav-icon{stroke:#4ade80}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3289,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-asistentes.active .nav-icon{stroke:#bbf7d0}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3322,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-asistentes .nav-icon{stroke:#15803d}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -3841,6 +3846,110 @@ details.ag-plegado[open]>summary .ag-grupo span:first-child::before{transform:ro
   .ag-volver{display:inline-flex;margin-bottom:10px}
   .ag-det-cuerpo{padding:18px 16px}
   .ag-det-pie{padding:12px 16px}
+}
+/* Fábrica de asistentes (26/10): el bot de WhatsApp de cada comercio, con pruebas. */
+.fa-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.fa-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.fa-kpi-l{font-size:.72rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.04em}
+.fa-kpi-v{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin-top:2px;font-variant-numeric:tabular-nums}
+.fa-kpi-s{font-size:.74rem;color:var(--texto-tenue);margin-top:2px}
+.fa-vacio{padding:30px;text-align:center;color:var(--texto-tenue);font-size:.88rem;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:12px}
+.fa-lista{display:flex;flex-direction:column;gap:10px}
+.fa-item{display:flex;gap:14px;align-items:center;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px}
+.fa-item.listo{border-left:3px solid var(--azul)}
+.fa-item.conectado{border-left:3px solid var(--verde-texto)}
+.fa-cuerpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.fa-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fa-nombre{font-weight:600;color:var(--texto-fuerte);font-size:.95rem;overflow-wrap:anywhere}
+.fa-meta{font-size:.8rem;color:var(--texto-tenue)}
+.fa-meta b{color:var(--texto);font-variant-numeric:tabular-nums}
+.fa-alerta{color:var(--ambar);font-weight:600}
+.fa-pill{border-radius:999px;padding:2px 9px;font-weight:600;font-size:.72rem;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
+.fa-pill.armando{background:var(--ambar-tinte);color:var(--ambar)}
+.fa-pill.listo{background:var(--azul-tinte);color:var(--azul-claro)}
+.fa-pill.conectado{background:var(--verde-tinte);color:var(--verde-texto)}
+.fa-form,.fa-ajustes,.fa-conexion{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.fa-form h3,.fa-ajustes h3,.fa-conexion h3,.fa-ult h3{margin:12px 0 10px;font-size:.9rem;color:var(--texto-fuerte)}
+.fa-form h3:first-child,.fa-conexion h3:first-child{margin-top:0}
+.fa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.fa-grid .ancho{grid-column:1/-1}
+.fa-editor label,.fa-form label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+#fa-editor input:not([type=checkbox]),#fa-editor select,#fa-editor textarea,.fa-form input,.fa-form select{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 9px;font-family:inherit;font-size:.85rem;min-width:0}
+#fa-editor textarea{resize:vertical}
+#fa-editor label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--texto-tenue)}
+#fa-editor label.fa-chk{flex-direction:row;align-items:center;gap:6px;font-size:.78rem;color:var(--texto)}
+.fa-ayuda{font-size:.72rem;color:var(--texto-tenue);font-weight:400;text-transform:none;letter-spacing:0}
+.fa-pie{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.fa-pie .of-btn[disabled]{opacity:.5;cursor:default}
+.fa-intro{font-size:.82rem;color:var(--texto-tenue);margin:0 0 12px}
+.fa-intro a{color:var(--azul-claro)}
+.fa-ed-cab{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.fa-ed-tit{display:flex;gap:10px;align-items:center;flex:1;min-width:200px}
+.fa-ed-tit h2{margin:0;font-size:1.2rem;color:var(--texto-fuerte)}
+.fa-ed-acc{display:flex;gap:6px;flex-wrap:wrap}
+.fa-ed-acc a.of-btn{text-decoration:none;display:inline-flex;align-items:center}
+.fa-ed-meta{font-size:.82rem;color:var(--texto-tenue);margin-bottom:12px}
+.fa-chequeos{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:.82rem;color:var(--texto)}
+.fa-chequeos summary{cursor:pointer;font-weight:600;color:var(--verde-texto)}
+.fa-chequeos[open] summary,.fa-chequeos:has(li.mal) summary{color:var(--ambar)}
+.fa-chequeos ul{margin:6px 0 0;padding-left:4px;list-style:none;display:flex;flex-direction:column;gap:3px}
+.fa-chequeos li.ok{color:var(--verde-texto)}
+.fa-chequeos li.mal{color:var(--texto)}
+.fa-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin-bottom:12px;overflow-x:auto}
+.fa-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);font-family:inherit;font-size:.84rem;padding:8px 12px;cursor:pointer;white-space:nowrap}
+.fa-tab.sel{color:var(--texto-fuerte);border-bottom-color:var(--azul);font-weight:600}
+.fa-cont{background:var(--relleno);border-radius:999px;padding:0 7px;font-size:.72rem;margin-left:2px;font-variant-numeric:tabular-nums}
+.fa-ficha{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid var(--azul);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.fa-ficha.pend{border-left-color:var(--ambar)}
+.fa-ficha.apagada{opacity:.6}
+.fa-ficha.nueva{border-style:dashed;border-left-style:solid;border-left-color:var(--verde-texto)}
+.fa-ficha-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fa-ficha-cab input[name=titulo]{flex:1;min-width:180px;font-weight:600}
+.fa-usos{font-size:.72rem;color:var(--texto-tenue);font-variant-numeric:tabular-nums}
+.fa-ficha .fa-ayuda{font-size:.76rem}
+.fa-probar{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:14px;align-items:start}
+.fa-sim{border:1px solid var(--borde);border-radius:12px;overflow:hidden;background:#efeae2;display:flex;flex-direction:column}
+body:not(.light) .fa-sim{background:#0b141a}
+.fa-sim-cab{display:flex;gap:8px;align-items:center;background:#0b5e55;color:#fff;padding:10px 12px;font-size:.88rem}
+.fa-sim-cab span{opacity:.8;font-size:.75rem;flex:1}
+.fa-sim-chat{height:380px;overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:6px}
+.fa-sim-vacio{margin:auto;text-align:center;color:#667781;font-size:.84rem}
+.fa-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.fa-m{max-width:88%;padding:7px 10px;border-radius:9px;font-size:.86rem;white-space:pre-line;overflow-wrap:anywhere;color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.fa-m.yo{align-self:flex-end;background:#d9fdd3}
+.fa-m.bot{align-self:flex-start;background:#fff}
+.fa-m.deriva{border-left:3px solid #f59e0b}
+.fa-m-meta{display:block;margin-top:5px;padding-top:4px;border-top:1px dashed #d1d7db;font-size:.7rem;color:#667781}
+.fa-sim-env{display:flex;gap:6px;padding:8px;background:var(--superficie);border-top:1px solid var(--borde)}
+.fa-sim-env input{flex:1}
+.fa-tabla-w{overflow-x:auto}
+.fa-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
+.fa-tabla th{text-align:left;font-weight:600;color:var(--texto-tenue);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--borde)}
+.fa-tabla td{padding:6px 8px;border-top:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.fa-pruebas tr.ok td:first-child{color:var(--verde-texto);font-weight:700}
+.fa-pruebas tr.mal td{background:var(--rojo-tinte)}
+.fa-pruebas tr.mal td:first-child{color:var(--rojo-texto);font-weight:700}
+.fa-tipo{font-weight:600}
+.fa-tipo.derivar,.fa-tipo.no_sabe{color:var(--ambar)}
+.fa-tipo.respuesta,.fa-tipo.horario{color:var(--verde-texto)}
+.fa-puntaje{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 16px;margin-bottom:12px}
+.fa-grande{font-size:2rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;line-height:1.1}
+.fa-hist{display:flex;gap:3px;align-items:flex-end;height:46px;flex:1;min-width:120px;max-width:260px}
+.fa-barra{flex:1;max-width:16px;background:var(--ambar);border-radius:3px 3px 0 0}
+.fa-barra.ok{background:var(--verde-texto)}
+.fa-nueva-prueba{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.fa-nueva-prueba input{flex:2;min-width:220px}
+.fa-nueva-prueba select{flex:1;min-width:150px}
+.fa-hueco{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid var(--ambar);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.fa-hueco-cab{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;color:var(--texto-fuerte);font-size:.88rem}
+.fa-hueco-campos{display:grid;grid-template-columns:minmax(160px,1fr) 2fr;gap:8px;margin-top:8px}
+.fa-code{background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;font-size:.74rem;color:var(--texto);overflow-x:auto;white-space:pre}
+.fa-clave{background:var(--verde-tinte);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--texto);display:flex;flex-direction:column;gap:6px}
+.fa-clave code{font-size:.85rem;overflow-wrap:anywhere;user-select:all}
+@media (max-width:760px){
+  .fa-probar{grid-template-columns:1fr}
+  .fa-hueco-campos{grid-template-columns:1fr}
+  .fa-item{flex-direction:column;align-items:stretch}
 }
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
@@ -5010,6 +5119,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <!-- Fábrica de asistentes (26/10): el bot de WhatsApp de cada comercio, con pruebas. Panel "asistentes". -->
+  <div class="nav-item" id="nav-asistentes" onclick="showPanel('asistentes')"><i data-lucide="message-square-text" class="nav-icon"></i> Asistentes de WhatsApp</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
@@ -6376,6 +6487,41 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= ASISTENTES PANEL ======= -->
+  <!-- El asistente de WhatsApp de cada comercio: fichas, simulador, pruebas con
+       puntaje y la API para el puente de WhatsApp (services/asistentes.py). -->
+  <div id="asistentes-panel" class="panel">
+    <div id="fa-inicio">
+      <div class="page-header">
+        <div>
+          <h1>Asistentes de WhatsApp</h1>
+          <div class="page-date">El bot de cada comercio, armado con su información, probado y con puntaje antes de conectarlo.</div>
+        </div>
+        <button type="button" class="of-btn prim" id="fa-nuevo" aria-controls="fa-form">+ Nuevo asistente</button>
+      </div>
+      <form class="fa-form" id="fa-form" hidden>
+        <h3>Nuevo asistente</h3>
+        <div class="fa-grid">
+          <label>Comercio<input name="nombre" maxlength="80" required placeholder="Barbería Don Julio"></label>
+          <label>Tipo de comercio<select name="familia" id="fa-familia"></select></label>
+          <label>Tono<select name="tono" id="fa-tono"></select></label>
+          <label>A quién deriva (opcional)<input name="humano" maxlength="60" placeholder="Julio, el encargado"></label>
+          <label>Cliente del CRM (opcional)<select name="business_id" id="fa-cliente"></select></label>
+        </div>
+        <div class="fa-pie">
+          <button type="submit" class="of-btn prim">Crear asistente</button>
+          <button type="button" class="of-btn" id="fa-cancelar">Cancelar</button>
+          <span class="of-ayuda" id="fa-form-estado" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+      <div class="fa-kpis" id="fa-kpis"></div>
+      <div class="cr-nota" id="fa-nota" role="status" aria-live="polite"></div>
+      <div class="fa-lista" id="fa-lista" aria-live="polite"></div>
+    </div>
+    <div id="fa-editor" hidden></div>
+  </div>
+  <!-- ======= FIN ASISTENTES PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +7746,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'asistentes') faCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12687,20 +12834,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','asistentes','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail',asistentes:'message-square-text'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails',asistentes:'Asistentes'
 };
 let _mobileNavOverflow = [];
 
@@ -12781,7 +12928,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','asistentes'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16342,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*ASISTENTES_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22949,6 +23097,396 @@ async function loadActivity() {
 </body>
 </html>"""
 
+ASISTENTES_JS = r"""// ========== Fábrica de asistentes ==========
+// services/asistentes.py contesta, valida y mide; acá se pinta. Las fichas las
+// escribe el equipo y los mensajes cualquiera con el link: todo pasa por crEsc.
+let faCat = null;
+let faLista = [];
+let faClientes = [];
+let faAct = null;           // el detalle del asistente abierto
+let faTab = 'fichas';
+let faSesion = '';
+let faChat = [];            // la charla del simulador: [{yo, r}]
+let faClave = '';           // la clave recién generada (se ve una sola vez)
+
+const FA_ESTADOS = {armando: 'Armando', listo: 'Listo para conectar', conectado: 'Conectado'};
+
+function faPct(v) { return v === null || v === undefined ? '—' : v + ' %'; }
+
+function faPill(estado) {
+  return '<span class="fa-pill ' + crEsc(estado) + '">' + crEsc(FA_ESTADOS[estado] || estado) + '</span>';
+}
+
+function faTarjeta(a) {
+  const meta = [crEsc(a.familia_nombre), a.n_fichas + ' fichas'];
+  if (a.n_pendientes) meta.push('<span class="fa-alerta">' + a.n_pendientes + ' sin completar</span>');
+  meta.push(a.ultima ? 'pruebas: <b>' + a.ultima.puntaje + ' %</b>' : 'sin pruebas corridas');
+  if (a.semana.mensajes) meta.push(a.semana.mensajes + ' mensajes en 7 días · resuelve ' + faPct(a.semana.resolucion));
+  if (a.n_sin_respuesta) meta.push('<span class="fa-alerta">' + a.n_sin_respuesta + ' sin respuesta</span>');
+  return '<div class="fa-item ' + crEsc(a.estado) + '"><div class="fa-cuerpo"><div class="fa-cab">' + faPill(a.estado)
+    + '<span class="fa-nombre">' + crEsc(a.nombre) + '</span></div><div class="fa-meta">' + meta.join(' · ') + '</div></div>'
+    + '<div class="fa-acc"><button type="button" class="of-btn prim" data-fa="abrir" data-id="' + Number(a.id) + '">Abrir</button></div></div>';
+}
+
+function faPintarLista(r) {
+  if (r) {
+    document.getElementById('fa-kpis').innerHTML = [
+      ['Asistentes', r.total, r.conectados + ' conectados a WhatsApp'],
+      ['Listos para entregar', r.listos, 'pasan todos los chequeos'],
+      ['Puntaje promedio', faPct(r.puntaje), 'en la última corrida de pruebas'],
+      ['Resuelve solo', faPct(r.resolucion), r.mensajes + ' mensajes en 7 días'],
+      ['Sin respuesta', r.sin_respuesta, 'preguntas para convertir en fichas']]
+      .map(([l, v, s]) => '<div class="fa-kpi"><div class="fa-kpi-l">' + crEsc(l) + '</div><div class="fa-kpi-v">'
+        + crEsc(v) + '</div><div class="fa-kpi-s">' + crEsc(s) + '</div></div>').join('');
+  }
+  document.getElementById('fa-lista').innerHTML = faLista.length ? faLista.map(faTarjeta).join('')
+    : '<div class="fa-vacio">Todavía no hay asistentes. Tocá <b>+ Nuevo asistente</b>, elegí el rubro y arrancás con las fichas que más se preguntan en ese tipo de comercio.</div>';
+}
+
+async function faCargar() {
+  if (!document.getElementById('fa-lista')) return;
+  const nota = document.getElementById('fa-nota');
+  nota.textContent = '';
+  document.getElementById('fa-nuevo').onclick = faAbrirForm;
+  document.getElementById('fa-cancelar').onclick = () => { document.getElementById('fa-form').hidden = true; };
+  document.getElementById('fa-form').onsubmit = faCrear;
+  document.getElementById('fa-lista').onclick = ev => {
+    const b = ev.target.closest('[data-fa="abrir"]');
+    if (b) faAbrir(Number(b.dataset.id));
+  };
+  const ed = document.getElementById('fa-editor');
+  ed.onclick = faClickEditor;
+  ed.onsubmit = faSubmitEditor;
+  try {
+    const d = await ofPedir('/api/asistentes');
+    faLista = d.asistentes;
+    faCat = d.catalogo;
+    faClientes = d.clientes || [];
+    faPintarLista(d.resumen);
+  } catch (e) {
+    nota.textContent = e.message;
+  }
+}
+
+function faOpciones(obj, valor) {
+  return Object.entries(obj).map(([k, v]) => '<option value="' + crEsc(k) + '"' + (k === valor ? ' selected' : '') + '>'
+    + crEsc(v) + '</option>').join('');
+}
+
+function faAbrirForm() {
+  if (!faCat) return;
+  const f = document.getElementById('fa-form');
+  f.reset();
+  document.getElementById('fa-familia').innerHTML = faOpciones(faCat.familias, 'turnos');
+  document.getElementById('fa-tono').innerHTML = faOpciones(faCat.tonos, 'vos');
+  document.getElementById('fa-cliente').innerHTML = '<option value="">Ninguno</option>' + faClientes.map(c =>
+    '<option value="' + Number(c.id) + '">' + crEsc(c.name) + '</option>').join('');
+  document.getElementById('fa-form-estado').textContent = '';
+  f.hidden = false;
+  f.elements.nombre.focus();
+}
+
+async function faCrear(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const est = document.getElementById('fa-form-estado');
+  const datos = Object.fromEntries(new FormData(f).entries());
+  est.textContent = 'Creando…';
+  try {
+    const d = await ofPedir('/api/asistentes', 'POST', datos);
+    f.hidden = true;
+    faAbrir(d.asistente.id, d.asistente);
+  } catch (e) {
+    est.textContent = e.message;
+  }
+}
+
+async function faAbrir(id, datos) {
+  try {
+    faAct = datos || (await ofPedir('/api/asistentes/' + id)).asistente;
+  } catch (e) {
+    document.getElementById('fa-nota').textContent = e.message;
+    return;
+  }
+  faTab = 'fichas';
+  faChat = [];
+  faClave = '';
+  faSesion = Math.random().toString(36).slice(2, 12);
+  document.getElementById('fa-inicio').hidden = true;
+  document.getElementById('fa-editor').hidden = false;
+  faPintar();
+}
+
+function faVolver() {
+  faAct = null;
+  document.getElementById('fa-editor').hidden = true;
+  document.getElementById('fa-inicio').hidden = false;
+  faCargar();
+}
+
+// ── el editor ────────────────────────────────────────────────────────────────
+
+function faPintar() {
+  const a = faAct;
+  const ed = document.getElementById('fa-editor');
+  const tabs = [['fichas', 'Conocimiento', a.fichas.length], ['probar', 'Probar', ''],
+    ['pruebas', 'Pruebas', a.ultima ? a.ultima.puntaje + ' %' : ''], ['huecos', 'Sin respuesta', a.sin_respuesta.length || ''],
+    ['ajustes', 'Ajustes y conexión', '']];
+  const faltan = a.chequeos.filter(c => !c.ok);
+  const chequeos = '<details class="fa-chequeos"' + (faltan.length ? ' open' : '') + '><summary>'
+    + (faltan.length ? 'Para entregarlo falta ' + faltan.length + ' de ' + a.chequeos.length : 'Pasa todos los chequeos: listo para conectar')
+    + '</summary><ul>' + a.chequeos.map(c => '<li class="' + (c.ok ? 'ok' : 'mal') + '">' + (c.ok ? '✓ ' : '✗ ') + crEsc(c.texto) + '</li>').join('')
+    + '</ul></details>';
+  ed.innerHTML = '<div class="fa-ed-cab"><button type="button" class="of-btn" data-fa="volver">← Asistentes</button>'
+    + '<div class="fa-ed-tit"><h2>' + crEsc(a.nombre) + '</h2>' + faPill(a.estado) + '</div>'
+    + '<div class="fa-ed-acc"><a class="of-btn" href="' + crEsc(a.link) + '" target="_blank" rel="noopener">Link de prueba ↗</a>'
+    + '<button type="button" class="of-btn" data-fa="exportar">Exportar JSON</button>'
+    + '<button type="button" class="of-btn" data-fa="borrar">Borrar</button></div></div>'
+    + '<div class="fa-ed-meta">' + crEsc(a.familia_nombre) + ' · ' + crEsc(a.estado_local.texto || 'sin horario cargado')
+    + (a.semana.mensajes ? ' · ' + a.semana.mensajes + ' mensajes en 7 días, ' + a.semana.derivados + ' derivados' : '') + '</div>'
+    + chequeos
+    + '<div class="fa-tabs" role="tablist">' + tabs.map(([k, n, c]) => '<button type="button" role="tab" class="fa-tab'
+      + (k === faTab ? ' sel' : '') + '" aria-selected="' + (k === faTab) + '" data-fa="tab" data-tab="' + k + '">' + crEsc(n)
+      + (c !== '' ? ' <span class="fa-cont">' + crEsc(c) + '</span>' : '') + '</button>').join('') + '</div>'
+    + '<div class="cr-nota" id="fa-ed-nota" role="status" aria-live="polite"></div>'
+    + '<div class="fa-tab-cuerpo">' + ({fichas: faFichas, probar: faProbar, pruebas: faPruebas, huecos: faHuecos, ajustes: faAjustes}[faTab])(a) + '</div>';
+  if (faTab === 'probar') {
+    const c = document.getElementById('fa-sim-chat');
+    if (c) c.scrollTop = c.scrollHeight;
+  }
+}
+
+function faFicha(f) {
+  const hor = f.clave === 'horario';
+  return '<form class="fa-ficha' + (f.pendiente ? ' pend' : '') + (f.activa ? '' : ' apagada') + '" data-form="ficha" data-id="' + Number(f.id) + '">'
+    + '<div class="fa-ficha-cab"><input name="titulo" value="' + crEsc(f.titulo) + '" maxlength="80" aria-label="Título" required>'
+    + (f.pendiente ? '<span class="fa-pill armando">Sin completar</span>' : '')
+    + '<span class="fa-usos">' + Number(f.usos) + ' usos</span>'
+    + '<label class="fa-chk"><input type="checkbox" name="activa"' + (f.activa ? ' checked' : '') + '> Activa</label></div>'
+    + (hor ? '<div class="fa-ayuda">El horario se arma solo con lo que cargues en <b>Ajustes</b>, y dice si está abierto ahora. Acá podés sumar un aclarado (feriados, verano).</div>' : '')
+    + '<label>Respuesta<textarea name="contenido" rows="3" maxlength="1200"' + (hor ? '' : ' required') + '>' + crEsc(f.contenido) + '</textarea></label>'
+    + '<label>Cómo lo pregunta la gente <span class="fa-ayuda">una por línea</span><textarea name="variantes" rows="3">' + crEsc(f.variantes.join('\n')) + '</textarea></label>'
+    + '<div class="fa-pie"><button type="submit" class="of-btn prim">Guardar</button>'
+    + (hor ? '' : '<button type="button" class="of-btn" data-fa="borrar-ficha" data-id="' + Number(f.id) + '">Borrar</button>') + '</div></form>';
+}
+
+function faFichas(a) {
+  const pend = a.fichas.filter(f => f.pendiente && f.activa);
+  const orden = pend.concat(a.fichas.filter(f => !(f.pendiente && f.activa)));
+  return '<p class="fa-intro">Lo que el asistente sabe del comercio. Contesta con el texto de la ficha tal cual, así no inventa precios. '
+    + 'Si ninguna ficha cubre la pregunta, no adivina: pasa con una persona y lo anota en <b>Sin respuesta</b>.</p>'
+    + '<form class="fa-ficha nueva" data-form="ficha" data-id=""><div class="fa-ficha-cab"><input name="titulo" maxlength="80" placeholder="Título de la ficha nueva (ej. Estacionamiento)" aria-label="Título" required>'
+    + '<input type="hidden" name="activa" value="on"></div>'
+    + '<label>Respuesta<textarea name="contenido" rows="2" maxlength="1200" required></textarea></label>'
+    + '<label>Cómo lo pregunta la gente <span class="fa-ayuda">una por línea</span><textarea name="variantes" rows="2"></textarea></label>'
+    + '<div class="fa-pie"><button type="submit" class="of-btn prim">+ Sumar ficha</button></div></form>'
+    + orden.map(faFicha).join('');
+}
+
+function faBurbujas() {
+  if (!faChat.length) {
+    return '<div class="fa-sim-vacio">Escribile como un cliente por WhatsApp.<div class="fa-chips">'
+      + ['Hola', '¿A qué hora abren?', '¿Aceptan tarjeta?', '¿Dónde quedan?', 'Quiero hablar con una persona']
+        .map(t => '<button type="button" class="of-btn" data-fa="chip" data-t="' + crEsc(t) + '">' + crEsc(t) + '</button>').join('')
+      + '</div></div>';
+  }
+  return faChat.map(m => '<div class="fa-m yo">' + crEsc(m.yo) + '</div>'
+    + (m.r ? '<div class="fa-m bot' + (m.r.derivar ? ' deriva' : '') + '">' + crEsc(m.r.respuesta)
+      + '<span class="fa-m-meta">' + (m.r.ficha ? 'Ficha: ' + crEsc(m.r.ficha) : crEsc(faCat.tipos[m.r.tipo] || m.r.tipo))
+      + (['respuesta', 'no_sabe'].includes(m.r.tipo) ? ' · confianza ' + Math.round(100 * m.r.confianza) + ' %' : '')
+      + (m.r.derivar ? ' · <b>pasa a una persona</b>' : '') + '</span></div>' : '<div class="fa-m bot">…</div>')).join('');
+}
+
+function faProbar(a) {
+  const ultimos = a.mensajes.slice(0, 15).map(m => '<tr><td>' + crEsc(ofFecha(m.creado_en)) + '</td><td>'
+    + crEsc(faCat.origenes[m.origen] || m.origen) + '</td><td>' + crEsc(m.texto) + '</td><td><span class="fa-tipo ' + crEsc(m.tipo) + '">'
+    + crEsc(faCat.tipos[m.tipo] || m.tipo) + '</span>' + (m.ficha ? ' ' + crEsc(m.ficha) : '') + '</td></tr>').join('');
+  return '<div class="fa-probar"><div class="fa-sim"><div class="fa-sim-cab"><b>' + crEsc(a.nombre) + '</b><span>simulador</span>'
+    + '<button type="button" class="of-btn" data-fa="charla-nueva">Charla nueva</button></div>'
+    + '<div class="fa-sim-chat" id="fa-sim-chat" aria-live="polite">' + faBurbujas() + '</div>'
+    + '<form class="fa-sim-env" data-form="simular"><input name="texto" maxlength="500" placeholder="Escribí un mensaje" aria-label="Mensaje" autocomplete="off" required>'
+    + '<button type="submit" class="of-btn prim">Enviar</button></form></div>'
+    + '<div class="fa-ult"><h3>Últimos mensajes</h3>' + (ultimos ? '<div class="fa-tabla-w"><table class="fa-tabla"><thead><tr><th>Día</th><th>Desde</th><th>Mensaje</th><th>Qué hizo</th></tr></thead><tbody>'
+      + ultimos + '</tbody></table></div>' : '<p class="fa-intro">Todavía nadie le escribió.</p>')
+    + '<p class="fa-intro">El dueño del comercio lo puede probar desde el celular con el <a href="' + crEsc(a.link) + '" target="_blank" rel="noopener">link de prueba</a>.</p></div></div>';
+}
+
+function faPruebas(a) {
+  const fichas = a.fichas.filter(f => f.activa && !f.pendiente);
+  const hist = a.corridas.slice().reverse().map(c => '<span class="fa-barra' + (c.puntaje >= faCat.puntaje_listo ? ' ok' : '')
+    + '" style="height:' + Math.max(4, c.puntaje) + '%" title="' + crEsc(c.puntaje + ' % · ' + c.bien + '/' + c.total + ' · ' + ofFecha(c.creado_en)) + '"></span>').join('');
+  const filas = a.pruebas.map(p => '<tr class="' + (p.ok === null ? '' : (p.ok ? 'ok' : 'mal')) + '"><td>' + (p.ok === null ? '·' : (p.ok ? '✓' : '✗'))
+    + '</td><td>' + crEsc(p.pregunta) + '</td><td>' + crEsc(p.esperado === 'ficha' ? (p.ficha || '(ficha borrada)') : faCat.esperados[p.esperado])
+    + '</td><td>' + crEsc(p.obtenido || '') + '</td><td><button type="button" class="of-btn" data-fa="borrar-prueba" data-id="' + Number(p.id) + '" aria-label="Borrar prueba">×</button></td></tr>').join('');
+  return '<div class="fa-puntaje"><div><div class="fa-kpi-l">Último puntaje</div><div class="fa-grande">' + (a.ultima ? a.ultima.puntaje + ' %' : '—')
+    + '</div><div class="fa-kpi-s">' + (a.ultima ? a.ultima.bien + ' de ' + a.ultima.total + ' bien · ' + crEsc(ofFecha(a.ultima.creado_en)) : 'nunca se corrieron')
+    + ' · se entrega con ' + faCat.puntaje_listo + ' % o más</div></div>'
+    + (hist ? '<div class="fa-hist" aria-label="Puntajes de las últimas corridas">' + hist + '</div>' : '')
+    + '<div class="fa-pie"><button type="button" class="of-btn prim" data-fa="correr">Correr pruebas</button>'
+    + '<button type="button" class="of-btn" data-fa="sugerir">Sugerir pruebas</button></div></div>'
+    + '<form class="fa-nueva-prueba" data-form="prueba"><input name="pregunta" maxlength="300" placeholder="Pregunta de prueba, como la escribiría un cliente" aria-label="Pregunta" required>'
+    + '<select name="esperado" aria-label="Qué tiene que hacer">' + faOpciones(faCat.esperados, 'ficha') + '</select>'
+    + '<select name="ficha_id" aria-label="Ficha esperada">' + fichas.map(f => '<option value="' + Number(f.id) + '">' + crEsc(f.titulo) + '</option>').join('') + '</select>'
+    + '<button type="submit" class="of-btn">Sumar</button></form>'
+    + (filas ? '<div class="fa-tabla-w"><table class="fa-tabla fa-pruebas"><thead><tr><th></th><th>Pregunta</th><th>Esperado</th><th>Obtenido</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+      : '<p class="fa-intro">Sin pruebas. «Sugerir pruebas» arma una por cada forma de preguntar de las fichas, más las de derivación que todo asistente tiene que pasar.</p>');
+}
+
+function faHuecos(a) {
+  if (!a.sin_respuesta.length) return '<p class="fa-intro">Nada pendiente: todo lo que le preguntaron lo supo contestar o ya se resolvió.</p>';
+  return '<p class="fa-intro">Lo que le preguntaron y no supo contestar. Convertilo en ficha y queda además una prueba para que no vuelva a fallar.</p>'
+    + a.sin_respuesta.map(m => '<form class="fa-hueco" data-form="hueco" data-id="' + Number(m.id) + '"><div class="fa-hueco-cab"><b>«' + crEsc(m.texto) + '»</b>'
+      + '<span class="fa-kpi-s">' + crEsc(faCat.origenes[m.origen] || m.origen) + ' · ' + crEsc(ofFecha(m.creado_en)) + '</span></div>'
+      + '<div class="fa-hueco-campos"><input name="titulo" maxlength="80" placeholder="Título de la ficha" aria-label="Título" required>'
+      + '<textarea name="contenido" rows="2" maxlength="1200" placeholder="La respuesta" aria-label="Respuesta" required></textarea></div>'
+      + '<div class="fa-pie"><button type="submit" class="of-btn prim">Crear ficha</button>'
+      + '<button type="button" class="of-btn" data-fa="ignorar" data-id="' + Number(m.id) + '">Ignorar</button></div></form>').join('');
+}
+
+function faAjustes(a) {
+  const c = a.config;
+  const h = c.horario || {};
+  const dias = faCat.dias.map((d, i) => '<label>' + crEsc(d) + '<input name="h' + i + '" value="' + crEsc((h[String(i)] || []).map(r => r[0] + '-' + r[1]).join(', '))
+    + '" placeholder="cerrado" maxlength="60"></label>').join('');
+  const curl = "curl -X POST '" + a.api + "' \\\n  -H 'X-Asistente-Clave: <la clave>' -H 'Content-Type: application/json' \\\n  -d '{\"de\": \"+59899123456\", \"texto\": \"¿a qué hora abren?\"}'";
+  return '<form class="fa-ajustes" data-form="ajustes"><div class="fa-grid">'
+    + '<label>Comercio<input name="nombre" maxlength="80" required value="' + crEsc(a.nombre) + '"></label>'
+    + '<label>Tipo de comercio<select name="familia">' + faOpciones(faCat.familias, c.familia) + '</select></label>'
+    + '<label>Tono<select name="tono">' + faOpciones(faCat.tonos, c.tono) + '</select></label>'
+    + '<label>A quién deriva<input name="humano" maxlength="60" value="' + crEsc(c.humano) + '" placeholder="Julio, el encargado"></label>'
+    + '<label class="ancho">Saludo <span class="fa-ayuda">la primera vez que alguien escribe; vacío = «¡Hola! Soy el asistente de …»</span><input name="bienvenida" maxlength="300" value="' + crEsc(c.bienvenida) + '"></label>'
+    + '<label class="ancho">También deriva si dicen <span class="fa-ayuda">una frase por línea; ya deriva siempre si piden una persona o es un reclamo</span><textarea name="palabras_derivar" rows="3">' + crEsc((c.palabras_derivar || []).join('\n')) + '</textarea></label>'
+    + '</div><h3>Horario <span class="fa-ayuda">ej. 9-13, 15-19 · vacío = cerrado · hora de Montevideo</span></h3><div class="fa-grid fa-dias">' + dias + '</div>'
+    + '<div class="fa-pie"><button type="submit" class="of-btn prim">Guardar ajustes</button></div></form>'
+    + '<div class="fa-conexion"><h3>Conexión a WhatsApp</h3>'
+    + '<p class="fa-intro">El puente de WhatsApp del cliente (Baileys o la Cloud API de Meta) le pasa cada mensaje a esta API y manda la respuesta. Si <code>derivar</code> viene en true, avisa a una persona. No se guarda el teléfono: solo un hash de la charla.</p>'
+    + '<pre class="fa-code">' + crEsc(curl) + '</pre>'
+    + (faClave ? '<div class="fa-clave"><b>Clave nueva</b> (copiala ahora: no se vuelve a mostrar)<code>' + crEsc(faClave) + '</code></div>' : '')
+    + '<div class="fa-pie"><button type="button" class="of-btn" data-fa="clave">' + (a.tiene_clave ? 'Generar otra clave' : 'Generar clave') + '</button>'
+    + (a.conectado ? '<button type="button" class="of-btn" data-fa="conectar" data-v="0">Desconectar</button>'
+      : '<button type="button" class="of-btn prim" data-fa="conectar" data-v="1"' + (a.listo && a.tiene_clave ? '' : ' disabled') + '>Conectar</button>')
+    + '<span class="fa-ayuda">' + (a.conectado ? 'La API está contestando.' : (a.listo ? (a.tiene_clave ? '' : 'Falta generar la clave.') : 'Se conecta cuando pasa todos los chequeos.')) + '</span></div></div>';
+}
+
+// ── acciones ─────────────────────────────────────────────────────────────────
+
+function faNota(msg) {
+  const n = document.getElementById('fa-ed-nota');
+  if (n) n.textContent = msg || '';
+}
+
+async function faAccion(url, metodo, cuerpo) {
+  try {
+    const d = await ofPedir(url, metodo, cuerpo);
+    if (d.asistente) faAct = d.asistente;
+    faPintar();
+    return d;
+  } catch (e) {
+    faNota(e.message);
+    return null;
+  }
+}
+
+async function faEnviar(texto) {
+  texto = String(texto || '').trim();
+  if (!texto) return;
+  const m = {yo: texto, r: null};
+  faChat.push(m);
+  faPintar();
+  try {
+    const d = await ofPedir('/api/asistentes/' + faAct.id + '/simular', 'POST', {texto: texto, sesion: faSesion});
+    m.r = d.respuesta;
+    // Refresca "Últimos mensajes" y "Sin respuesta"; si falla, la charla sigue igual.
+    try { faAct = (await ofPedir('/api/asistentes/' + faAct.id)).asistente; } catch (e) { /* nada */ }
+  } catch (e) {
+    m.r = {respuesta: e.message, tipo: 'no_sabe', ficha: '', confianza: 0, derivar: false};
+  }
+  faPintar();
+  const i = document.querySelector('#fa-editor [data-form="simular"] input');
+  if (i) i.focus();
+}
+
+async function faClickEditor(ev) {
+  const b = ev.target.closest('[data-fa]');
+  if (!b || !faAct) return;
+  const base = '/api/asistentes/' + faAct.id;
+  const que = b.dataset.fa;
+  if (que === 'volver') return faVolver();
+  if (que === 'tab') { faTab = b.dataset.tab; faClave = faTab === 'ajustes' ? faClave : ''; return faPintar(); }
+  if (que === 'chip') return faEnviar(b.dataset.t);
+  if (que === 'charla-nueva') { faChat = []; faSesion = Math.random().toString(36).slice(2, 12); return faPintar(); }
+  if (que === 'correr') return faAccion(base + '/pruebas/correr', 'POST', {});
+  if (que === 'sugerir') {
+    const d = await faAccion(base + '/pruebas/sugerir', 'POST', {});
+    if (d) faNota(d.sumadas ? 'Se sumaron ' + d.sumadas + ' pruebas. Corrélas para ver el puntaje.' : 'No hay pruebas nuevas para sugerir.');
+    return;
+  }
+  if (que === 'borrar-prueba') return faAccion(base + '/pruebas/' + Number(b.dataset.id), 'DELETE');
+  if (que === 'borrar-ficha') {
+    if (!confirm('¿Borrar esta ficha? Las pruebas que la esperaban van a fallar.')) return;
+    return faAccion(base + '/fichas/' + Number(b.dataset.id), 'DELETE');
+  }
+  if (que === 'ignorar') return faAccion(base + '/mensajes/' + Number(b.dataset.id) + '/resolver', 'POST', {});
+  if (que === 'clave') {
+    if (faAct.tiene_clave && !confirm('La clave actual deja de andar. ¿Generar otra?')) return;
+    const d = await faAccion(base + '/clave', 'POST', {});
+    if (d) { faClave = d.clave; faPintar(); }
+    return;
+  }
+  if (que === 'conectar') return faAccion(base + '/conectar', 'POST', {conectado: b.dataset.v === '1'});
+  if (que === 'exportar') {
+    try {
+      const d = await ofPedir(base + '/exportar');
+      const blob = new Blob([JSON.stringify(d.exportado, null, 2)], {type: 'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'asistente-' + faAct.id + '.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { faNota(e.message); }
+    return;
+  }
+  if (que === 'borrar') {
+    if (!confirm('¿Borrar el asistente «' + faAct.nombre + '» con sus fichas, pruebas y mensajes?')) return;
+    try { await ofPedir(base, 'DELETE'); faVolver(); } catch (e) { faNota(e.message); }
+  }
+}
+
+async function faSubmitEditor(ev) {
+  const f = ev.target.closest('form[data-form]');
+  if (!f || !faAct) return;
+  ev.preventDefault();
+  const base = '/api/asistentes/' + faAct.id;
+  const el = f.elements;
+  const tipo = f.dataset.form;
+  if (tipo === 'simular') { const t = el.texto.value; el.texto.value = ''; return faEnviar(t); }
+  if (tipo === 'ficha') {
+    const datos = {titulo: el.titulo.value, contenido: el.contenido.value, variantes: el.variantes.value,
+      activa: el.activa.type === 'checkbox' ? el.activa.checked : true};
+    const d = await faAccion(f.dataset.id ? base + '/fichas/' + Number(f.dataset.id) : base + '/fichas', f.dataset.id ? 'PUT' : 'POST', datos);
+    if (d) faNota('Ficha guardada.');
+    return;
+  }
+  if (tipo === 'prueba') {
+    const d = await faAccion(base + '/pruebas', 'POST', {pregunta: el.pregunta.value, esperado: el.esperado.value, ficha_id: el.ficha_id.value});
+    if (d) faNota('Prueba sumada.');
+    return;
+  }
+  if (tipo === 'hueco') {
+    const d = await faAccion(base + '/mensajes/' + Number(f.dataset.id) + '/ficha', 'POST', {titulo: el.titulo.value, contenido: el.contenido.value});
+    if (d) faNota('Ficha creada, con una prueba que la espera.');
+    return;
+  }
+  if (tipo === 'ajustes') {
+    const horario = {};
+    for (let i = 0; i < 7; i++) horario[String(i)] = el['h' + i].value;
+    const d = await faAccion(base, 'PUT', {nombre: el.nombre.value, familia: el.familia.value, tono: el.tono.value,
+      humano: el.humano.value, bienvenida: el.bienvenida.value, palabras_derivar: el.palabras_derivar.value, horario: horario});
+    if (d) faNota('Ajustes guardados.');
+  }
+}
+"""
+
 # Los pedazos de JS que viven afuera para poder probarse se pegan aca.
 # Las marcas de Jinja de FID_JS van dentro de un comentario de JS: Jinja las
 # procesa igual, y los tests que corren el <script> crudo en node (sin pasar
@@ -22957,6 +23495,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*ASISTENTES_JS*/", "/* {% raw %} */" + ASISTENTES_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23618,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, asistentes_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23645,11 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Asistentes: el link de prueba del comercio (/asistente/<token>) y la
+        # API del puente de WhatsApp, que pide además la clave del asistente.
+        # Ver routes/asistentes.py.
+        if request.path.startswith(ASISTENTES_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24677,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','asistentes'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',asistentes:'Asistentes de WhatsApp'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
