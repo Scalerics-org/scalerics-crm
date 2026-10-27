@@ -5037,7 +5037,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .rs-link a{color:var(--azul-claro);overflow-wrap:anywhere;font-weight:600}
 .rs-sep{flex:1}
 .rs-alerta{background:var(--rojo-tinte);color:var(--rojo-texto);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.82rem}
-.rs-nuevo-link{background:var(--superficie);border:1px solid #10B981;border-radius:10px;padding:10px 12px;margin:10px 0}
+.rs-nuevo-link{background:var(--superficie);border:1px solid var(--verde);border-radius:10px;padding:10px 12px;margin:10px 0}
 .rs-revocado td{opacity:.55}
 .rs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
 .rs-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
