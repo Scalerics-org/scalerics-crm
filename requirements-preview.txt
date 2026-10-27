@@ -10,3 +10,4 @@ pytz
 json-repair
 cryptography
 Pillow
+segno

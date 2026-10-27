@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.resenas import PUBLICAS as RESENAS_PUBLICAS, resenas_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -1870,6 +1871,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  resenas: 'reseñas resenas opiniones google qr estrellas quejas nps restaurante comercio',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -2103,6 +2105,375 @@ async function plxPausar(id, pausada) {
 }
 // ========== FIN Plexo: cobro automático ==========
 """
+
+RS_JS = r"""// ========== Reseñas y opiniones ==========
+// services/resenas.py calcula y guarda; acá solo se pinta.
+// Comentarios, nombres y contactos los escribe el cliente final: todo pasa por crEsc.
+const RS_ESTADO = {abierta: 'Abierta', en_curso: 'En curso', resuelta: 'Resuelta', sin_accion: 'Sin acción'};
+const RS_FILTROS = [['bandeja', 'Para atender'], ['comentarios', 'Con comentario'], ['todas', 'Todas'], ['resueltas', 'Resueltas']];
+let rsLista = [];
+let rsSel = null;
+let rsDatos = null;
+let rsTab = 'bandeja';
+let rsDias = 30;
+// El link del comercio se ve una sola vez, al crearlo: en la base queda solo el hash.
+let rsLinkNuevo = null;
+
+function rsNum(v, suf) { return v === null || v === undefined ? '—' : String(v).replace('.', ',') + (suf || ''); }
+function rsEstrellas(p) { return '★'.repeat(p) + '<span class="rs-apagada">' + '★'.repeat(5 - p) + '</span>'; }
+function rsCuando(s) {
+  const d = new Date(String(s).replace(' ', 'T') + ':00');
+  return d.toLocaleDateString('es-UY', {day: 'numeric', month: 'short'}) + ' ' + String(s).slice(11, 16);
+}
+
+async function rsCargar() {
+  const panel = document.getElementById('resenas-panel');
+  if (!panel) return;
+  panel.onclick = rsAccion;
+  panel.onsubmit = rsEnviar;
+  panel.onchange = rsCambio;
+  const nota = document.getElementById('rs-nota');
+  nota.textContent = '';
+  try {
+    rsLista = (await ofPedir('/api/resenas')).negocios;
+    if (!rsSel || !rsLista.some(n => n.id === rsSel)) rsSel = rsLista.length ? rsLista[0].id : null;
+  } catch (e) {
+    rsLista = [];
+    nota.textContent = e.message;
+  }
+  const sel = document.getElementById('rs-negocio');
+  sel.innerHTML = rsLista.map(n => '<option value="' + Number(n.id) + '"' + (n.id === rsSel ? ' selected' : '') + '>'
+    + crEsc(n.nombre) + (n.activo ? '' : ' (pausado)') + (n.abiertas ? ' · ' + Number(n.abiertas) + ' para atender' : '') + '</option>').join('');
+  sel.hidden = !rsLista.length;
+  await rsCargarNegocio();
+}
+
+async function rsCargarNegocio() {
+  const cuerpo = document.getElementById('rs-cuerpo');
+  if (!rsSel) {
+    rsDatos = null;
+    cuerpo.innerHTML = '<div class="rs-vacio">Todavía no hay comercios. Con "+ Nuevo comercio" armás su link y su QR.</div>';
+    return;
+  }
+  const filtro = RS_FILTROS.some(f => f[0] === rsTab) ? rsTab : 'bandeja';
+  try {
+    rsDatos = await ofPedir('/api/resenas/negocios/' + rsSel + '?filtro=' + filtro + '&dias=' + rsDias);
+  } catch (e) {
+    document.getElementById('rs-nota').textContent = e.message;
+    return;
+  }
+  rsPintar();
+}
+
+function rsKpis(m) {
+  const g = m.google_evolucion;
+  const k = [
+    ['Opiniones', String(m.opiniones), m.vistas + ' abrieron el link · ' + rsNum(m.respuesta_pct, '%') + ' puntuó', ''],
+    ['Promedio', rsNum(m.promedio), rsNum(m.positivas_pct, '%') + ' con 4 o 5 estrellas', m.promedio !== null && m.promedio < 3.5 ? 'rs-mal' : ''],
+    ['Fueron a Google', String(m.google), rsNum(m.google_de_positivas_pct, '%') + ' de los contentos', 'rs-bien'],
+    ['Para atender', String(m.abiertas + m.en_curso), m.abiertas + ' sin tocar · ' + m.en_curso + ' en curso', m.abiertas ? 'rs-atencion' : ''],
+    ['Quejas resueltas', rsNum(m.resueltas_pct, '%'), m.horas_resolucion === null ? m.quejas + ' quejas en el período' : 'en ' + rsNum(m.horas_resolucion) + ' h (mediana)', ''],
+    ['Google', g ? rsNum(g.ultimo.rating) + ' ★' : '—', g ? (g.nuevas >= 0 ? '+' : '') + g.nuevas + ' reseñas desde el ' + g.primero.fecha : 'cargá el puntaje en "Google"', g && g.delta_rating > 0 ? 'rs-bien' : ''],
+  ];
+  return '<div class="rs-kpis">' + k.map(([l, v, s, c]) => '<div class="rs-kpi"><div class="rs-kpi-l">' + crEsc(l) + '</div><div class="rs-kpi-v ' + c + '">'
+    + crEsc(v) + '</div><div class="rs-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>';
+}
+
+function rsGraficos(m) {
+  const tope = Math.max(1, ...m.semanas.map(s => s.opiniones));
+  const barras = m.semanas.map(s => {
+    const h = Math.round(100 * s.opiniones / tope);
+    const hg = s.opiniones ? Math.round(h * s.google / s.opiniones) : 0;
+    const t = 'Semana del ' + s.desde + ': ' + s.opiniones + ' opiniones, ' + s.google + ' a Google' + (s.promedio ? ', promedio ' + rsNum(s.promedio) : '');
+    return '<div class="rs-barra" title="' + crEsc(t) + '"><div class="rs-barra-v">' + (s.promedio ? rsNum(s.promedio) : '') + '</div>'
+      + '<div class="rs-barra-col" style="height:' + h + '%"><div class="rs-barra-g" style="height:' + (h ? Math.round(100 * hg / h) : 0) + '%"></div></div>'
+      + '<div class="rs-barra-l">' + crEsc(s.desde.slice(8, 10) + '/' + s.desde.slice(5, 7)) + '</div></div>';
+  }).join('');
+  const total = Math.max(1, m.opiniones);
+  const dist = [5, 4, 3, 2, 1].map(i => {
+    const c = m.distribucion[String(i)];
+    return '<div class="rs-dist"><span>' + i + ' ★</span><div class="rs-dist-b"><div class="rs-dist-f e' + i + '" style="width:' + Math.round(100 * c / total) + '%"></div></div><b>' + c + '</b></div>';
+  }).join('');
+  const fuentes = m.por_fuente.length ? '<table class="rs-tabla"><thead><tr><th>Dónde</th><th>Abrieron</th><th>Puntuaron</th><th>Promedio</th><th>A Google</th></tr></thead><tbody>'
+    + m.por_fuente.map(f => '<tr><td>' + crEsc(f.nombre) + '</td><td>' + f.vistas + '</td><td>' + f.opiniones + (f.conversion !== null ? ' <span class="rs-meta">(' + f.conversion + '%)</span>' : '')
+      + '</td><td>' + rsNum(f.promedio) + '</td><td>' + f.google + '</td></tr>').join('') + '</tbody></table>'
+    : '<div class="rs-meta">Todavía nadie abrió el link.</div>';
+  return '<div class="rs-graf"><div class="rs-caja"><h3 class="rs-h">Opiniones por semana</h3><div class="rs-meta">La parte verde fue a Google. Arriba, el promedio.</div><div class="rs-barras">' + barras + '</div></div>'
+    + '<div class="rs-caja"><h3 class="rs-h">Estrellas (' + m.dias + ' días)</h3>' + dist + '</div>'
+    + '<div class="rs-caja rs-ancha"><h3 class="rs-h">Qué QR rinde</h3>' + fuentes + '</div></div>';
+}
+
+function rsPintar() {
+  const n = rsDatos.negocio;
+  const tabs = RS_FILTROS.concat([['qr', 'QR y carteles'], ['google', 'Google'], ['acceso', 'Acceso del comercio'], ['ajustes', 'Ajustes']]);
+  const avisoG = n.google_url ? '' : '<div class="rs-alerta">Falta el link de Google: sin él, nadie puede ir a dejar la reseña. Cargalo en "Ajustes".</div>';
+  document.getElementById('rs-cuerpo').innerHTML = avisoG
+    + '<div class="rs-link"><span>Link para opinar' + (n.activo ? '' : ' <b class="rs-mal">(pausado)</b>') + '</span>'
+    + '<a href="' + crEsc(n.link) + '" target="_blank" rel="noopener">' + crEsc(n.link) + '</a>'
+    + '<button type="button" class="of-btn prim" data-rs="copiar" data-link="' + crEsc(n.link) + '">Copiar link</button>'
+    + '<span class="rs-sep"></span><label class="rs-meta">Período <select id="rs-dias">' + [7, 30, 90, 365].map(d => '<option value="' + d + '"' + (d === rsDias ? ' selected' : '') + '>' + d + ' días</option>').join('') + '</select></label></div>'
+    + rsKpis(rsDatos.metricas) + rsGraficos(rsDatos.metricas)
+    + '<div class="rs-tabs" role="tablist" aria-label="Vista">' + tabs.map(([k, l]) => '<button type="button" role="tab" class="rs-tab' + (rsTab === k ? ' activo' : '')
+      + '" aria-selected="' + (rsTab === k) + '" data-rs="tab" data-tab="' + k + '">' + l + (k === 'bandeja' && rsDatos.metricas.abiertas + rsDatos.metricas.en_curso ? ' <span class="rs-badge">' + (rsDatos.metricas.abiertas + rsDatos.metricas.en_curso) + '</span>' : '') + (k === 'google' && rsDatos.google_resumen && rsDatos.google_resumen.sin_responder ? ' <span class="rs-badge">' + Number(rsDatos.google_resumen.sin_responder) + '</span>' : '') + '</button>').join('') + '</div>'
+    + '<div id="rs-vista">' + (rsTab === 'qr' ? rsQrHtml() : rsTab === 'google' ? rsGoogleHtml() : rsTab === 'acceso' ? rsAccesoHtml() : rsTab === 'ajustes' ? rsAjustesHtml() : rsOpinionesHtml()) + '</div>';
+}
+
+function rsOpinionesHtml() {
+  const ops = rsDatos.opiniones;
+  if (!ops.length) {
+    return '<div class="rs-vacio">' + (rsTab === 'bandeja' ? 'Nada para atender. Las opiniones de 1 a 3 estrellas y los pedidos de contacto caen acá.' : 'No hay opiniones en esta vista.') + '</div>';
+  }
+  return ops.map(o => {
+    const id = Number(o.id);
+    const abierta = o.estado === 'abierta' || o.estado === 'en_curso';
+    const meta = [rsCuando(o.creado_en), o.fuente ? 'QR ' + crEsc(o.fuente) : 'link directo', o.fue_a_google_en ? 'fue a Google' : ''].filter(Boolean);
+    let contacto = '';
+    if (o.contacto) {
+      contacto = '<div class="rs-meta">' + (o.nombre ? crEsc(o.nombre) + ' · ' : '') + crEsc(o.contacto) + (o.quiere_contacto ? ' · <b>quiere que lo contacten</b>' : '') + '</div>';
+    } else if (o.nombre) {
+      contacto = '<div class="rs-meta">' + crEsc(o.nombre) + '</div>';
+    }
+    let acc = '';
+    if (o.whatsapp) acc += '<a class="of-btn prim" href="' + crEsc(o.whatsapp) + '" target="_blank" rel="noopener">Contestar por WhatsApp</a>';
+    if (o.estado === 'abierta') acc += '<button type="button" class="of-btn" data-rs="estado" data-estado="en_curso" data-id="' + id + '">La tomo</button>';
+    if (abierta) acc += '<button type="button" class="of-btn" data-rs="toggle" data-box="rs-cierre-' + id + '">Resolver…</button>';
+    else if (o.estado === 'resuelta') acc += '<button type="button" class="of-btn" data-rs="estado" data-estado="abierta" data-id="' + id + '">Reabrir</button>';
+    else if (o.puntaje <= 3 || o.comentario) acc += '<button type="button" class="of-btn" data-rs="estado" data-estado="abierta" data-id="' + id + '">Pasar a la bandeja</button>';
+    const cierre = abierta ? '<form id="rs-cierre-' + id + '" class="rs-fila" data-rs-form="resolver" data-id="' + id + '" hidden>'
+      + '<input name="nota" maxlength="1000" required placeholder="Qué se hizo: lo llamamos, se le devolvió, se habló con el equipo…" value="' + crEsc(o.nota || '') + '" aria-label="Qué se hizo">'
+      + '<button type="submit" class="of-btn prim">Marcar resuelta</button></form>' : '';
+    return '<div class="rs-op e-' + crEsc(o.estado) + (o.puntaje <= 3 ? ' baja' : '') + '"><div class="rs-op-cab"><span class="rs-est">' + rsEstrellas(Number(o.puntaje)) + '</span>'
+      + '<span class="rs-pill e-' + crEsc(o.estado) + '">' + crEsc(RS_ESTADO[o.estado] || o.estado) + '</span><span class="rs-meta">' + meta.join(' · ') + '</span></div>'
+      + (o.comentario ? '<div class="rs-txt">“' + crEsc(o.comentario) + '”</div>' : '<div class="rs-meta">Sin comentario.</div>')
+      + contacto
+      + (o.nota ? '<div class="rs-meta rs-nota-int">' + crEsc(o.atendido_por || '') + ': ' + crEsc(o.nota) + '</div>' : '')
+      + (acc ? '<div class="rs-acc">' + acc + '</div>' : '') + cierre + '</div>';
+  }).join('');
+}
+
+function rsQrHtml() {
+  const n = rsDatos.negocio;
+  const items = [{id: null, nombre: 'Link directo (redes, firma de mail, WhatsApp)', link: n.link}].concat(n.fuentes);
+  return '<div class="rs-meta">Un QR por lugar: así se ve cuál rinde (mostrador, mesas, ticket, el link que manda el comercio por WhatsApp después de vender). El cartel sale listo para imprimir.</div>'
+    + '<div class="rs-qrs">' + items.map(f => {
+      const q = f.id ? '?f=' + Number(f.id) : '';
+      return '<div class="rs-qr"><img src="/resenas/qr/' + Number(n.id) + '.svg' + q + '" alt="QR ' + crEsc(f.nombre) + '" loading="lazy" width="150" height="150">'
+        + '<b>' + crEsc(f.nombre) + '</b><a class="rs-meta" href="' + crEsc(f.link) + '" target="_blank" rel="noopener">' + crEsc(f.link) + '</a>'
+        + '<div class="rs-acc"><a class="of-btn" href="/resenas/cartel/' + Number(n.id) + q + '" target="_blank" rel="noopener">Cartel</a>'
+        + '<a class="of-btn" href="/resenas/qr/' + Number(n.id) + '.svg' + (q ? q + '&' : '?') + 'bajar=1">Bajar QR</a>'
+        + '<button type="button" class="of-btn" data-rs="copiar" data-link="' + crEsc(f.link) + '">Copiar</button>'
+        + (f.id ? '<button type="button" class="of-btn" data-rs="borrar-fuente" data-id="' + Number(f.id) + '" aria-label="Borrar ' + crEsc(f.nombre) + '">✕</button>' : '') + '</div></div>';
+    }).join('') + '</div>'
+    + '<form class="rs-fila" data-rs-form="fuente"><input name="nombre" maxlength="60" required placeholder="Mesas, Ticket, WhatsApp post-venta…" aria-label="Dónde va el QR nuevo">'
+    + '<button type="submit" class="of-btn prim">+ Nuevo QR</button></form>';
+}
+
+const RS_G_ESTADO = {sin_responder: 'Para responder', respondida: 'Respondida', no_responde: 'No hace falta'};
+
+function rsGoogleHtml() {
+  const n = rsDatos.negocio;
+  const g = rsDatos.google_resumen || {};
+  const res = rsDatos.google_resenas || [];
+  const u = g.ultima;
+  let estado;
+  if (!n.place_id_efectivo) estado = 'Para que se lea solo, cargá el Place ID del comercio en "Ajustes" (o un link de Google con placeid).';
+  else if (!u) estado = 'Todavía no se leyó Google.';
+  else estado = 'Última lectura: ' + crEsc(u.creado_en) + (u.estado === 'ok' ? ' · ' + Number(u.nuevas) + (u.nuevas === 1 ? ' reseña nueva' : ' reseñas nuevas') : ' · <b class="rs-mal">' + crEsc(u.detalle || 'falló') + '</b>');
+  const modo = g.automatico ? 'Se lee sola una vez por día.' : 'La lectura automática está apagada (falta GOOGLE_PLACES_API_KEY).';
+  const kp = [
+    ['Para responder', String(g.sin_responder || 0), (g.bajas_sin_responder || 0) + ' de 1 a 3 estrellas', g.bajas_sin_responder ? 'rs-atencion' : ''],
+    ['Respondidas', rsNum(g.respondidas_pct, '%'), 'de ' + (g.total || 0) + ' leídas', ''],
+    ['Tiempo de respuesta', g.horas_respuesta === null || g.horas_respuesta === undefined ? '—' : rsNum(g.horas_respuesta) + ' h', 'mediana desde que se publicó', ''],
+  ];
+  const tarjetas = res.map(r => {
+    const id = Number(r.id);
+    const abierta = r.estado === 'sin_responder';
+    const meta = [crEsc(r.publicada_en || r.leida_en), r.autor ? crEsc(r.autor) : 'reseña de Google'];
+    let cuerpo = r.texto ? '<div class="rs-txt">“' + crEsc(r.texto) + '”</div>' : '<div class="rs-meta">Sin texto' + (r.autor ? '' : ' (el texto se borra a los 30 días)') + '.</div>';
+    if (abierta) {
+      cuerpo += '<form class="rs-resp" data-rs-form="g-responder" data-id="' + id + '"><label class="rs-meta">Respuesta sugerida'
+        + (r.sugerida_por === 'ia' ? ' (IA)' : '') + '<textarea name="respuesta" rows="3" maxlength="1000" aria-label="Respuesta">' + crEsc(r.sugerida || '') + '</textarea></label>'
+        + '<div class="rs-acc"><button type="button" class="of-btn" data-rs="copiar-resp" data-id="' + id + '">Copiar</button>'
+        + '<a class="of-btn" href="' + crEsc(r.responder) + '" target="_blank" rel="noopener">Abrir en Google</a>'
+        + '<button type="submit" class="of-btn prim">Marcar respondida</button>'
+        + '<button type="button" class="of-btn" data-rs="g-estado" data-estado="no_responde" data-id="' + id + '">No hace falta</button></div></form>';
+    } else {
+      if (r.respuesta) cuerpo += '<div class="rs-meta rs-nota-int">Respuesta: ' + crEsc(r.respuesta) + '</div>';
+      cuerpo += '<div class="rs-acc"><span class="rs-meta">' + crEsc(r.respondida_por || '') + ' · ' + crEsc(r.respondida_en || '') + '</span>'
+        + '<button type="button" class="of-btn" data-rs="g-estado" data-estado="sin_responder" data-id="' + id + '">Volver a pendientes</button></div>';
+    }
+    return '<div class="rs-op' + (r.rating <= 3 ? ' baja' : '') + '"><div class="rs-op-cab"><span class="rs-est">' + rsEstrellas(Number(r.rating)) + '</span>'
+      + '<span class="rs-pill e-' + (abierta ? 'abierta' : 'resuelta') + '">' + crEsc(RS_G_ESTADO[r.estado] || r.estado) + '</span><span class="rs-meta">' + meta.join(' · ') + '</span></div>' + cuerpo + '</div>';
+  }).join('');
+  const filas = n.google.slice().reverse().map(x => '<tr><td>' + crEsc(x.fecha) + '</td><td>' + rsNum(x.rating) + ' ★</td><td>' + Number(x.cantidad) + '</td><td class="rs-meta">' + crEsc(x.cargado_por || '') + '</td>'
+    + '<td><button type="button" class="of-btn" data-rs="borrar-google" data-id="' + Number(x.id) + '" aria-label="Borrar">✕</button></td></tr>').join('');
+  return '<div class="rs-link"><span class="rs-meta">' + estado + ' ' + modo + '</span><span class="rs-sep"></span>'
+    + (n.place_id_efectivo && g.puede_leer ? '<button type="button" class="of-btn prim" data-rs="g-leer">Leer Google ahora</button>' : '') + '</div>'
+    + '<div class="rs-kpis rs-kpis-3">' + kp.map(([l, v, s, c]) => '<div class="rs-kpi"><div class="rs-kpi-l">' + crEsc(l) + '</div><div class="rs-kpi-v ' + c + '">' + crEsc(v) + '</div><div class="rs-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>'
+    + '<h3 class="rs-h">Reseñas de Google</h3><div class="rs-meta">Cada reseña nueva trae una respuesta escrita. Se copia, se publica en Google con la cuenta del comercio y se marca acá. El comercio ve lo mismo en su panel. Google da las 5 reseñas más relevantes; para todas y para publicar desde acá hace falta Google Business Profile.</div>'
+    + (tarjetas || '<div class="rs-vacio">Todavía no hay reseñas leídas.</div>')
+    + '<h3 class="rs-h">Puntaje en el tiempo</h3><div class="rs-meta">Con la lectura automática queda una foto por día. También se puede anotar a mano lo que muestra Google Maps.</div>'
+    + '<form class="rs-fila" data-rs-form="google"><input type="date" name="fecha" aria-label="Fecha"><input name="rating" inputmode="decimal" placeholder="4,3" required aria-label="Puntaje" class="rs-corto">'
+    + '<input name="cantidad" inputmode="numeric" placeholder="128 reseñas" required aria-label="Cantidad de reseñas" class="rs-corto"><button type="submit" class="of-btn prim">+ Anotar</button></form>'
+    + (filas ? '<table class="rs-tabla"><thead><tr><th>Fecha</th><th>Puntaje</th><th>Reseñas</th><th>Cargó</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '');
+}
+
+function rsAccesoHtml() {
+  const acc = rsDatos.accesos || [];
+  let nuevo = '';
+  if (rsLinkNuevo && rsLinkNuevo.nid === rsSel) {
+    nuevo = '<div class="rs-nuevo-link"><b>Link de ' + crEsc(rsLinkNuevo.nombre) + '</b> · copialo ahora: no se vuelve a mostrar.'
+      + '<div class="rs-link"><a href="' + crEsc(rsLinkNuevo.link) + '" target="_blank" rel="noopener">' + crEsc(rsLinkNuevo.link) + '</a>'
+      + '<button type="button" class="of-btn prim" data-rs="copiar" data-link="' + crEsc(rsLinkNuevo.link) + '">Copiar link</button>'
+      + (rsLinkNuevo.whatsapp ? '<a class="of-btn" href="' + crEsc(rsLinkNuevo.whatsapp) + '" target="_blank" rel="noopener">Mandar por WhatsApp</a>' : '') + '</div></div>';
+  }
+  const filas = acc.map(a => '<tr' + (a.revocado_en ? ' class="rs-revocado"' : '') + '><td>' + crEsc(a.nombre) + '</td><td class="rs-meta">' + crEsc(a.creado_en) + ' · ' + crEsc(a.creado_por || '') + '</td>'
+    + '<td>' + (a.revocado_en ? '<span class="rs-meta">revocado ' + crEsc(a.revocado_en) + '</span>' : a.visto_en ? crEsc(a.visto_en) : '<span class="rs-meta">nunca entró</span>') + '</td>'
+    + '<td>' + rsAvisoCelda(a) + '</td>'
+    + '<td>' + (a.revocado_en ? '' : '<button type="button" class="of-btn" data-rs="revocar" data-id="' + Number(a.id) + '">Revocar</button>') + '</td></tr>').join('');
+  const avisos = (rsDatos.avisos || []).slice(0, 8).map(v => '<li>' + crEsc(v.creado_en) + ' · ' + crEsc(v.nombre) + ' · '
+    + (v.tipo === 'resumen' ? 'resumen del día' : v.cantidad + ' para atender')
+    + (v.estado === 'enviado' ? '' : ' · <b>' + crEsc(v.estado === 'fallo' ? 'no salió' : v.estado) + '</b>') + '</li>').join('');
+  const ejemplo = '/resenas/aviso-ejemplo/' + Number(rsSel);
+  return '<div class="rs-meta">El comercio ve su propio panel con un link privado, sin usuario ni clave: sus números, la bandeja de quejas para resolver y sus QR. Un link por persona (el dueño, la encargada), así queda quién resolvió cada queja y se le puede cortar a uno solo.</div>'
+    + nuevo
+    + '<form class="rs-fila" data-rs-form="acceso"><input name="nombre" maxlength="60" required placeholder="Para quién: Marcela (dueña), Encargado de turno…" aria-label="Para quién es el link">'
+    + '<input type="email" name="email" maxlength="160" placeholder="Mail para avisos de quejas (opcional)" aria-label="Mail para avisos de quejas">'
+    + '<button type="submit" class="of-btn prim">+ Crear link</button></form>'
+    + (filas ? '<table class="rs-tabla rs-acc-tabla"><thead><tr><th>Para</th><th>Creado</th><th>Última visita</th><th>Avisos por mail</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<div class="rs-vacio">El comercio todavía no tiene acceso. Creale un link y mandáselo.</div>')
+    + '<div class="rs-meta">Con mail, a cada persona le llega un aviso cuando entra una queja o una reseña de 1 a 3 estrellas en Google, con la respuesta sugerida (agrupadas, nunca de 22 a 8, con tope por día) o un resumen a las 9. El mail trae un link a su panel que vence a los 30 días. Cada uno lo puede cambiar o apagar desde su panel, en Avisos.'
+    + ' <a href="' + ejemplo + '" target="_blank" rel="noopener">Ver el mail de una queja</a> · <a href="' + ejemplo + '?tipo=resumen" target="_blank" rel="noopener">Ver el resumen diario</a></div>'
+    + (avisos ? '<div class="rs-meta"><b>Últimos avisos</b><ul class="rs-avisos">' + avisos + '</ul></div>' : '');
+}
+
+const RS_MODOS = [['al_momento', 'Al momento'], ['diario', 'Resumen diario'], ['no', 'Apagado']];
+
+function rsAvisoCelda(a) {
+  if (a.revocado_en) return '<span class="rs-meta">—</span>';
+  return '<form class="rs-fila rs-aviso" data-rs-form="avisos" data-id="' + Number(a.id) + '">'
+    + '<input type="email" name="email" maxlength="160" value="' + crEsc(a.email || '') + '" placeholder="mail" aria-label="Mail de ' + crEsc(a.nombre) + '">'
+    + '<select name="aviso" aria-label="Cuándo avisar">' + RS_MODOS.map(m => '<option value="' + m[0] + '"' + ((a.aviso || 'no') === m[0] ? ' selected' : '') + '>' + m[1] + '</option>').join('') + '</select>'
+    + '<button type="submit" class="of-btn">Guardar</button></form>';
+}
+
+function rsAjustesHtml() {
+  const n = rsDatos.negocio;
+  const v = k => crEsc(n[k] === null || n[k] === undefined ? '' : n[k]);
+  return '<form class="rs-form" data-rs-form="ajustes">'
+    + '<label>Nombre<input name="nombre" value="' + v('nombre') + '" maxlength="120" required></label>'
+    + '<label>Rubro<input name="rubro" value="' + v('rubro') + '" maxlength="120" placeholder="Restaurante"></label>'
+    + '<label class="rs-ancho">Link de Google para reseñar (o el Place ID, empieza con ChIJ)<input name="google_url" value="' + v('google_url') + '" maxlength="500" placeholder="https://g.page/r/…/review"></label>'
+    + '<label class="rs-ancho">Place ID (para leer el puntaje y las reseñas solo; vacío = el del link)<input name="place_id" value="' + v('place_id') + '" maxlength="300" placeholder="ChIJ…"></label>'
+    + '<label>WhatsApp del comercio<input name="whatsapp" value="' + v('whatsapp') + '" inputmode="tel" placeholder="099 123 456"></label>'
+    + '<label>Link (/opina/…)<input name="slug" value="' + v('slug') + '" maxlength="40"></label>'
+    + '<label>Color<input type="color" name="color" value="' + v('color') + '"></label>'
+    + '<label class="rs-ancho">Pregunta (vacío = "¿Cómo te fue hoy en ' + v('nombre') + '?")<input name="pregunta" value="' + v('pregunta') + '" maxlength="200"></label>'
+    + '<label class="rs-chk"><input type="checkbox" name="activo"' + (n.activo ? ' checked' : '') + '> Toma opiniones</label>'
+    + '<div class="rs-acc rs-ancho"><button type="submit" class="of-btn prim">Guardar</button>'
+    + '<button type="button" class="of-btn" data-rs="borrar-negocio">Borrar comercio</button></div></form>'
+    + '<div class="rs-meta">A todos se les ofrece Google, también a quien puntúa bajo: filtrar quién llega a Google según el puntaje lo prohíbe Google y puede costar las reseñas del comercio.</div>';
+}
+
+async function rsAccion(e) {
+  const b = e.target.closest('[data-rs]');
+  if (!b) return;
+  const a = b.dataset.rs;
+  const nota = document.getElementById('rs-nota');
+  nota.textContent = '';
+  const id = Number(b.dataset.id);
+  const base = '/api/resenas/negocios/' + rsSel;
+  try {
+    if (a === 'nuevo') { const f = document.getElementById('rs-form-nuevo'); f.hidden = !f.hidden; return; }
+    if (a === 'toggle') { const box = document.getElementById(b.dataset.box); box.hidden = !box.hidden; return; }
+    if (a === 'tab') {
+      const antes = rsTab;
+      rsTab = b.dataset.tab;
+      const lista = t => RS_FILTROS.some(f => f[0] === t);
+      return lista(rsTab) && rsTab !== antes ? rsCargarNegocio() : rsPintar();
+    }
+    if (a === 'copiar') {
+      await navigator.clipboard.writeText(b.dataset.link);
+      const t = b.textContent;
+      b.textContent = 'Copiado ✓';
+      setTimeout(() => { b.textContent = t; }, 1600);
+      return;
+    }
+    if (a === 'estado') { await ofPedir(base + '/opiniones/' + id, 'PATCH', {estado: b.dataset.estado}); return rsCargar(); }
+    if (a === 'borrar-fuente') { if (!confirm('¿Borrar este QR? Las opiniones que entraron por ahí quedan como link directo.')) return; await ofPedir(base + '/fuentes/' + id, 'DELETE'); return rsCargarNegocio(); }
+    if (a === 'g-leer') {
+      b.disabled = true;
+      b.textContent = 'Leyendo…';
+      try {
+        const d = await ofPedir(base + '/google/leer', 'POST', {});
+        nota.textContent = d.nuevas ? d.nuevas + (d.nuevas === 1 ? ' reseña nueva.' : ' reseñas nuevas.') : 'Leído: nada nuevo.';
+      } finally {
+        await rsCargarNegocio();
+      }
+      return;
+    }
+    if (a === 'g-estado') { await ofPedir(base + '/google/resenas/' + id, 'PATCH', {estado: b.dataset.estado}); return rsCargarNegocio(); }
+    if (a === 'copiar-resp') {
+      const t = b.closest('form').querySelector('textarea').value;
+      await navigator.clipboard.writeText(t);
+      b.textContent = 'Copiada ✓';
+      setTimeout(() => { b.textContent = 'Copiar'; }, 1600);
+      return;
+    }
+    if (a === 'borrar-google') { await ofPedir(base + '/google/' + id, 'DELETE'); return rsCargarNegocio(); }
+    if (a === 'revocar') { if (!confirm('¿Revocar este link? Deja de andar en el momento.')) return; await ofPedir(base + '/accesos/' + id, 'DELETE'); rsLinkNuevo = null; return rsCargarNegocio(); }
+    if (a === 'borrar-negocio') {
+      if (!confirm('¿Borrar el comercio con todas sus opiniones? No se puede deshacer. Los QR impresos dejan de andar.')) return;
+      await ofPedir(base, 'DELETE');
+      rsSel = null;
+      return rsCargar();
+    }
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+
+function rsCambio(e) {
+  if (e.target.id === 'rs-negocio') { rsSel = Number(e.target.value); rsTab = 'bandeja'; return rsCargarNegocio(); }
+  if (e.target.id === 'rs-dias') { rsDias = Number(e.target.value); return rsCargarNegocio(); }
+}
+
+async function rsEnviar(e) {
+  const f = e.target.closest('form[data-rs-form]');
+  if (!f) return;
+  e.preventDefault();
+  const tipo = f.dataset.rsForm;
+  const nota = document.getElementById('rs-nota');
+  nota.textContent = '';
+  const datos = Object.fromEntries(new FormData(f).entries());
+  f.querySelectorAll('input[type=checkbox]').forEach(c => { datos[c.name] = c.checked; });
+  const base = '/api/resenas/negocios/' + rsSel;
+  try {
+    if (tipo === 'nuevo') {
+      const d = await ofPedir('/api/resenas/negocios', 'POST', datos);
+      rsSel = d.negocio.id;
+      rsTab = 'qr';
+      f.reset();
+      f.hidden = true;
+      return rsCargar();
+    }
+    if (tipo === 'resolver') { await ofPedir(base + '/opiniones/' + Number(f.dataset.id), 'PATCH', {estado: 'resuelta', nota: datos.nota}); return rsCargar(); }
+    if (tipo === 'fuente') await ofPedir(base + '/fuentes', 'POST', datos);
+    if (tipo === 'google') await ofPedir(base + '/google', 'POST', datos);
+    if (tipo === 'g-responder') await ofPedir(base + '/google/resenas/' + Number(f.dataset.id), 'PATCH', {estado: 'respondida', respuesta: datos.respuesta});
+    if (tipo === 'acceso') {
+      const d = await ofPedir(base + '/accesos', 'POST', datos);
+      rsLinkNuevo = {nid: rsSel, nombre: d.acceso.nombre, link: d.link, whatsapp: d.whatsapp};
+    }
+    if (tipo === 'avisos') await ofPedir(base + '/accesos/' + Number(f.dataset.id) + '/avisos', 'PUT', datos);
+    if (tipo === 'ajustes') { await ofPedir(base, 'PATCH', datos); return rsCargar(); }
+    return rsCargarNegocio();
+  } catch (err) {
+    nota.textContent = err.message;
+  }
+}
+// ========== FIN Reseñas y opiniones ==========
+"""
+
 
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
@@ -3250,6 +3621,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
+#nav-resenas .nav-icon{stroke:#fcd34d}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -3286,6 +3658,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
+#nav-resenas.active .nav-icon{stroke:#fef3c7}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -3318,6 +3691,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
+body.light #nav-resenas .nav-icon{stroke:#ca8a04}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -4730,6 +5104,86 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .li-tarjeta{padding:12px}
   .li-btn{flex:1 1 auto;min-height:40px}
 }
+/* Reseñas y opiniones (25/10): el producto de QR para juntar reseñas de Google y quejas privadas. */
+.rs-cab{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rs-cab select,.rs-link select{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 10px;font-family:inherit;max-width:100%}
+.rs-form{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;margin:0 0 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end}
+.rs-form label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--texto-tenue)}
+.rs-form input,.rs-form select,.rs-fila input{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
+.rs-form input[type=color]{padding:2px;height:32px}
+.rs-form .rs-ancho{grid-column:1/-1}
+.rs-form[hidden],.rs-fila[hidden]{display:none}
+.rs-form label.rs-chk{flex-direction:row;align-items:center;gap:6px;font-size:.78rem}
+.rs-link{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--azul-tinte);border:1px solid var(--borde);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:var(--texto-tenue)}
+.rs-link a{color:var(--azul-claro);overflow-wrap:anywhere;font-weight:600}
+.rs-sep{flex:1}
+.rs-alerta{background:var(--rojo-tinte);color:var(--rojo-texto);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.82rem}
+.rs-nuevo-link{background:var(--superficie);border:1px solid var(--verde);border-radius:10px;padding:10px 12px;margin:10px 0}
+.rs-revocado td{opacity:.55}
+.rs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.rs-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
+.rs-kpi-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.5px}
+.rs-kpi-v{font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--texto-fuerte)}
+.rs-kpi-s{font-size:.72rem;color:var(--texto-debil)}
+.rs-mal{color:var(--rojo-texto)!important}
+.rs-bien{color:var(--verde-texto)!important}
+.rs-atencion{color:var(--ambar)!important}
+.rs-graf{display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px}
+.rs-caja{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;min-width:0}
+.rs-ancha{grid-column:1/-1;overflow-x:auto}
+.rs-barras{display:flex;gap:6px;align-items:flex-end;height:140px;margin-top:8px}
+.rs-barra{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:0;text-align:center}
+.rs-barra-col{background:var(--azul);border-radius:5px 5px 0 0;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;min-height:2px}
+.rs-barra-g{background:var(--verde)}
+.rs-barra-v{font-size:.66rem;color:var(--texto-tenue);font-variant-numeric:tabular-nums}
+.rs-barra-l{font-size:.64rem;color:var(--texto-debil);margin-top:3px}
+.rs-dist{display:flex;gap:8px;align-items:center;font-size:.78rem;margin:6px 0;color:var(--texto-tenue)}
+.rs-dist span{width:30px}
+.rs-dist b{width:28px;text-align:right;font-variant-numeric:tabular-nums;color:var(--texto)}
+.rs-dist-b{flex:1;background:var(--fondo-hundido);border-radius:4px;height:10px;overflow:hidden}
+.rs-dist-f{height:100%;background:var(--verde)}
+.rs-dist-f.e3{background:var(--ambar)}
+.rs-dist-f.e2,.rs-dist-f.e1{background:var(--rojo)}
+.rs-tabla{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:6px}
+.rs-tabla th{text-align:left;color:var(--texto-tenue);font-weight:600;font-size:.72rem;padding:4px 8px}
+.rs-tabla td{border-top:1px solid var(--borde);padding:6px 8px;font-variant-numeric:tabular-nums}
+.rs-tabs{display:flex;gap:6px;border-bottom:1px solid var(--borde);margin-bottom:12px;flex-wrap:wrap}
+.rs-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--texto-tenue);padding:8px 12px;font-family:inherit;font-size:.85rem;cursor:pointer}
+.rs-tab.activo{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.rs-badge{background:var(--rojo-tinte);color:var(--rojo-texto);border-radius:10px;padding:0 6px;font-size:.66rem;font-weight:700}
+.rs-op{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid var(--verde);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.rs-op.baja{border-left-color:var(--rojo)}
+.rs-op.e-resuelta{border-left-color:var(--borde-fuerte)}
+.rs-op-cab{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rs-est{color:var(--ambar);letter-spacing:1px}
+.rs-apagada{color:var(--borde-fuerte)}
+.rs-pill{border-radius:999px;padding:1px 8px;font-size:.68rem;font-weight:700;background:var(--relleno);color:var(--texto-tenue)}
+.rs-pill.e-abierta{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.rs-pill.e-en_curso{background:var(--azul-tinte);color:var(--azul-claro)}
+.rs-pill.e-resuelta{background:var(--verde-tinte);color:var(--verde-texto)}
+.rs-txt{margin:6px 0 2px;font-size:.88rem;color:var(--texto-fuerte);overflow-wrap:anywhere;white-space:pre-wrap}
+.rs-meta{font-size:.74rem;color:var(--texto-tenue);margin-top:3px;overflow-wrap:anywhere}
+.rs-nota-int{font-style:italic}
+.rs-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.rs-acc a.of-btn{text-decoration:none}
+.rs-h{font-size:.88rem;margin:0 0 2px;color:var(--texto-fuerte)}
+.rs-fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.rs-resp{margin-top:8px}
+.rs-resp label{display:block}
+.rs-resp textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;font:inherit;font-size:.86rem;padding:8px;border:1px solid var(--borde-fuerte);border-radius:8px;background:var(--fondo-hundido);color:var(--texto);resize:vertical}
+.rs-fila input{flex:1 1 200px}
+.rs-fila input.rs-corto{flex:0 0 120px;width:120px;min-width:0}
+.rs-fila select{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
+.rs-fila.rs-aviso{margin:0}
+.rs-fila.rs-aviso input{flex:1 1 150px;min-width:0}
+.rs-meta a{color:var(--azul-claro);font-weight:600}
+@media (max-width:700px){.rs-acc-tabla thead,.rs-acc-tabla td:nth-child(2){display:none}.rs-acc-tabla,.rs-acc-tabla tbody,.rs-acc-tabla tr,.rs-acc-tabla td{display:block;width:100%}.rs-acc-tabla tr{border-top:1px solid var(--borde);padding:6px 0}.rs-acc-tabla td{border-top:0;padding:3px 0}}
+.rs-avisos{margin:4px 0 0;padding-left:18px}
+.rs-qrs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:10px 0}
+.rs-qr{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.rs-qr img{border-radius:8px;padding:4px;align-self:center}
+.rs-vacio{color:var(--texto-tenue);font-size:.85rem;padding:14px 2px}
+@media(max-width:760px){.rs-graf{grid-template-columns:1fr}}
 /* ── Credenciales ─────────────────────────────────────────────────────────────
    Contraseñas de la empresa. Solo tokens, panel admin-only. */
 .cr-nota{font-size:.8rem;color:var(--rojo-texto);margin:-6px 0 12px}
@@ -4990,6 +5444,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
   <div class="nav-section-label">AGENTES</div>
   <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
+  <!-- Reseñas (25/10): el producto de QR para juntar reseñas de Google que vendemos a comercios. Panel "resenas". -->
+  <div class="nav-section-label">PRODUCTOS</div>
+  <div class="nav-item" id="nav-resenas" onclick="showPanel('resenas')"><i data-lucide="star" class="nav-icon"></i> Reseñas</div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6376,6 +6833,31 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= RESENAS PANEL ======= -->
+  <!-- Reseñas y opiniones: los comercios a los que les armamos el QR para
+       juntar reseñas de Google y quejas privadas (services/resenas.py). -->
+  <div id="resenas-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Reseñas y opiniones</h1>
+        <div class="page-date">El QR del mostrador: los clientes del comercio puntúan, se los lleva a dejar la reseña en Google y las quejas llegan acá antes de ser una estrella pública.</div>
+      </div>
+      <div class="rs-cab">
+        <select id="rs-negocio" aria-label="Comercio" hidden></select>
+        <button type="button" class="of-btn prim" data-rs="nuevo" aria-controls="rs-form-nuevo">+ Nuevo comercio</button>
+      </div>
+    </div>
+    <form id="rs-form-nuevo" class="rs-form" data-rs-form="nuevo" hidden>
+      <label>Nombre del comercio<input name="nombre" maxlength="120" required placeholder="Parrilla El Fogón"></label>
+      <label>Rubro<input name="rubro" maxlength="120" placeholder="Restaurante"></label>
+      <label class="rs-ancho">Link de Google para reseñar o Place ID (se puede cargar después)<input name="google_url" maxlength="500" placeholder="https://g.page/r/…/review"></label>
+      <div class="rs-acc rs-ancho"><button type="submit" class="of-btn prim">Crear y ver el QR</button><button type="button" class="of-btn" data-rs="nuevo">Cancelar</button></div>
+    </form>
+    <div class="cr-nota" id="rs-nota" role="status" aria-live="polite"></div>
+    <div id="rs-cuerpo"></div>
+  </div>
+  <!-- ======= FIN RESENAS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7600,6 +8082,7 @@ function showPanel(name) {
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
+  if (name === 'resenas') rsCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -12781,7 +13264,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','resenas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -16195,6 +16678,7 @@ async function plBorrar(id) {
 
 /*FID_JS*/
 /*PLEXO_JS*/
+/*RS_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
 // ========== Seguimiento de leads ==========
@@ -22957,6 +23441,7 @@ DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
 ).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */"
 ).replace("/*PLEXO_JS*/", PLEXO_JS
+).replace("/*RS_JS*/", "/* {% raw %} */" + RS_JS + "/* {% endraw %} */"
 ).replace("/*BUSCAR_JS*/", "/* {% raw %} */" + BUSCAR_JS + "/* {% endraw %} */"
 ).replace("/*ESENCIALES_JS*/", "/* {% raw %} */" + ESENCIALES_JS + "/* {% endraw %} */")
 
@@ -23079,7 +23564,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, resenas_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -23106,6 +23591,10 @@ def create_app(db_path: str) -> Flask:
         # de "listo" y el callback. No llevan sesión; routes/plexo.py no confía
         # en lo que reciben (ver su docstring).
         if request.path.startswith(PLEXO_PUBLICAS):
+            return
+        # Reseñas: la página donde opina el cliente del comercio (/opina/<slug>)
+        # es pública a propósito, va en un QR; ver routes/resenas.py.
+        if request.path.startswith(RESENAS_PUBLICAS):
             return
         # La llama el navegador de cualquiera que descargue la guia de precios
         # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
@@ -24133,8 +24622,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','resenas'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',resenas:'Reseñas'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -24395,6 +24884,16 @@ loadBackups();
         # lo apaga; la guarda contra cobrar dos veces es la tabla plexo_cobros.
         from services.plexo import start_plexo_cobros
         start_plexo_cobros(app)
+
+        # Avisos de quejas a los comercios de Reseñas. RESENAS_AVISOS=off los
+        # apaga; los topes y lo ya avisado viven en la base (rs_avisos).
+        from services.resenas_avisos import start_avisos_resenas
+        start_avisos_resenas(app)
+
+        # Lectura diaria de Google (puntaje y reseñas) de Reseñas. Sin
+        # GOOGLE_PLACES_API_KEY no arranca; el cupo vive en rs_google_lecturas.
+        from services.resenas_google import start_google_resenas
+        start_google_resenas(app)
 
     try:
         from database import get_all_users
