@@ -2214,7 +2214,7 @@ function rsPintar() {
     + '<span class="rs-sep"></span><label class="rs-meta">Período <select id="rs-dias">' + [7, 30, 90, 365].map(d => '<option value="' + d + '"' + (d === rsDias ? ' selected' : '') + '>' + d + ' días</option>').join('') + '</select></label></div>'
     + rsKpis(rsDatos.metricas) + rsGraficos(rsDatos.metricas)
     + '<div class="rs-tabs" role="tablist" aria-label="Vista">' + tabs.map(([k, l]) => '<button type="button" role="tab" class="rs-tab' + (rsTab === k ? ' activo' : '')
-      + '" aria-selected="' + (rsTab === k) + '" data-rs="tab" data-tab="' + k + '">' + l + (k === 'bandeja' && rsDatos.metricas.abiertas + rsDatos.metricas.en_curso ? ' <span class="rs-badge">' + (rsDatos.metricas.abiertas + rsDatos.metricas.en_curso) + '</span>' : '') + '</button>').join('') + '</div>'
+      + '" aria-selected="' + (rsTab === k) + '" data-rs="tab" data-tab="' + k + '">' + l + (k === 'bandeja' && rsDatos.metricas.abiertas + rsDatos.metricas.en_curso ? ' <span class="rs-badge">' + (rsDatos.metricas.abiertas + rsDatos.metricas.en_curso) + '</span>' : '') + (k === 'google' && rsDatos.google_resumen && rsDatos.google_resumen.sin_responder ? ' <span class="rs-badge">' + Number(rsDatos.google_resumen.sin_responder) + '</span>' : '') + '</button>').join('') + '</div>'
     + '<div id="rs-vista">' + (rsTab === 'qr' ? rsQrHtml() : rsTab === 'google' ? rsGoogleHtml() : rsTab === 'acceso' ? rsAccesoHtml() : rsTab === 'ajustes' ? rsAjustesHtml() : rsOpinionesHtml()) + '</div>';
 }
 
@@ -2268,11 +2268,51 @@ function rsQrHtml() {
     + '<button type="submit" class="of-btn prim">+ Nuevo QR</button></form>';
 }
 
+const RS_G_ESTADO = {sin_responder: 'Para responder', respondida: 'Respondida', no_responde: 'No hace falta'};
+
 function rsGoogleHtml() {
   const n = rsDatos.negocio;
-  const filas = n.google.slice().reverse().map(g => '<tr><td>' + crEsc(g.fecha) + '</td><td>' + rsNum(g.rating) + ' ★</td><td>' + Number(g.cantidad) + '</td><td class="rs-meta">' + crEsc(g.cargado_por || '') + '</td>'
-    + '<td><button type="button" class="of-btn" data-rs="borrar-google" data-id="' + Number(g.id) + '" aria-label="Borrar">✕</button></td></tr>').join('');
-  return '<div class="rs-meta">Anotá lo que muestra Google Maps (puntaje y cantidad de reseñas) al arrancar y una vez por mes: es la prueba de lo que rinde el producto para el comercio.</div>'
+  const g = rsDatos.google_resumen || {};
+  const res = rsDatos.google_resenas || [];
+  const u = g.ultima;
+  let estado;
+  if (!n.place_id_efectivo) estado = 'Para que se lea solo, cargá el Place ID del comercio en "Ajustes" (o un link de Google con placeid).';
+  else if (!u) estado = 'Todavía no se leyó Google.';
+  else estado = 'Última lectura: ' + crEsc(u.creado_en) + (u.estado === 'ok' ? ' · ' + Number(u.nuevas) + (u.nuevas === 1 ? ' reseña nueva' : ' reseñas nuevas') : ' · <b class="rs-mal">' + crEsc(u.detalle || 'falló') + '</b>');
+  const modo = g.automatico ? 'Se lee sola una vez por día.' : 'La lectura automática está apagada (falta GOOGLE_PLACES_API_KEY).';
+  const kp = [
+    ['Para responder', String(g.sin_responder || 0), (g.bajas_sin_responder || 0) + ' de 1 a 3 estrellas', g.bajas_sin_responder ? 'rs-atencion' : ''],
+    ['Respondidas', rsNum(g.respondidas_pct, '%'), 'de ' + (g.total || 0) + ' leídas', ''],
+    ['Tiempo de respuesta', g.horas_respuesta === null || g.horas_respuesta === undefined ? '—' : rsNum(g.horas_respuesta) + ' h', 'mediana desde que se publicó', ''],
+  ];
+  const tarjetas = res.map(r => {
+    const id = Number(r.id);
+    const abierta = r.estado === 'sin_responder';
+    const meta = [crEsc(r.publicada_en || r.leida_en), r.autor ? crEsc(r.autor) : 'reseña de Google'];
+    let cuerpo = r.texto ? '<div class="rs-txt">“' + crEsc(r.texto) + '”</div>' : '<div class="rs-meta">Sin texto' + (r.autor ? '' : ' (el texto se borra a los 30 días)') + '.</div>';
+    if (abierta) {
+      cuerpo += '<form class="rs-resp" data-rs-form="g-responder" data-id="' + id + '"><label class="rs-meta">Respuesta sugerida'
+        + (r.sugerida_por === 'ia' ? ' (IA)' : '') + '<textarea name="respuesta" rows="3" maxlength="1000" aria-label="Respuesta">' + crEsc(r.sugerida || '') + '</textarea></label>'
+        + '<div class="rs-acc"><button type="button" class="of-btn" data-rs="copiar-resp" data-id="' + id + '">Copiar</button>'
+        + '<a class="of-btn" href="' + crEsc(r.responder) + '" target="_blank" rel="noopener">Abrir en Google</a>'
+        + '<button type="submit" class="of-btn prim">Marcar respondida</button>'
+        + '<button type="button" class="of-btn" data-rs="g-estado" data-estado="no_responde" data-id="' + id + '">No hace falta</button></div></form>';
+    } else {
+      if (r.respuesta) cuerpo += '<div class="rs-meta rs-nota-int">Respuesta: ' + crEsc(r.respuesta) + '</div>';
+      cuerpo += '<div class="rs-acc"><span class="rs-meta">' + crEsc(r.respondida_por || '') + ' · ' + crEsc(r.respondida_en || '') + '</span>'
+        + '<button type="button" class="of-btn" data-rs="g-estado" data-estado="sin_responder" data-id="' + id + '">Volver a pendientes</button></div>';
+    }
+    return '<div class="rs-op' + (r.rating <= 3 ? ' baja' : '') + '"><div class="rs-op-cab"><span class="rs-est">' + rsEstrellas(Number(r.rating)) + '</span>'
+      + '<span class="rs-pill e-' + (abierta ? 'abierta' : 'resuelta') + '">' + crEsc(RS_G_ESTADO[r.estado] || r.estado) + '</span><span class="rs-meta">' + meta.join(' · ') + '</span></div>' + cuerpo + '</div>';
+  }).join('');
+  const filas = n.google.slice().reverse().map(x => '<tr><td>' + crEsc(x.fecha) + '</td><td>' + rsNum(x.rating) + ' ★</td><td>' + Number(x.cantidad) + '</td><td class="rs-meta">' + crEsc(x.cargado_por || '') + '</td>'
+    + '<td><button type="button" class="of-btn" data-rs="borrar-google" data-id="' + Number(x.id) + '" aria-label="Borrar">✕</button></td></tr>').join('');
+  return '<div class="rs-link"><span class="rs-meta">' + estado + ' ' + modo + '</span><span class="rs-sep"></span>'
+    + (n.place_id_efectivo && g.puede_leer ? '<button type="button" class="of-btn prim" data-rs="g-leer">Leer Google ahora</button>' : '') + '</div>'
+    + '<div class="rs-kpis rs-kpis-3">' + kp.map(([l, v, s, c]) => '<div class="rs-kpi"><div class="rs-kpi-l">' + crEsc(l) + '</div><div class="rs-kpi-v ' + c + '">' + crEsc(v) + '</div><div class="rs-kpi-s">' + crEsc(s) + '</div></div>').join('') + '</div>'
+    + '<h3 class="rs-h">Reseñas de Google</h3><div class="rs-meta">Cada reseña nueva trae una respuesta escrita. Se copia, se publica en Google con la cuenta del comercio y se marca acá. El comercio ve lo mismo en su panel. Google da las 5 reseñas más relevantes; para todas y para publicar desde acá hace falta Google Business Profile.</div>'
+    + (tarjetas || '<div class="rs-vacio">Todavía no hay reseñas leídas.</div>')
+    + '<h3 class="rs-h">Puntaje en el tiempo</h3><div class="rs-meta">Con la lectura automática queda una foto por día. También se puede anotar a mano lo que muestra Google Maps.</div>'
     + '<form class="rs-fila" data-rs-form="google"><input type="date" name="fecha" aria-label="Fecha"><input name="rating" inputmode="decimal" placeholder="4,3" required aria-label="Puntaje" class="rs-corto">'
     + '<input name="cantidad" inputmode="numeric" placeholder="128 reseñas" required aria-label="Cantidad de reseñas" class="rs-corto"><button type="submit" class="of-btn prim">+ Anotar</button></form>'
     + (filas ? '<table class="rs-tabla"><thead><tr><th>Fecha</th><th>Puntaje</th><th>Reseñas</th><th>Cargó</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '');
@@ -2323,6 +2363,7 @@ function rsAjustesHtml() {
     + '<label>Nombre<input name="nombre" value="' + v('nombre') + '" maxlength="120" required></label>'
     + '<label>Rubro<input name="rubro" value="' + v('rubro') + '" maxlength="120" placeholder="Restaurante"></label>'
     + '<label class="rs-ancho">Link de Google para reseñar (o el Place ID, empieza con ChIJ)<input name="google_url" value="' + v('google_url') + '" maxlength="500" placeholder="https://g.page/r/…/review"></label>'
+    + '<label class="rs-ancho">Place ID (para leer el puntaje y las reseñas solo; vacío = el del link)<input name="place_id" value="' + v('place_id') + '" maxlength="300" placeholder="ChIJ…"></label>'
     + '<label>WhatsApp del comercio<input name="whatsapp" value="' + v('whatsapp') + '" inputmode="tel" placeholder="099 123 456"></label>'
     + '<label>Link (/opina/…)<input name="slug" value="' + v('slug') + '" maxlength="40"></label>'
     + '<label>Color<input type="color" name="color" value="' + v('color') + '"></label>'
@@ -2359,6 +2400,25 @@ async function rsAccion(e) {
     }
     if (a === 'estado') { await ofPedir(base + '/opiniones/' + id, 'PATCH', {estado: b.dataset.estado}); return rsCargar(); }
     if (a === 'borrar-fuente') { if (!confirm('¿Borrar este QR? Las opiniones que entraron por ahí quedan como link directo.')) return; await ofPedir(base + '/fuentes/' + id, 'DELETE'); return rsCargarNegocio(); }
+    if (a === 'g-leer') {
+      b.disabled = true;
+      b.textContent = 'Leyendo…';
+      try {
+        const d = await ofPedir(base + '/google/leer', 'POST', {});
+        nota.textContent = d.nuevas ? d.nuevas + (d.nuevas === 1 ? ' reseña nueva.' : ' reseñas nuevas.') : 'Leído: nada nuevo.';
+      } finally {
+        await rsCargarNegocio();
+      }
+      return;
+    }
+    if (a === 'g-estado') { await ofPedir(base + '/google/resenas/' + id, 'PATCH', {estado: b.dataset.estado}); return rsCargarNegocio(); }
+    if (a === 'copiar-resp') {
+      const t = b.closest('form').querySelector('textarea').value;
+      await navigator.clipboard.writeText(t);
+      b.textContent = 'Copiada ✓';
+      setTimeout(() => { b.textContent = 'Copiar'; }, 1600);
+      return;
+    }
     if (a === 'borrar-google') { await ofPedir(base + '/google/' + id, 'DELETE'); return rsCargarNegocio(); }
     if (a === 'revocar') { if (!confirm('¿Revocar este link? Deja de andar en el momento.')) return; await ofPedir(base + '/accesos/' + id, 'DELETE'); rsLinkNuevo = null; return rsCargarNegocio(); }
     if (a === 'borrar-negocio') {
@@ -2399,6 +2459,7 @@ async function rsEnviar(e) {
     if (tipo === 'resolver') { await ofPedir(base + '/opiniones/' + Number(f.dataset.id), 'PATCH', {estado: 'resuelta', nota: datos.nota}); return rsCargar(); }
     if (tipo === 'fuente') await ofPedir(base + '/fuentes', 'POST', datos);
     if (tipo === 'google') await ofPedir(base + '/google', 'POST', datos);
+    if (tipo === 'g-responder') await ofPedir(base + '/google/resenas/' + Number(f.dataset.id), 'PATCH', {estado: 'respondida', respuesta: datos.respuesta});
     if (tipo === 'acceso') {
       const d = await ofPedir(base + '/accesos', 'POST', datos);
       rsLinkNuevo = {nid: rsSel, nombre: d.acceso.nombre, link: d.link, whatsapp: d.whatsapp};
@@ -5107,6 +5168,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .rs-acc a.of-btn{text-decoration:none}
 .rs-h{font-size:.88rem;margin:0 0 2px;color:var(--texto-fuerte)}
 .rs-fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.rs-resp{margin-top:8px}
+.rs-resp label{display:block}
+.rs-resp textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;font:inherit;font-size:.86rem;padding:8px;border:1px solid var(--borde-fuerte);border-radius:8px;background:var(--fondo-hundido);color:var(--texto);resize:vertical}
 .rs-fila input{flex:1 1 200px}
 .rs-fila input.rs-corto{flex:0 0 120px;width:120px;min-width:0}
 .rs-fila select{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
@@ -24825,6 +24889,11 @@ loadBackups();
         # apaga; los topes y lo ya avisado viven en la base (rs_avisos).
         from services.resenas_avisos import start_avisos_resenas
         start_avisos_resenas(app)
+
+        # Lectura diaria de Google (puntaje y reseñas) de Reseñas. Sin
+        # GOOGLE_PLACES_API_KEY no arranca; el cupo vive en rs_google_lecturas.
+        from services.resenas_google import start_google_resenas
+        start_google_resenas(app)
 
     try:
         from database import get_all_users

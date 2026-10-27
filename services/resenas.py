@@ -204,7 +204,9 @@ def init_resenas(conn: sqlite3.Connection) -> None:
         );
     """)
     from services.resenas_avisos import init_avisos
+    from services.resenas_google import init_google
     init_avisos(conn)
+    init_google(conn)
 
 
 def _con(db: str) -> sqlite3.Connection:
@@ -233,6 +235,9 @@ def _datos_negocio(datos: dict, parcial: bool = False) -> dict:
         out["whatsapp"] = tel_normal(w) or None
         if w and not out["whatsapp"]:
             raise NoSePuede("El WhatsApp no parece un celular o fijo de Uruguay.")
+    if "place_id" in datos:
+        from services.resenas_google import place_id_valido
+        out["place_id"] = place_id_valido(datos.get("place_id")) or None
     if "color" in datos:
         out["color"] = _color(datos.get("color"))
     if "activo" in datos:

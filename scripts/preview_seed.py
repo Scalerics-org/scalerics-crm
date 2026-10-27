@@ -134,7 +134,7 @@ def sembrar_resenas(db: str) -> None:
         for i, fid in enumerate(fuentes if dia < 35 else fuentes[:1]):
             conn.execute("INSERT INTO rs_vistas (negocio_id, fuente_id, dia, n) VALUES (?,?,?,?)",
                          (nid, fid, d.date().isoformat(), 2 + i + (k + i) % 4 + (cuantas if i == 0 else 1)))
-    for dias_atras, rating, cantidad in ((56, 4.1, 86), (28, 4.2, 104), (0, 4.4, 131)):
+    for dias_atras, rating, cantidad in ((56, 4.1, 86), (28, 4.2, 104)):
         conn.execute("INSERT INTO rs_google (negocio_id, fecha, rating, cantidad, cargado_por) VALUES (?,?,?,?,?)",
                      (nid, (ahora - timedelta(days=dias_atras)).date().isoformat(), rating, cantidad, "Vista previa"))
     conn.commit()
@@ -166,9 +166,48 @@ def sembrar_resenas(db: str) -> None:
     conn.commit()
     conn.close()
 
+    sembrar_google(db, nid)
+
     p = rs.crear_negocio(db, {"nombre": "Peluquería Estilo", "slug": "vista-previa-peluqueria", "rubro": "Peluquería",
                               "pregunta": "¿Cómo quedó tu corte?"}, "Vista previa")
     rs.crear_fuente(db, p["id"], "Espejo")
+
+
+# Lo que devolvería la Places API para la parrilla. La vista previa no tiene
+# GOOGLE_PLACES_API_KEY: esto entra por el mismo guardar_lectura que la lectura
+# real, así las respuestas sugeridas salen de las plantillas de verdad.
+RESENAS_GOOGLE_EJEMPLO = (
+    (2, "Sofía Rodríguez", 1, "Esperamos casi una hora el asado y cuando llegó estaba frío. El mozo ni se disculpó."),
+    (5, "Martín Pereira", 0, "Excelente atención de las chicas y la carne en su punto. Volvemos seguro."),
+    (4, "Lucía Fernández", 3, "Muy rica la comida, un poco caro el vino."),
+    (5, "Diego Silva", 6, "El mejor asado de la zona, y rápido."),
+    (3, "Ana Martínez", 9, "Bien, pero el baño estaba sucio."),
+)
+
+
+def sembrar_google(db: str, nid: int) -> None:
+    from datetime import timedelta
+
+    from services import resenas_google as rg
+
+    ahora = rs.ahora_uy()
+    datos = {"rating": 4.4, "userRatingCount": 131, "reviews": [
+        {"name": f"places/ChIJvistaPreviaEjemplo/reviews/vista-previa-{i}", "rating": estrellas,
+         "originalText": {"text": texto}, "authorAttribution": {"displayName": autor},
+         "publishTime": (ahora - timedelta(days=dias, hours=2) - rs.UY).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        for i, (estrellas, autor, dias, texto) in enumerate(RESENAS_GOOGLE_EJEMPLO)]}
+    n = rs.negocio(db, nid)
+    rg.guardar_lectura(db, n, datos, redactar=None, ahora=ahora)
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO rs_google_lecturas (negocio_id, tipo, estado, nuevas, creado_en) VALUES (?,?,?,?,?)",
+                 (nid, "auto", "ok", len(RESENAS_GOOGLE_EJEMPLO), rs._txt(ahora.replace(hour=7, minute=12))))
+    conn.commit()
+    conn.close()
+    for r in rg.resenas(db, nid, "todas"):
+        if r["google_id"].endswith(("-2", "-3")):
+            rg.marcar(db, nid, r["id"], "respondida", None, "Marcela (dueña) · comercio")
+        elif r["google_id"].endswith("-4"):
+            rg.marcar(db, nid, r["id"], "respondida", None, "Vista previa")
 
 
 def main() -> int:

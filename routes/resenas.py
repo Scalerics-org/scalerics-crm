@@ -27,6 +27,7 @@ from flask import Blueprint, Response, current_app, jsonify, redirect, request, 
 from database import log_activity
 from services import resenas as rs
 from services import resenas_avisos as ra
+from services import resenas_google as rg
 from services.auth import require_panel
 
 resenas_bp = Blueprint("resenas", __name__)
@@ -69,6 +70,7 @@ def _candado():
 def _con_links(n: dict) -> dict:
     n = dict(n)
     n["link"] = rs.link_publico(_base(), n)
+    n["place_id_efectivo"] = rg.place_id_de(n)
     n["fuentes"] = [{**f, "link": rs.link_publico(_base(), n, f)} for f in n.get("fuentes", [])]
     return n
 
@@ -111,7 +113,9 @@ def api_negocio(nid):
     except ValueError:
         return _error("Período no válido.")
     return jsonify({"ok": True, "negocio": _con_links(n), "metricas": m, "opiniones": ops, "filtro": filtro,
-                    "accesos": rs.accesos(_db(), nid), "avisos": ra.avisos(_db(), nid)})
+                    "accesos": rs.accesos(_db(), nid), "avisos": ra.avisos(_db(), nid),
+                    "google_resumen": rg.resumen(_db(), nid),
+                    "google_resenas": [_resena_json(n, r) for r in rg.resenas(_db(), nid, "todas")]})
 
 
 @resenas_bp.route("/api/resenas/negocios/<int:nid>", methods=["PATCH"])
@@ -165,6 +169,32 @@ def api_google(nid):
 def api_borrar_google(nid, gid):
     rs.borrar_google(_db(), nid, gid)
     return jsonify({"ok": True})
+
+
+def _resena_json(n: dict, r: dict) -> dict:
+    return {**r, "responder": rg.link_responder(n, r)}
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/google/leer", methods=["POST"])
+def api_leer_google(nid):
+    try:
+        r = rg.leer(_db(), nid, "manual")
+    except rs.NoSePuede as e:
+        return _error(e, _codigo_error(e))
+    log_activity(_db(), _quien(), "resenas_google", "resenas", nid, r["negocio"]["nombre"], f"{r['nuevas']} nuevas",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "nuevas": r["nuevas"]})
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/google/resenas/<int:rid>", methods=["PATCH"])
+def api_marcar_resena(nid, rid):
+    d = request.get_json(silent=True) or {}
+    try:
+        n = rs.negocio(_db(), nid)
+        r = rg.marcar(_db(), nid, rid, d.get("estado"), d.get("respuesta"), _quien())
+    except rs.NoSePuede as e:
+        return _error(e, _codigo_error(e))
+    return jsonify({"ok": True, "resena": _resena_json(n, r)})
 
 
 @resenas_bp.route("/api/resenas/negocios/<int:nid>/opiniones/<int:oid>", methods=["PATCH"])
@@ -426,7 +456,7 @@ font:inherit;font-size:.88rem;cursor:pointer;text-decoration:none}
 .cierre{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .cierre input[type=text]{flex:1 1 240px}
 .campo{display:block;font-size:.85rem;color:#475569;margin:12px 0}
-.campo input{margin-top:4px}
+.campo input,.campo textarea{margin-top:4px}
 .modos{border:0;padding:0;margin:0 0 14px}
 .modos legend{font-size:.85rem;color:#475569;margin-bottom:6px;padding:0}
 .modo{display:flex;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;
@@ -635,8 +665,8 @@ def opina_google(slug, codigo):
 # Lo que ve el dueño con su link privado. Sin JavaScript, igual que la página
 # donde opinan sus clientes: cada acción es un formulario que vuelve con 303.
 
-VISTAS_COMERCIO = (("bandeja", "Para atender"), ("todas", "Todas"), ("resueltas", "Resueltas"), ("qr", "QR y carteles"),
-                   ("avisos", "Avisos"))
+VISTAS_COMERCIO = (("bandeja", "Para atender"), ("todas", "Todas"), ("resueltas", "Resueltas"),
+                   ("google", "Reseñas de Google"), ("qr", "QR y carteles"), ("avisos", "Avisos"))
 DIAS_COMERCIO = (7, 30, 90, 365)
 _ACTUAL = " aria-current='page'"
 
@@ -769,6 +799,68 @@ def _qr_comercio(n: dict, token: str) -> str:
             "la bolsa), pedíselo a Scalerics.</p><div class='qrs'>" + "".join(tarjetas) + "</div>")
 
 
+def _google_comercio(n: dict, token: str) -> str:
+    """Las reseñas de Google con la respuesta ya escrita. Sin JavaScript: la
+    respuesta va en un cuadro de texto que se edita y se copia a mano."""
+    e = html.escape
+    g = rg.resumen(_db(), n["id"])
+    lista = rg.resenas(_db(), n["id"], "todas", limite=30)
+    cab = ("<div class='card'><h2 class='m0'>Respondé tus reseñas de Google</h2>"
+           "<p class='sub'>Responder rápido, también a las buenas, es lo que más ayuda a que Google te muestre "
+           "primero. Cada reseña trae una respuesta escrita: ajustala si querés, copiala y publicala en Google "
+           "con tu cuenta. Después tocá «Ya la respondí».</p>"
+           + (f"<p class='sub'>Última lectura de Google: {e(g['ultima_ok'][8:10])}/{e(g['ultima_ok'][5:7])} "
+              f"{e(g['ultima_ok'][11:16])}.</p>" if g["ultima_ok"] else
+              "<p class='sub'>Todavía no leímos tus reseñas de Google. Scalerics lo activa con tu ficha.</p>")
+           + "</div>")
+    if not lista:
+        return cab
+    partes = [cab]
+    for r in lista:
+        accion = f"/comercio/{e(token)}/g/{int(r['id'])}"
+        cuando = r.get("publicada_en") or r["leida_en"]
+        meta = [e(cuando[8:10] + "/" + cuando[5:7]), e(r["autor"]) if r.get("autor") else "reseña de Google"]
+        abierta = r["estado"] == "sin_responder"
+        cuerpo = (f"<p class='txt'>“{e(r['texto'])}”</p>" if r.get("texto") else "<p class='sub'>Sin texto.</p>")
+        if abierta:
+            cuerpo += (f"<form class='resp' method='post' action='{accion}'>"
+                       f"<label class='campo'>Respuesta sugerida<textarea name='respuesta' rows='4' "
+                       f"maxlength='{rg.LARGO_RESPUESTA}'>{e(r.get('sugerida') or '')}</textarea></label>"
+                       f"<div class='acc'><a class='b2' href='{e(rg.link_responder(n, r))}' target='_blank' "
+                       "rel='noopener'>Abrir en Google</a>"
+                       "<button class='b2 prim' type='submit' name='accion' value='respondida'>Ya la respondí</button>"
+                       "<button class='b2' type='submit' name='accion' value='no_responde'>No hace falta</button>"
+                       "</div></form>")
+        else:
+            if r.get("respuesta"):
+                cuerpo += f"<div class='nota-int'>Respuesta: {e(r['respuesta'])}</div>"
+            cuerpo += (f"<form method='post' action='{accion}'><div class='acc'><span class='sub'>"
+                       f"{e(rg.ESTADOS[r['estado']])} · {e(r.get('respondida_por') or '')}</span>"
+                       "<button class='b2' type='submit' name='accion' value='sin_responder'>Volver a pendientes"
+                       "</button></div></form>")
+        partes.append(
+            f"<div class='op{' baja' if r['rating'] <= rs.QUEJA_HASTA else ''}'><div class='top'>"
+            f"<span class='est' aria-label='{int(r['rating'])} de 5'>{_estrellas(int(r['rating']))}</span>"
+            f"<span class='pill e-{'abierta' if abierta else 'resuelta'}'>{e(rg.ESTADOS[r['estado']])}</span>"
+            f"<span>{' · '.join(meta)}</span></div>{cuerpo}</div>")
+    return "".join(partes)
+
+
+@resenas_bp.route("/comercio/<token>/g/<int:rid>", methods=["POST"])
+def comercio_resena(token, rid):
+    a, n = _acceso_de(token)
+    if not a:
+        return _no_existe()
+    try:
+        rg.marcar(_db(), n["id"], rid, request.form.get("accion"), request.form.get("respuesta"),
+                  f"{a['nombre']} · comercio"[:120])
+    except rs.NoSePuede as err:
+        if _codigo_error(err) == 404:
+            return _no_existe()
+        return redirect(f"/comercio/{token}?v=google&" + urlencode({"error": str(err)}), 303)
+    return redirect(f"/comercio/{token}?v=google&ok=1", 303)
+
+
 def _avisos_comercio(a: dict, token: str) -> str:
     e = html.escape
     p = ra.preferencias(_db(), a["id"])
@@ -843,14 +935,18 @@ def comercio_panel(token):
         for d in DIAS_COMERCIO) + "</div>")
     partes.append(_kpis_comercio(m))
     pendientes = m["abiertas"] + m["en_curso"]
+    g_pend = rg.resumen(_db(), n["id"])["sin_responder"]
     partes.append("<nav class='tabs' aria-label='Vista'>" + "".join(
         f"<a href='{base}?v={k}&amp;dias={dias}'{_ACTUAL if k == vista else ''}>{e(t)}"
-        + (f"<span class='n'>{pendientes}</span>" if k == "bandeja" and pendientes else "") + "</a>"
+        + (f"<span class='n'>{pendientes}</span>" if k == "bandeja" and pendientes else "")
+        + (f"<span class='n'>{g_pend}</span>" if k == "google" and g_pend else "") + "</a>"
         for k, t in VISTAS_COMERCIO) + "</nav>")
     if vista == "qr":
         partes.append(_qr_comercio(n, token))
     elif vista == "avisos":
         partes.append(_avisos_comercio(a, token))
+    elif vista == "google":
+        partes.append(_google_comercio(n, token))
     else:
         ops = rs.opiniones(_db(), n["id"], vista, limite=100)
         partes.append(_opiniones_comercio(n, ops, token, vista))
