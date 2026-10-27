@@ -79,7 +79,9 @@ def test_init_db_crea_mcp_llamadas(db):
 def test_listar_herramientas_tiene_todas_con_schema():
     hs = {h["name"]: h for h in mt.listar_herramientas()}
     assert set(hs) == {"buscar_leads", "ver_lead", "pipeline", "quien_soy", "brujula", "ver_propuestas_agentes",
-                       "ver_propuesta_agente", "proponer", "completar_propuesta"}
+                       "ver_propuesta_agente", "proponer", "completar_propuesta",
+                       "seguimiento_clientes", "ver_seguimiento_cliente", "guardar_frente",
+                       "borrar_frente", "anotar_cliente", "alta_cliente"}
     for h in hs.values():
         assert h["description"]
         assert h["inputSchema"]["type"] == "object"
@@ -502,7 +504,9 @@ def test_tools_list(claude):
     r = claude(_rpc("tools/list"))
     nombres = [t["name"] for t in r.get_json()["result"]["tools"]]
     assert nombres == ["buscar_leads", "ver_lead", "pipeline", "quien_soy", "brujula", "ver_propuestas_agentes",
-                       "ver_propuesta_agente", "proponer", "completar_propuesta"]
+                       "ver_propuesta_agente", "proponer", "completar_propuesta",
+                       "seguimiento_clientes", "ver_seguimiento_cliente", "guardar_frente",
+                       "borrar_frente", "anotar_cliente", "alta_cliente"]
 
 
 def test_tools_call(claude):

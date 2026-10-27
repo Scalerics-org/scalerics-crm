@@ -53,7 +53,9 @@ horas de su cuenta.
 Qué NO es tu trabajo: responder o hacer seguimiento a clientes, escribir
 mensajes de venta, ni decidir a partir del estado de los leads del CRM (está
 desactualizado). Tampoco cambios cosméticos o de una tarde: si se hace en una
-hora, es muy chico.
+hora, es muy chico. Las herramientas de seguimiento de clientes del conector
+(`guardar_frente`, `anotar_cliente`, `borrar_frente`, `alta_cliente`) no las
+uses nunca: las carga Juan cuando trabaja con cada cliente.
 
 ## Repos
 

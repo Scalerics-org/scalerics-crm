@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash
 
 from database import create_user, get_user_by_email, init_db
 from services import agentes as ag
+from services import seguimiento as seg
 
 LARGO_MINIMO_CLAVE = 12
 
@@ -34,6 +35,7 @@ LEADS = [
     ("Librería del Sur", "libreria", "Rivera", "acepto"),
     ("Gimnasio Fuerza", "gimnasio", "Canelones", "cerrado"),
     ("Tienda Bambú", "ropa", "Colonia", "en_desarrollo"),
+    ("Almacén Don Pepe", "almacen", "Florida", "en_desarrollo"),
 ]
 
 
@@ -58,6 +60,51 @@ def sembrar(db: str, email: str, clave: str) -> None:
         ag.proponer(db, autor, "crm", "Propuesta de ejemplo",
                     "Así se ve una propuesta en el panel Agentes de la vista previa.",
                     clave="preview-ejemplo")
+
+    _sembrar_seguimiento(db)
+
+
+def _sembrar_seguimiento(db: str) -> None:
+    """Un cliente que avanza en paralelo y otro con todo esperando, para ver
+    las dos situaciones del panel Clientes > Seguimiento."""
+    conn = sqlite3.connect(db)
+    try:
+        ids = dict(conn.execute("SELECT name, id FROM businesses WHERE crm_status IN "
+                                "('cerrado','en_desarrollo')").fetchall())
+        ya = conn.execute("SELECT 1 FROM seguimiento_frentes LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if ya or not ids:
+        return
+    quien = "Vista previa"
+    bambu = ids.get("Tienda Bambú")
+    if bambu:
+        seg.anotar(db, quien, bambu, resumen="Tienda online casi lista. Faltan las fotos de la "
+                   "temporada; mientras tanto se arma la facturación.", nota="Reunión de avance")
+        seg.guardar_frente(db, quien, bambu, titulo="Fotos de productos", estado="esperando_cliente",
+                           espera="Fotos de los 40 productos de verano",
+                           detalle="- Mandaron 12 de 40\n- Fondo blanco, 1200 px")
+        seg.guardar_frente(db, quien, bambu, titulo="Facturación electrónica", estado="nos_toca",
+                           proximo_paso="Pedir el certificado de la DGI y elegir proveedor")
+        seg.guardar_frente(db, quien, bambu, titulo="Diseño de la home", estado="hecho")
+    pepe = ids.get("Almacén Don Pepe")
+    if pepe:
+        seg.anotar(db, quien, pepe, resumen="Esperando los precios para cargar el catálogo.")
+        seg.guardar_frente(db, quien, pepe, titulo="Lista de precios", estado="esperando_cliente",
+                           espera="Excel con precios actualizados")
+    gim = ids.get("Gimnasio Fuerza")
+    if gim:
+        seg.guardar_frente(db, quien, gim, titulo="Agenda de clases", estado="nos_toca",
+                           proximo_paso="Probar reservas con el dueño")
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("UPDATE seguimiento_frentes SET estado_desde = datetime('now','-23 days') "
+                     "WHERE titulo = 'Fotos de productos'")
+        conn.execute("UPDATE seguimiento_frentes SET estado_desde = datetime('now','-9 days') "
+                     "WHERE titulo = 'Lista de precios'")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def main() -> int:

@@ -2267,6 +2267,10 @@ def init_db(db_path: str) -> None:
         # por el conector MCP (services/agentes.py).
         from services.agentes import init_agentes
         init_agentes(conn)
+        # Seguimiento de clientes (27/10): frentes y de quién es la pelota
+        # (services/seguimiento.py).
+        from services.seguimiento import init_seguimiento
+        init_seguimiento(conn)
         # Oficina (20/10): el equipo de agentes de Juan (services/oficina.py).
         from services.oficina import init_oficina
         init_oficina(conn)

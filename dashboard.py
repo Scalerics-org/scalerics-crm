@@ -33,6 +33,7 @@ from routes.linkedin_panel import linkedin_panel_bp
 from routes.linkedin_bot import linkedin_bot_bp
 from routes.oficina import oficina_bp
 from routes.agentes import agentes_bp
+from routes.seguimiento import seguimiento_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
@@ -2628,6 +2629,60 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 /* Contador de clientes cerrados, arriba de la tabla. */
 .cli-contador{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 18px;margin-bottom:14px}
 .cli-contador[hidden]{display:none}
+/* Seguimiento de clientes (27/10, services/seguimiento.py): frentes y de
+   quién es la pelota. Lo que te toca y lo que esperás van arriba; abajo, una
+   tarjeta por cliente con lo más urgente primero. */
+.seg-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin-bottom:16px}
+.seg-tabs button{background:none;border:none;border-bottom:2px solid transparent;color:var(--texto-tenue);font:inherit;font-size:.86rem;font-weight:600;padding:10px 14px;min-height:40px;cursor:pointer;margin-bottom:-1px}
+.seg-tabs button[aria-selected="true"]{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.seg-tabs button:hover{color:var(--texto-fuerte)}
+.seg-tabs button:focus-visible,.seg-btn:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+.seg-alerta{border:1px solid var(--ambar-borde);background:var(--ambar-tinte);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:.84rem;color:var(--texto-fuerte);line-height:1.5}
+.seg-alerta b{font-weight:700}
+.seg-alerta-titulo{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.seg-alerta-titulo svg{width:16px;height:16px;stroke:var(--ambar)}
+.seg-arriba{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media (max-width:900px){.seg-arriba{grid-template-columns:1fr}}
+.seg-caja{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.seg-caja-titulo{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--rotulo);margin-bottom:10px}
+.seg-caja-num{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
+.seg-fila{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.83rem;line-height:1.45}
+.seg-fila:first-of-type{border-top:none}
+.seg-fila-txt{flex:1;min-width:0;overflow-wrap:anywhere}
+.seg-fila-cli{font-weight:700;color:var(--texto-fuerte)}
+.seg-fila-sub{color:var(--texto-tenue)}
+.seg-vacio{color:var(--texto-debil);font-size:.82rem;padding:4px 0}
+.seg-dias{flex-shrink:0;font-size:.74rem;font-weight:700;font-variant-numeric:tabular-nums;padding:2px 8px;border-radius:999px;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
+.seg-dias.aviso{background:var(--ambar-tinte);color:var(--ambar)}
+.seg-dias.mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.seg-clientes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:14px}
+.seg-cli{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0}
+.seg-cli.trabado{border-color:var(--ambar-borde)}
+.seg-cli-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+.seg-cli-nombre{font-size:1rem;font-weight:750;color:var(--texto-fuerte);cursor:pointer;background:none;border:none;padding:0;font-family:inherit;text-align:left}
+.seg-cli-nombre:hover{color:var(--azul-claro)}
+.seg-cli-meta{font-size:.74rem;color:var(--texto-debil);margin-top:2px}
+.seg-cli-resumen{font-size:.84rem;color:var(--texto);line-height:1.55;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.seg-pill{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.seg-pill.nos_toca{background:var(--azul-tinte);color:var(--azul-claro)}
+.seg-pill.esperando_cliente{background:var(--ambar-tinte);color:var(--ambar)}
+.seg-pill.hecho{background:var(--verde-tinte);color:var(--verde-texto)}
+.seg-frente{border-top:1px solid var(--borde);padding:10px 0 4px}
+.seg-frente-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg-frente-titulo{font-weight:650;color:var(--texto-fuerte);font-size:.86rem;flex:1;min-width:120px}
+.seg-frente-linea{font-size:.8rem;color:var(--texto-tenue);margin-top:4px;line-height:1.45;overflow-wrap:anywhere}
+.seg-frente-linea b{color:var(--texto);font-weight:600}
+.seg-frente details{margin-top:6px}
+.seg-frente summary{font-size:.76rem;color:var(--azul-claro);cursor:pointer;min-height:28px;display:inline-flex;align-items:center}
+.seg-detalle{font-size:.8rem;color:var(--texto);white-space:pre-wrap;line-height:1.55;background:var(--relleno);border-radius:8px;padding:10px 12px;margin-top:4px;overflow-wrap:anywhere}
+.seg-acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.seg-btn{font:inherit;font-size:.74rem;font-weight:600;min-height:32px;padding:4px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);cursor:pointer}
+.seg-btn:hover{background:var(--hover)}
+.seg-btn:disabled{opacity:.5;cursor:default}
+.seg-hechos{font-size:.76rem;color:var(--texto-debil);margin-top:8px}
+.seg-bitacora{margin-top:10px;border-top:1px solid var(--borde);padding-top:8px}
+.seg-bit-fila{font-size:.78rem;color:var(--texto-tenue);padding:4px 0;line-height:1.45;overflow-wrap:anywhere}
+.seg-bit-fila time{color:var(--texto-debil);font-variant-numeric:tabular-nums;margin-right:6px}
 .cli-contador-total{display:flex;align-items:baseline;gap:10px}
 .cli-contador-num{font-size:2rem;font-weight:800;line-height:1;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
 .cli-contador-txt{font-size:.9rem;color:var(--texto-tenue);font-weight:600}
@@ -5218,16 +5273,25 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Clientes</h1>
-        <div class="page-date">Quién se ocupa de cada cliente activo y cuánto pagó</div>
+        <div class="page-date">En qué está cada proyecto, de quién es la pelota y quién se ocupa</div>
       </div>
       <button class="export-btn" onclick="cliNuevoAbrir()">+ Nuevo cliente</button>
     </div>
-    <div class="cli-contador" id="cli-contador" hidden></div>
-    <div class="table-wrap">
-      <div class="table-header tbl-cli">
-        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Mantenimiento</span><span>Día a día</span><span>Encargado mant.</span><span>Cobros</span><span>Acciones</span>
+    <div class="seg-tabs" role="tablist" aria-label="Vistas de Clientes">
+      <button type="button" role="tab" id="cli-tab-seguimiento" aria-selected="true" onclick="cliVista('seguimiento')">Seguimiento</button>
+      <button type="button" role="tab" id="cli-tab-tabla" aria-selected="false" onclick="cliVista('tabla')">Responsables y pagos</button>
+    </div>
+    <div id="cli-vista-seguimiento" role="tabpanel" aria-labelledby="cli-tab-seguimiento">
+      <div id="seg-body"></div>
+    </div>
+    <div id="cli-vista-tabla" role="tabpanel" aria-labelledby="cli-tab-tabla" hidden>
+      <div class="cli-contador" id="cli-contador" hidden></div>
+      <div class="table-wrap">
+        <div class="table-header tbl-cli">
+          <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Mantenimiento</span><span>Día a día</span><span>Encargado mant.</span><span>Cobros</span><span>Acciones</span>
+        </div>
+        <div id="clientes-body"></div>
       </div>
-      <div id="clientes-body"></div>
     </div>
   </div>
 
@@ -9020,6 +9084,10 @@ function cliPintarContador(clientes, etiquetas, colores) {
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
 async function loadClientesPanel() {
+  let vista = 'seguimiento';
+  try { vista = localStorage.getItem('cli-vista') === 'tabla' ? 'tabla' : 'seguimiento'; } catch (e) {}
+  cliVista(vista);
+  segCargar();
   const body = document.getElementById('clientes-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
@@ -9094,6 +9162,123 @@ async function cliEliminar(clientId, nombre) {
     if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
   } catch (e) { alert('No se pudo eliminar: ' + e.message); return; }
   loadClientesPanel();
+}
+
+// ── Seguimiento (27/10, services/seguimiento.py) ──────────────────────────────
+// Cada cliente partido en frentes, y de cada frente de quién es la pelota.
+// Lo carga Claude por el conector; acá se lee y se mueve un frente de estado.
+const SEG_ETIQUETA = {nos_toca: 'Te toca', esperando_cliente: 'Esperando al cliente', hecho: 'Hecho'};
+const SEG_ETAPA = {cerrado: 'Cerrado', en_desarrollo: 'En desarrollo', finalizado: 'Finalizado'};
+
+function cliVista(cual) {
+  ['seguimiento', 'tabla'].forEach(v => {
+    document.getElementById('cli-vista-' + v).hidden = v !== cual;
+    document.getElementById('cli-tab-' + v).setAttribute('aria-selected', v === cual ? 'true' : 'false');
+  });
+  try { localStorage.setItem('cli-vista', cual); } catch (e) {}
+}
+
+function _segDias(n, esEspera) {
+  if (n === null || n === undefined) return '';
+  const txt = n === 0 ? 'hoy' : (n === 1 ? '1 día' : n + ' días');
+  const cls = esEspera ? (n >= 14 ? ' mal' : (n >= 7 ? ' aviso' : '')) : '';
+  return '<span class="seg-dias' + cls + '" title="' + (esEspera ? 'Esperando hace ' : 'En este estado hace ') + txt + '">' + txt + '</span>';
+}
+
+function _segFrente(f) {
+  const lineas = [];
+  if (f.espera && f.estado === 'esperando_cliente') lineas.push('<div class="seg-frente-linea"><b>Se espera:</b> ' + esc(f.espera) + '</div>');
+  if (f.proximo_paso) lineas.push('<div class="seg-frente-linea"><b>Próximo paso:</b> ' + esc(f.proximo_paso) + '</div>');
+  const acciones = [];
+  if (f.estado === 'esperando_cliente') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;nos_toca&quot;, this)">Llegó: me toca</button>');
+  if (f.estado === 'nos_toca') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;esperando_cliente&quot;, this)">Pasar al cliente</button>');
+  if (f.estado !== 'hecho') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;hecho&quot;, this)">Hecho</button>');
+  else acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;nos_toca&quot;, this)">Reabrir</button>');
+  return '<div class="seg-frente">'
+    + '<div class="seg-frente-cab"><span class="seg-frente-titulo">' + esc(f.titulo) + '</span>'
+    + '<span class="seg-pill ' + f.estado + '">' + SEG_ETIQUETA[f.estado] + '</span>'
+    + _segDias(f.dias_en_estado, f.estado === 'esperando_cliente') + '</div>'
+    + lineas.join('')
+    + (f.detalle ? '<details><summary>Ver detalle</summary><div class="seg-detalle">' + esc(f.detalle) + '</div></details>' : '')
+    + '<div class="seg-acciones">' + acciones.join('') + '</div></div>';
+}
+
+function _segCliente(c) {
+  const meta = [SEG_ETAPA[c.etapa] || c.etapa];
+  if (c.actualizado_en) meta.push('actualizado ' + (c.dias_sin_actualizar === 0 ? 'hoy' : 'hace ' + c.dias_sin_actualizar + (c.dias_sin_actualizar === 1 ? ' día' : ' días')));
+  const frentes = c.frentes.length
+    ? c.frentes.map(_segFrente).join('')
+    : '<div class="seg-vacio">Sin frentes abiertos. Pedile a Claude que lo desglose.</div>';
+  return '<article class="seg-cli' + (c.sin_nada_nuestro ? ' trabado' : '') + '" id="seg-cli-' + c.id + '">'
+    + '<div class="seg-cli-cab"><div><button type="button" class="seg-cli-nombre" onclick="openClientPanel(' + c.id + ')">' + esc(c.nombre || '') + '</button>'
+    + '<div class="seg-cli-meta">' + esc(meta.join(' · ')) + '</div></div>'
+    + '<button type="button" class="seg-btn" onclick="segBitacora(' + c.id + ', this)">Bitácora</button></div>'
+    + (c.resumen ? '<div class="seg-cli-resumen">' + esc(c.resumen) + '</div>' : '')
+    + frentes
+    + (c.hechos ? '<div class="seg-hechos">' + c.hechos + (c.hechos === 1 ? ' frente hecho' : ' frentes hechos') + ' (en la bitácora)</div>' : '')
+    + '<div class="seg-bitacora" id="seg-bit-' + c.id + '" hidden></div>'
+    + '</article>';
+}
+
+async function segCargar() {
+  const body = document.getElementById('seg-body');
+  if (!body.innerHTML) body.innerHTML = '<div class="seg-vacio" style="padding:16px">Cargando…</div>';
+  let d;
+  try {
+    const r = await fetch('/api/seguimiento');
+    d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) { body.innerHTML = '<div style="color:var(--rojo-texto);padding:16px">No se pudo cargar el seguimiento: ' + esc(e.message) + '</div>'; return; }
+
+  if (!d.clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes activos todavía</div>'; return; }
+
+  let html = '';
+  if (d.sin_nada_nuestro.length) {
+    html += '<div class="seg-alerta" role="status"><div class="seg-alerta-titulo"><i data-lucide="alert-triangle"></i>Proyectos quietos</div>'
+      + d.sin_nada_nuestro.map(c => '<b>' + esc(c.cliente) + '</b>').join(', ')
+      + (d.sin_nada_nuestro.length === 1 ? ' tiene' : ' tienen')
+      + ' todo lo abierto esperando al cliente. Buscá una parte que se pueda avanzar en paralelo.</div>';
+  }
+  const fila = (f, esEspera) => '<div class="seg-fila"><div class="seg-fila-txt"><span class="seg-fila-cli">' + esc(f.cliente) + '</span> · ' + esc(f.titulo)
+    + ((esEspera ? f.espera : f.proximo_paso) ? '<div class="seg-fila-sub">' + esc(esEspera ? f.espera : f.proximo_paso) + '</div>' : '')
+    + '</div>' + (esEspera ? _segDias(f.dias_en_estado, true) : '') + '</div>';
+  html += '<div class="seg-arriba">'
+    + '<section class="seg-caja"><div class="seg-caja-titulo">Te toca ahora <span class="seg-caja-num">' + d.te_toca.length + '</span></div>'
+    + (d.te_toca.length ? d.te_toca.map(f => fila(f, false)).join('') : '<div class="seg-vacio">Nada de tu lado.</div>') + '</section>'
+    + '<section class="seg-caja"><div class="seg-caja-titulo">Esperando a clientes <span class="seg-caja-num">' + d.esperando.length + '</span></div>'
+    + (d.esperando.length ? d.esperando.map(f => fila(f, true)).join('') : '<div class="seg-vacio">No estás esperando nada.</div>') + '</section>'
+    + '</div>';
+  html += '<div class="seg-clientes">' + d.clientes.map(_segCliente).join('') + '</div>';
+  body.innerHTML = html;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function segEstado(frenteId, estado, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/seguimiento/frentes/' + frenteId + '/estado', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({estado})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) { btn.disabled = false; alert('No se pudo cambiar: ' + e.message); return; }
+  segCargar();
+}
+
+async function segBitacora(clienteId, btn) {
+  const caja = document.getElementById('seg-bit-' + clienteId);
+  if (!caja.hidden) { caja.hidden = true; return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/seguimiento/' + clienteId);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    caja.innerHTML = d.bitacora.length
+      ? d.bitacora.map(b => '<div class="seg-bit-fila"><time>' + esc((b.creado_en || '').slice(0, 10)) + '</time>' + esc(b.texto)
+          + (b.autor ? ' <span style="color:var(--texto-debil)">· ' + esc(b.autor) + '</span>' : '') + '</div>').join('')
+      : '<div class="seg-vacio">Todavía no hay nada anotado.</div>';
+    caja.hidden = false;
+  } catch (e) { alert('No se pudo cargar la bitácora: ' + e.message); }
+  btn.disabled = false;
 }
 
 // ── Save notes inline ─────────────────────────────────────────────────────────
@@ -23079,7 +23264,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, seguimiento_bp):
         app.register_blueprint(bp)
 
     @app.before_request
