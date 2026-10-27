@@ -2629,59 +2629,118 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 /* Contador de clientes cerrados, arriba de la tabla. */
 .cli-contador{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 18px;margin-bottom:14px}
 .cli-contador[hidden]{display:none}
-/* Seguimiento de clientes (27/10, services/seguimiento.py): frentes y de
-   quién es la pelota. Lo que te toca y lo que esperás van arriba; abajo, una
-   tarjeta por cliente con lo más urgente primero. */
-.seg-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin-bottom:16px}
+/* Seguimiento de clientes (27/10, services/seguimiento.py). Primera versión
+   era una pared de texto (Juan: "puro texto junto feo"): ahora una fila por
+   cliente que se lee sin leer (barra de frentes, de quién es la pelota, lo
+   próximo y la espera más vieja en una línea cada uno) y el detalle en un
+   panel lateral, con cada frente cerrado hasta que lo abrís. */
+.seg-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin-bottom:18px}
 .seg-tabs button{background:none;border:none;border-bottom:2px solid transparent;color:var(--texto-tenue);font:inherit;font-size:.86rem;font-weight:600;padding:10px 14px;min-height:40px;cursor:pointer;margin-bottom:-1px}
 .seg-tabs button[aria-selected="true"]{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
 .seg-tabs button:hover{color:var(--texto-fuerte)}
-.seg-tabs button:focus-visible,.seg-btn:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
-.seg-alerta{border:1px solid var(--ambar-borde);background:var(--ambar-tinte);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:.84rem;color:var(--texto-fuerte);line-height:1.5}
-.seg-alerta b{font-weight:700}
-.seg-alerta-titulo{font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px}
-.seg-alerta-titulo svg{width:16px;height:16px;stroke:var(--ambar)}
-.seg-arriba{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
-@media (max-width:900px){.seg-arriba{grid-template-columns:1fr}}
-.seg-caja{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
-.seg-caja-titulo{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--rotulo);margin-bottom:10px}
-.seg-caja-num{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
-.seg-fila{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--borde);font-size:.83rem;line-height:1.45}
-.seg-fila:first-of-type{border-top:none}
-.seg-fila-txt{flex:1;min-width:0;overflow-wrap:anywhere}
-.seg-fila-cli{font-weight:700;color:var(--texto-fuerte)}
-.seg-fila-sub{color:var(--texto-tenue)}
-.seg-vacio{color:var(--texto-debil);font-size:.82rem;padding:4px 0}
-.seg-dias{flex-shrink:0;font-size:.74rem;font-weight:700;font-variant-numeric:tabular-nums;padding:2px 8px;border-radius:999px;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
+.seg-tabs button:focus-visible,.seg-kpi:focus-visible,.seg-row:focus-visible,.seg-btn:focus-visible,.seg-fr-cab:focus-visible,.seg-x:focus-visible,.seg-mas:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+
+/* Tres números que filtran */
+.seg-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+.seg-kpi{display:flex;align-items:center;gap:14px;text-align:left;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:14px 16px;cursor:pointer;font:inherit;color:inherit;transition:border-color .15s,background .15s}
+.seg-kpi:hover{border-color:var(--borde-fuerte)}
+.seg-kpi[aria-pressed="true"]{border-color:var(--k);background:var(--kt)}
+.seg-kpi-num{font-size:1.9rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:var(--k)}
+.seg-kpi-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.seg-kpi-txt b{font-size:.86rem;color:var(--texto-fuerte);font-weight:700}
+.seg-kpi-txt span{font-size:.74rem;color:var(--texto-debil)}
+.seg-kpi.k-tuya{--k:var(--azul-claro);--kt:var(--azul-tinte)}
+.seg-kpi.k-cliente{--k:var(--ambar);--kt:var(--ambar-tinte)}
+.seg-kpi.k-quieto{--k:var(--rojo);--kt:var(--rojo-tinte)}
+@media (max-width:700px){.seg-kpis{grid-template-columns:1fr;gap:8px}.seg-kpi{padding:10px 14px}.seg-kpi-num{font-size:1.5rem}}
+
+/* Lista de clientes */
+.seg-lista{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
+.seg-cols,.seg-row{display:grid;grid-template-columns:minmax(150px,1.3fr) 130px 118px minmax(0,1.5fr) minmax(0,1.5fr) 20px;gap:16px;align-items:center;padding:0 18px}
+.seg-cols{min-height:38px;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rotulo);border-bottom:1px solid var(--borde)}
+.seg-row{width:100%;min-height:68px;background:none;border:none;border-top:1px solid var(--borde);font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background .12s}
+.seg-cols + .seg-row{border-top:none}
+.seg-row:hover{background:var(--hover)}
+.seg-row[hidden]{display:none}
+.seg-cli-marca{font-weight:700;color:var(--texto-fuerte);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-cli-persona{font-size:.74rem;color:var(--texto-debil);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.seg-barra{display:flex;gap:2px;height:8px;border-radius:999px;overflow:hidden;background:var(--relleno)}
+.seg-barra i{flex:1}
+.seg-barra .hecho{background:var(--verde)}
+.seg-barra .nos_toca{background:var(--azul)}
+.seg-barra .esperando_cliente{background:var(--ambar)}
+.seg-barra-txt{font-size:.7rem;color:var(--texto-debil);margin-top:5px;font-variant-numeric:tabular-nums}
+.seg-pelota{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.seg-pelota::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.seg-pelota.tuya{background:var(--azul-tinte);color:var(--azul-claro)}
+.seg-pelota.cliente{background:var(--ambar-tinte);color:var(--ambar)}
+.seg-pelota.quieto{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.seg-pelota.vacio{background:var(--relleno);color:var(--texto-debil)}
+.seg-celda{min-width:0}
+.seg-celda-tit{font-size:.82rem;color:var(--texto-fuerte);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-celda-sub{font-size:.72rem;color:var(--texto-debil);margin-top:2px;display:flex;align-items:center;gap:6px}
+.seg-celda-nada{font-size:.8rem;color:var(--texto-debil)}
+.seg-chev{color:var(--texto-debil);font-size:1.1rem;line-height:1}
+.seg-dias{flex-shrink:0;font-size:.7rem;font-weight:700;font-variant-numeric:tabular-nums;padding:1px 7px;border-radius:999px;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
 .seg-dias.aviso{background:var(--ambar-tinte);color:var(--ambar)}
 .seg-dias.mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.seg-clientes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:14px}
-.seg-cli{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0}
-.seg-cli.trabado{border-color:var(--ambar-borde)}
-.seg-cli-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
-.seg-cli-nombre{font-size:1rem;font-weight:750;color:var(--texto-fuerte);cursor:pointer;background:none;border:none;padding:0;font-family:inherit;text-align:left}
-.seg-cli-nombre:hover{color:var(--azul-claro)}
-.seg-cli-meta{font-size:.74rem;color:var(--texto-debil);margin-top:2px}
-.seg-cli-resumen{font-size:.84rem;color:var(--texto);line-height:1.55;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere}
-.seg-pill{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
-.seg-pill.nos_toca{background:var(--azul-tinte);color:var(--azul-claro)}
-.seg-pill.esperando_cliente{background:var(--ambar-tinte);color:var(--ambar)}
-.seg-pill.hecho{background:var(--verde-tinte);color:var(--verde-texto)}
-.seg-frente{border-top:1px solid var(--borde);padding:10px 0 4px}
-.seg-frente-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.seg-frente-titulo{font-weight:650;color:var(--texto-fuerte);font-size:.86rem;flex:1;min-width:120px}
-.seg-frente-linea{font-size:.8rem;color:var(--texto-tenue);margin-top:4px;line-height:1.45;overflow-wrap:anywhere}
-.seg-frente-linea b{color:var(--texto);font-weight:600}
-.seg-frente details{margin-top:6px}
-.seg-frente summary{font-size:.76rem;color:var(--azul-claro);cursor:pointer;min-height:28px;display:inline-flex;align-items:center}
-.seg-detalle{font-size:.8rem;color:var(--texto);white-space:pre-wrap;line-height:1.55;background:var(--relleno);border-radius:8px;padding:10px 12px;margin-top:4px;overflow-wrap:anywhere}
-.seg-acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.seg-btn{font:inherit;font-size:.74rem;font-weight:600;min-height:32px;padding:4px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);cursor:pointer}
+.seg-otros{width:100%;min-height:44px;background:none;border:none;border-top:1px solid var(--borde);color:var(--texto-tenue);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer}
+.seg-otros:hover{color:var(--texto-fuerte);background:var(--hover)}
+.seg-vacio{color:var(--texto-debil);font-size:.84rem;padding:28px 18px;text-align:center}
+@media (max-width:900px){
+  .seg-cols{display:none}
+  .seg-row{grid-template-columns:1fr auto;grid-template-areas:"cli pel" "bar bar" "prox prox" "esp esp";gap:8px 12px;padding:14px 16px}
+  .seg-row > :nth-child(1){grid-area:cli}.seg-row > :nth-child(2){grid-area:bar}.seg-row > :nth-child(3){grid-area:pel}
+  .seg-row > :nth-child(4){grid-area:prox}.seg-row > :nth-child(5){grid-area:esp}.seg-row > :nth-child(6){display:none}
+  .seg-celda::before{content:attr(data-rot);display:block;font-size:.64rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rotulo);margin-bottom:2px}
+}
+
+/* Panel lateral de un cliente */
+.seg-fondo{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:950;opacity:0;pointer-events:none;transition:opacity .2s}
+.seg-fondo.open{opacity:1;pointer-events:auto}
+.seg-drawer{position:fixed;top:0;right:0;bottom:0;width:560px;max-width:100vw;background:var(--fondo);border-left:1px solid var(--borde);z-index:951;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease;visibility:hidden}
+.seg-drawer.open{transform:none;visibility:visible}
+@media (max-width:700px){.seg-drawer{width:100%;top:auto;height:92vh;border-left:none;border-top:1px solid var(--borde);border-radius:18px 18px 0 0;transform:translateY(100%)}}
+@media (prefers-reduced-motion:reduce){.seg-drawer,.seg-fondo{transition:none}}
+.seg-dr-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 14px;border-bottom:1px solid var(--borde)}
+.seg-dr-nombre{font-size:1.15rem;font-weight:800;color:var(--texto-fuerte);line-height:1.25}
+.seg-dr-meta{font-size:.76rem;color:var(--texto-debil);margin-top:4px}
+.seg-x{flex-shrink:0;width:36px;height:36px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:1.2rem;line-height:1;cursor:pointer}
+.seg-dr-cuerpo{flex:1;overflow-y:auto;padding:16px 22px 28px;overscroll-behavior:contain}
+.seg-resumen{font-size:.86rem;line-height:1.6;color:var(--texto);white-space:pre-wrap;overflow-wrap:anywhere}
+.seg-resumen.corto{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.seg-mas{background:none;border:none;color:var(--azul-claro);font:inherit;font-size:.78rem;font-weight:600;padding:4px 0;min-height:32px;cursor:pointer}
+.seg-grupo{margin-top:18px}
+.seg-grupo-tit{display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rotulo);margin-bottom:8px}
+.seg-grupo-tit .seg-pelota{text-transform:none;letter-spacing:0}
+.seg-fr{border:1px solid var(--borde);border-radius:12px;background:var(--superficie);margin-bottom:8px;overflow:hidden}
+.seg-fr-cab{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:10px 14px;background:none;border:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.seg-fr-cab:hover{background:var(--hover)}
+.seg-fr-txt{flex:1;min-width:0}
+.seg-fr-tit{font-size:.86rem;font-weight:650;color:var(--texto-fuerte)}
+.seg-fr-sub{font-size:.76rem;color:var(--texto-tenue);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg-fr[data-abierto="1"] .seg-fr-sub{display:none}
+.seg-fr-flecha{color:var(--texto-debil);transition:transform .15s}
+.seg-fr[data-abierto="1"] .seg-fr-flecha{transform:rotate(90deg)}
+.seg-fr-det{display:none;padding:0 14px 14px}
+.seg-fr[data-abierto="1"] .seg-fr-det{display:block}
+.seg-campo{font-size:.8rem;line-height:1.5;color:var(--texto);margin-bottom:10px;overflow-wrap:anywhere}
+.seg-campo b{display:block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--rotulo);margin-bottom:2px}
+.seg-detalle{font-size:.78rem;color:var(--texto-tenue);white-space:pre-wrap;line-height:1.6;background:var(--relleno);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere}
+.seg-detalle code{font-size:.74rem;background:var(--fondo);padding:1px 4px;border-radius:4px}
+.seg-acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.seg-btn{font:inherit;font-size:.76rem;font-weight:600;min-height:34px;padding:4px 12px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);cursor:pointer}
 .seg-btn:hover{background:var(--hover)}
+.seg-btn.prim{background:var(--azul);border-color:var(--azul);color:#fff}
 .seg-btn:disabled{opacity:.5;cursor:default}
-.seg-hechos{font-size:.76rem;color:var(--texto-debil);margin-top:8px}
-.seg-bitacora{margin-top:10px;border-top:1px solid var(--borde);padding-top:8px}
-.seg-bit-fila{font-size:.78rem;color:var(--texto-tenue);padding:4px 0;line-height:1.45;overflow-wrap:anywhere}
+.seg-paralelo{border:1px solid var(--azul);background:var(--azul-tinte);border-radius:12px;padding:12px 14px;font-size:.84rem;line-height:1.55;color:var(--texto-fuerte);margin-bottom:14px}
+.seg-paralelo b{display:block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--azul-claro);margin-bottom:3px}
+.seg-bit summary{cursor:pointer;list-style:none;min-height:32px}
+.seg-bit summary::-webkit-details-marker{display:none}
+.seg-bit summary::after{content:"›";margin-left:4px;transition:transform .15s}
+.seg-bit[open] summary::after{transform:rotate(90deg)}
+.seg-bit-fila{font-size:.78rem;color:var(--texto-tenue);padding:6px 0;border-top:1px solid var(--borde);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.seg-bit-fila:first-child{border-top:none}
 .seg-bit-fila time{color:var(--texto-debil);font-variant-numeric:tabular-nums;margin-right:6px}
 .cli-contador-total{display:flex;align-items:baseline;gap:10px}
 .cli-contador-num{font-size:2rem;font-weight:800;line-height:1;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
@@ -9165,10 +9224,10 @@ async function cliEliminar(clientId, nombre) {
 }
 
 // ── Seguimiento (27/10, services/seguimiento.py) ──────────────────────────────
-// Cada cliente partido en frentes, y de cada frente de quién es la pelota.
-// Lo carga Claude por el conector; acá se lee y se mueve un frente de estado.
-const SEG_ETIQUETA = {nos_toca: 'Te toca', esperando_cliente: 'Esperando al cliente', hecho: 'Hecho'};
+// Una fila por cliente que se entiende sin leer, y el detalle en un panel
+// lateral. Lo carga Claude por el conector; acá se lee y se mueve un frente.
 const SEG_ETAPA = {cerrado: 'Cerrado', en_desarrollo: 'En desarrollo', finalizado: 'Finalizado'};
+let _segDatos = null, _segFiltro = 'todos', _segAbierto = null, _segVerOtros = false;
 
 function cliVista(cual) {
   ['seguimiento', 'tabla'].forEach(v => {
@@ -9180,77 +9239,211 @@ function cliVista(cual) {
 
 function _segDias(n, esEspera) {
   if (n === null || n === undefined) return '';
-  const txt = n === 0 ? 'hoy' : (n === 1 ? '1 día' : n + ' días');
+  const txt = n === 0 ? 'hoy' : n + ' d';
   const cls = esEspera ? (n >= 14 ? ' mal' : (n >= 7 ? ' aviso' : '')) : '';
-  return '<span class="seg-dias' + cls + '" title="' + (esEspera ? 'Esperando hace ' : 'En este estado hace ') + txt + '">' + txt + '</span>';
+  return '<span class="seg-dias' + cls + '" title="' + (n === 1 ? '1 día' : n + ' días') + '">' + txt + '</span>';
 }
 
-function _segFrente(f) {
-  const lineas = [];
-  if (f.espera && f.estado === 'esperando_cliente') lineas.push('<div class="seg-frente-linea"><b>Se espera:</b> ' + esc(f.espera) + '</div>');
-  if (f.proximo_paso) lineas.push('<div class="seg-frente-linea"><b>Próximo paso:</b> ' + esc(f.proximo_paso) + '</div>');
-  const acciones = [];
-  if (f.estado === 'esperando_cliente') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;nos_toca&quot;, this)">Llegó: me toca</button>');
-  if (f.estado === 'nos_toca') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;esperando_cliente&quot;, this)">Pasar al cliente</button>');
-  if (f.estado !== 'hecho') acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;hecho&quot;, this)">Hecho</button>');
-  else acciones.push('<button type="button" class="seg-btn" onclick="segEstado(' + f.id + ', &quot;nos_toca&quot;, this)">Reabrir</button>');
-  return '<div class="seg-frente">'
-    + '<div class="seg-frente-cab"><span class="seg-frente-titulo">' + esc(f.titulo) + '</span>'
-    + '<span class="seg-pill ' + f.estado + '">' + SEG_ETIQUETA[f.estado] + '</span>'
-    + _segDias(f.dias_en_estado, f.estado === 'esperando_cliente') + '</div>'
-    + lineas.join('')
-    + (f.detalle ? '<details><summary>Ver detalle</summary><div class="seg-detalle">' + esc(f.detalle) + '</div></details>' : '')
-    + '<div class="seg-acciones">' + acciones.join('') + '</div></div>';
+function _segNombre(nombre) {
+  const partes = String(nombre || '').split(' · ');
+  return {marca: partes[0], persona: partes.slice(1).join(' · ')};
 }
 
-function _segCliente(c) {
-  const meta = [SEG_ETAPA[c.etapa] || c.etapa];
-  if (c.actualizado_en) meta.push('actualizado ' + (c.dias_sin_actualizar === 0 ? 'hoy' : 'hace ' + c.dias_sin_actualizar + (c.dias_sin_actualizar === 1 ? ' día' : ' días')));
-  const frentes = c.frentes.length
-    ? c.frentes.map(_segFrente).join('')
-    : '<div class="seg-vacio">Sin frentes abiertos. Pedile a Claude que lo desglose.</div>';
-  return '<article class="seg-cli' + (c.sin_nada_nuestro ? ' trabado' : '') + '" id="seg-cli-' + c.id + '">'
-    + '<div class="seg-cli-cab"><div><button type="button" class="seg-cli-nombre" onclick="openClientPanel(' + c.id + ')">' + esc(c.nombre || '') + '</button>'
-    + '<div class="seg-cli-meta">' + esc(meta.join(' · ')) + '</div></div>'
-    + '<button type="button" class="seg-btn" onclick="segBitacora(' + c.id + ', this)">Bitácora</button></div>'
-    + (c.resumen ? '<div class="seg-cli-resumen">' + esc(c.resumen) + '</div>' : '')
-    + frentes
-    + (c.hechos ? '<div class="seg-hechos">' + c.hechos + (c.hechos === 1 ? ' frente hecho' : ' frentes hechos') + ' (en la bitácora)</div>' : '')
-    + '<div class="seg-bitacora" id="seg-bit-' + c.id + '" hidden></div>'
-    + '</article>';
+function _segPelota(c) {
+  if (!c.frentes.length && !c.hechos) return '<span class="seg-pelota vacio">Sin cargar</span>';
+  if (c.sin_nada_nuestro) return '<span class="seg-pelota quieto">Quieto</span>';
+  if (c.cuenta.nos_toca) return '<span class="seg-pelota tuya">Tuya · ' + c.cuenta.nos_toca + '</span>';
+  if (!c.frentes.length) return '<span class="seg-pelota vacio">Terminado</span>';
+  return '<span class="seg-pelota cliente">Del cliente</span>';
+}
+
+function _segBarra(c) {
+  const segs = [];
+  ['hecho', 'nos_toca', 'esperando_cliente'].forEach(e => { for (let k = 0; k < (c.cuenta[e] || 0); k++) segs.push('<i class="' + e + '"></i>'); });
+  const total = segs.length;
+  return '<div class="seg-barra" role="img" aria-label="' + c.cuenta.hecho + ' de ' + total + ' frentes hechos">' + segs.join('') + '</div>'
+    + '<div class="seg-barra-txt">' + (total ? c.cuenta.hecho + ' de ' + total + ' hechos' : 'Sin frentes') + '</div>';
+}
+
+function _segFila(c) {
+  const n = _segNombre(c.nombre);
+  const tuyos = c.frentes.filter(f => f.estado === 'nos_toca');
+  const esperas = c.frentes.filter(f => f.estado === 'esperando_cliente');
+  const prox = tuyos.length
+    ? '<div class="seg-celda-tit">' + esc(tuyos[0].titulo) + '</div>' + (tuyos.length > 1 ? '<div class="seg-celda-sub">y ' + (tuyos.length - 1) + ' más</div>' : '')
+    : '<div class="seg-celda-nada">' + (c.sin_nada_nuestro ? 'Nada: buscá algo para avanzar' : 'Nada pendiente') + '</div>';
+  const esp = esperas.length
+    ? '<div class="seg-celda-tit">' + esc(esperas[0].titulo) + '</div><div class="seg-celda-sub">' + _segDias(esperas[0].dias_en_estado, true)
+      + (esperas.length > 1 ? '<span>y ' + (esperas.length - 1) + ' más</span>' : '') + '</div>'
+    : '<div class="seg-celda-nada">No esperás nada</div>';
+  return '<button type="button" class="seg-row" data-id="' + c.id + '" onclick="segAbrir(' + c.id + ')">'
+    + '<div class="seg-celda"><div class="seg-cli-marca">' + esc(n.marca) + '</div>' + (n.persona ? '<div class="seg-cli-persona">' + esc(n.persona) + '</div>' : '') + '</div>'
+    + '<div>' + _segBarra(c) + '</div>'
+    + '<div>' + _segPelota(c) + '</div>'
+    + '<div class="seg-celda" data-rot="Lo próximo tuyo">' + prox + '</div>'
+    + '<div class="seg-celda" data-rot="Esperando hace más">' + esp + '</div>'
+    + '<span class="seg-chev" aria-hidden="true">›</span></button>';
+}
+
+function _segPasaFiltro(c) {
+  if (_segFiltro === 'tuya') return c.cuenta.nos_toca > 0;
+  if (_segFiltro === 'cliente') return c.cuenta.esperando_cliente > 0;
+  if (_segFiltro === 'quieto') return c.sin_nada_nuestro;
+  return true;
+}
+
+function segFiltrar(f) {
+  _segFiltro = _segFiltro === f ? 'todos' : f;
+  _segPintar();
+}
+
+function _segPintar() {
+  const body = document.getElementById('seg-body');
+  const d = _segDatos;
+  if (!d.clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes activos todavía</div>'; return; }
+  const kpi = (clave, cls, num, tit, sub) => '<button type="button" class="seg-kpi ' + cls + '" aria-pressed="' + (_segFiltro === clave) + '" onclick="segFiltrar(&quot;' + clave + '&quot;)">'
+    + '<span class="seg-kpi-num">' + num + '</span><span class="seg-kpi-txt"><b>' + tit + '</b><span>' + sub + '</span></span></button>';
+  const masViejo = d.esperando.length ? d.esperando[0].dias_en_estado : null;
+  let html = '<div class="seg-kpis">'
+    + kpi('tuya', 'k-tuya', d.te_toca.length, 'Te tocan', 'cosas que podés avanzar ya')
+    + kpi('cliente', 'k-cliente', d.esperando.length, 'Esperando a clientes', masViejo !== null ? 'la más vieja, hace ' + masViejo + ' días' : 'nada pendiente')
+    + kpi('quieto', 'k-quieto', d.sin_nada_nuestro.length, d.sin_nada_nuestro.length === 1 ? 'Proyecto quieto' : 'Proyectos quietos', 'todo esperando al cliente')
+    + '</div>';
+  const conSeg = d.clientes.filter(c => c.frentes.length || c.hechos);
+  const sinSeg = d.clientes.filter(c => !c.frentes.length && !c.hechos);
+  const visibles = conSeg.filter(_segPasaFiltro);
+  html += '<div class="seg-lista"><div class="seg-cols" aria-hidden="true"><span>Cliente</span><span>Avance</span><span>Pelota</span><span>Lo próximo tuyo</span><span>Esperando hace más</span><span></span></div>';
+  html += visibles.length ? visibles.map(_segFila).join('') : '<div class="seg-vacio">Ningún cliente en este filtro.</div>';
+  if (sinSeg.length && _segFiltro === 'todos') {
+    if (_segVerOtros) html += sinSeg.map(_segFila).join('');
+    html += '<button type="button" class="seg-otros" onclick="_segVerOtros=!_segVerOtros;_segPintar()">'
+      + (_segVerOtros ? 'Ocultar' : 'Ver') + ' los otros ' + sinSeg.length + ' clientes sin seguimiento</button>';
+  }
+  html += '</div>';
+  body.innerHTML = html;
 }
 
 async function segCargar() {
   const body = document.getElementById('seg-body');
-  if (!body.innerHTML) body.innerHTML = '<div class="seg-vacio" style="padding:16px">Cargando…</div>';
-  let d;
+  if (!_segDatos) body.innerHTML = '<div class="seg-vacio">Cargando…</div>';
   try {
     const r = await fetch('/api/seguimiento');
-    d = await r.json().catch(() => ({}));
+    const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
-  } catch (e) { body.innerHTML = '<div style="color:var(--rojo-texto);padding:16px">No se pudo cargar el seguimiento: ' + esc(e.message) + '</div>'; return; }
+    _segDatos = d;
+  } catch (e) { body.innerHTML = '<div class="seg-vacio" style="color:var(--rojo-texto)">No se pudo cargar el seguimiento: ' + esc(e.message) + '</div>'; return; }
+  _segPintar();
+}
 
-  if (!d.clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes activos todavía</div>'; return; }
+// ── panel lateral ──
+function _segMd(t) {
+  // Lo justo del markdown que se carga: negrita, código y viñetas. Sin
+  // expresiones regulares, porque esto vive dentro de un string de Python.
+  let h = esc(t);
+  h = h.split('**').map((p, i) => i % 2 ? '<b>' + p + '</b>' : p).join('');
+  h = h.split('`').map((p, i) => i % 2 ? '<code>' + p + '</code>' : p).join('');
+  const nl = String.fromCharCode(10);
+  return h.split(nl).map(l => l.startsWith('- ') ? '• ' + l.slice(2) : l).join(nl);
+}
 
-  let html = '';
-  if (d.sin_nada_nuestro.length) {
-    html += '<div class="seg-alerta" role="status"><div class="seg-alerta-titulo"><i data-lucide="alert-triangle"></i>Proyectos quietos</div>'
-      + d.sin_nada_nuestro.map(c => '<b>' + esc(c.cliente) + '</b>').join(', ')
-      + (d.sin_nada_nuestro.length === 1 ? ' tiene' : ' tienen')
-      + ' todo lo abierto esperando al cliente. Buscá una parte que se pueda avanzar en paralelo.</div>';
-  }
-  const fila = (f, esEspera) => '<div class="seg-fila"><div class="seg-fila-txt"><span class="seg-fila-cli">' + esc(f.cliente) + '</span> · ' + esc(f.titulo)
-    + ((esEspera ? f.espera : f.proximo_paso) ? '<div class="seg-fila-sub">' + esc(esEspera ? f.espera : f.proximo_paso) + '</div>' : '')
-    + '</div>' + (esEspera ? _segDias(f.dias_en_estado, true) : '') + '</div>';
-  html += '<div class="seg-arriba">'
-    + '<section class="seg-caja"><div class="seg-caja-titulo">Te toca ahora <span class="seg-caja-num">' + d.te_toca.length + '</span></div>'
-    + (d.te_toca.length ? d.te_toca.map(f => fila(f, false)).join('') : '<div class="seg-vacio">Nada de tu lado.</div>') + '</section>'
-    + '<section class="seg-caja"><div class="seg-caja-titulo">Esperando a clientes <span class="seg-caja-num">' + d.esperando.length + '</span></div>'
-    + (d.esperando.length ? d.esperando.map(f => fila(f, true)).join('') : '<div class="seg-vacio">No estás esperando nada.</div>') + '</section>'
+function _segFrente(f) {
+  const sub = f.estado === 'esperando_cliente' ? f.espera : (f.estado === 'nos_toca' ? f.proximo_paso : '');
+  const campos = [];
+  if (f.estado === 'esperando_cliente' && f.espera) campos.push('<div class="seg-campo"><b>Qué falta del cliente</b>' + esc(f.espera) + '</div>');
+  if (f.proximo_paso && f.estado !== 'hecho') campos.push('<div class="seg-campo"><b>' + (f.estado === 'esperando_cliente' ? 'Mientras tanto' : 'Próximo paso') + '</b>' + esc(f.proximo_paso) + '</div>');
+  if (f.detalle) campos.push('<div class="seg-detalle">' + _segMd(f.detalle) + '</div>');
+  const acc = [];
+  if (f.estado === 'esperando_cliente') acc.push(['nos_toca', 'Llegó: me toca', true]);
+  if (f.estado === 'nos_toca') acc.push(['hecho', 'Marcar hecho', true], ['esperando_cliente', 'Pasar al cliente', false]);
+  if (f.estado === 'esperando_cliente') acc.push(['hecho', 'Marcar hecho', false]);
+  if (f.estado === 'hecho') acc.push(['nos_toca', 'Reabrir', false]);
+  return '<div class="seg-fr" id="seg-fr-' + f.id + '">'
+    + '<button type="button" class="seg-fr-cab" aria-expanded="false" onclick="segFrenteToggle(' + f.id + ', this)">'
+    + '<span class="seg-fr-txt"><span class="seg-fr-tit">' + esc(f.titulo) + '</span>' + (sub ? '<div class="seg-fr-sub">' + esc(sub) + '</div>' : '') + '</span>'
+    + (f.estado !== 'hecho' ? _segDias(f.dias_en_estado, f.estado === 'esperando_cliente') : '')
+    + '<span class="seg-fr-flecha" aria-hidden="true">›</span></button>'
+    + '<div class="seg-fr-det">' + campos.join('')
+    + '<div class="seg-acciones">' + acc.map(a => '<button type="button" class="seg-btn' + (a[2] ? ' prim' : '') + '" onclick="segEstado(' + f.id + ', &quot;' + a[0] + '&quot;, this)">' + a[1] + '</button>').join('') + '</div>'
+    + '</div></div>';
+}
+
+function segFrenteToggle(id, btn) {
+  const el = document.getElementById('seg-fr-' + id);
+  const abierto = el.dataset.abierto === '1';
+  el.dataset.abierto = abierto ? '0' : '1';
+  btn.setAttribute('aria-expanded', abierto ? 'false' : 'true');
+}
+
+function _segAsegurarDrawer() {
+  if (document.getElementById('seg-drawer')) return;
+  const fondo = document.createElement('div');
+  fondo.className = 'seg-fondo'; fondo.id = 'seg-fondo'; fondo.onclick = segCerrar;
+  const dr = document.createElement('aside');
+  dr.className = 'seg-drawer'; dr.id = 'seg-drawer'; dr.setAttribute('role', 'dialog'); dr.setAttribute('aria-modal', 'true');
+  dr.setAttribute('aria-labelledby', 'seg-dr-nombre');
+  document.body.appendChild(fondo); document.body.appendChild(dr);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && _segAbierto) segCerrar(); });
+}
+
+async function segAbrir(id) {
+  _segAsegurarDrawer();
+  _segAbierto = id;
+  const dr = document.getElementById('seg-drawer');
+  dr.innerHTML = '<div class="seg-vacio">Cargando…</div>';
+  document.getElementById('seg-fondo').classList.add('open');
+  dr.classList.add('open');
+  await _segPintarDrawer();
+}
+
+async function _segPintarDrawer() {
+  const dr = document.getElementById('seg-drawer');
+  let c;
+  try {
+    const r = await fetch('/api/seguimiento/' + _segAbierto);
+    c = await r.json().catch(() => ({}));
+    if (!r.ok || !c.ok) throw new Error(c.error || 'HTTP ' + r.status);
+  } catch (e) { dr.innerHTML = '<div class="seg-vacio" style="color:var(--rojo-texto)">' + esc(e.message) + '</div>'; return; }
+  const n = _segNombre(c.nombre);
+  // El resumen trae al final "En paralelo: ...": es lo que más importa de
+  // esta sección (qué avanzar mientras esperás), así que va aparte y arriba.
+  const corte = String.fromCharCode(10, 10) + 'En paralelo: ';
+  const [resumen, paralelo] = (c.resumen || '').includes(corte) ? c.resumen.split(corte) : [c.resumen, ''];
+  const grupo = (estado, tit, cls) => {
+    const fs = c.frentes.filter(f => f.estado === estado);
+    if (!fs.length) return '';
+    return '<section class="seg-grupo"><div class="seg-grupo-tit"><span class="seg-pelota ' + cls + '">' + tit + '</span>' + fs.length + '</div>' + fs.map(_segFrente).join('') + '</section>';
+  };
+  const meta = [SEG_ETAPA[c.etapa] || c.etapa];
+  if (n.persona) meta.unshift(n.persona);
+  if (c.actualizado_en) meta.push('actualizado el ' + c.actualizado_en.slice(8, 10) + '/' + c.actualizado_en.slice(5, 7));
+  const bit = c.bitacora.length
+    ? c.bitacora.map(b => '<div class="seg-bit-fila"><time>' + esc((b.creado_en || '').slice(8, 10) + '/' + (b.creado_en || '').slice(5, 7)) + '</time>' + esc(b.texto) + '</div>').join('')
+    : '<div class="seg-celda-nada">Todavía no hay nada anotado.</div>';
+  dr.innerHTML = '<div class="seg-dr-cab"><div><div class="seg-dr-nombre" id="seg-dr-nombre">' + esc(n.marca) + '</div><div class="seg-dr-meta">' + esc(meta.join(' · ')) + '</div></div>'
+    + '<button type="button" class="seg-x" onclick="segCerrar()" aria-label="Cerrar">×</button></div>'
+    + '<div class="seg-dr-cuerpo">'
+    + (paralelo ? '<div class="seg-paralelo"><b>Para avanzar en paralelo</b>' + esc(paralelo) + '</div>' : '')
+    + (resumen ? '<div class="seg-resumen corto" id="seg-resumen">' + esc(resumen) + '</div><button type="button" class="seg-mas" onclick="segResumen(this)">Leer todo</button>' : '')
+    + grupo('nos_toca', 'Te toca', 'tuya') + grupo('esperando_cliente', 'Esperando al cliente', 'cliente') + grupo('hecho', 'Hecho', 'vacio')
+    + (c.frentes.length ? '' : '<div class="seg-vacio">Sin frentes cargados. Pedile a Claude que lo desglose.</div>')
+    + '<section class="seg-grupo"><details class="seg-bit"><summary class="seg-grupo-tit">Bitácora · ' + c.bitacora.length + '</summary>' + bit + '</details></section>'
+    + '<div style="margin-top:18px"><button type="button" class="seg-btn" onclick="segCerrar();openClientPanel(' + c.id + ')">Ver ficha del cliente</button></div>'
     + '</div>';
-  html += '<div class="seg-clientes">' + d.clientes.map(_segCliente).join('') + '</div>';
-  body.innerHTML = html;
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+  dr.querySelector('.seg-x').focus();
+}
+
+function segResumen(btn) {
+  const el = document.getElementById('seg-resumen');
+  const corto = el.classList.toggle('corto');
+  btn.textContent = corto ? 'Leer todo' : 'Mostrar menos';
+}
+
+function segCerrar() {
+  _segAbierto = null;
+  const dr = document.getElementById('seg-drawer');
+  if (dr) dr.classList.remove('open');
+  const f = document.getElementById('seg-fondo');
+  if (f) f.classList.remove('open');
 }
 
 async function segEstado(frenteId, estado, btn) {
@@ -9261,24 +9454,8 @@ async function segEstado(frenteId, estado, btn) {
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
   } catch (e) { btn.disabled = false; alert('No se pudo cambiar: ' + e.message); return; }
+  if (_segAbierto) _segPintarDrawer();
   segCargar();
-}
-
-async function segBitacora(clienteId, btn) {
-  const caja = document.getElementById('seg-bit-' + clienteId);
-  if (!caja.hidden) { caja.hidden = true; return; }
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/seguimiento/' + clienteId);
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
-    caja.innerHTML = d.bitacora.length
-      ? d.bitacora.map(b => '<div class="seg-bit-fila"><time>' + esc((b.creado_en || '').slice(0, 10)) + '</time>' + esc(b.texto)
-          + (b.autor ? ' <span style="color:var(--texto-debil)">· ' + esc(b.autor) + '</span>' : '') + '</div>').join('')
-      : '<div class="seg-vacio">Todavía no hay nada anotado.</div>';
-    caja.hidden = false;
-  } catch (e) { alert('No se pudo cargar la bitácora: ' + e.message); }
-  btn.disabled = false;
 }
 
 // ── Save notes inline ─────────────────────────────────────────────────────────
