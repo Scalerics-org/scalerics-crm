@@ -342,3 +342,136 @@ def test_el_panel_esta_en_el_menu_y_en_los_permisos():
     listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", fuente)
     assert len(listas) == 2 and all("'resenas'" in lista for lista in listas)
     assert "resenas:'Reseñas'" in fuente
+
+
+# ── panel del comercio ───────────────────────────────────────────────────────
+
+def test_el_acceso_guarda_solo_el_hash_y_se_revoca(db):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Marcela (dueña)", "test")
+    assert len(a["token"]) >= 32 and "token_hash" not in a
+    conn = sqlite3.connect(db)
+    guardado = conn.execute("SELECT token_hash FROM rs_accesos WHERE id = ?", (a["id"],)).fetchone()[0]
+    conn.close()
+    assert a["token"] not in guardado and guardado == rs._hash_token(a["token"])
+    assert rs.por_token(db, a["token"])["negocio"]["id"] == n["id"]
+    assert rs.por_token(db, a["token"] + "x") is None and rs.por_token(db, "../../etc") is None
+    with pytest.raises(rs.NoSePuede):
+        rs.crear_acceso(db, n["id"], "  ", "test")
+    otro = rs.crear_negocio(db, {"nombre": "Otro"}, "t")
+    with pytest.raises(rs.NoSePuede):
+        rs.revocar_acceso(db, otro["id"], a["id"])
+    rs.revocar_acceso(db, n["id"], a["id"])
+    assert rs.por_token(db, a["token"]) is None
+    assert rs.accesos(db, n["id"])[0]["revocado_en"]
+    with pytest.raises(rs.NoSePuede):
+        rs.revocar_acceso(db, n["id"], a["id"])
+
+
+def test_tope_de_links_activos_por_comercio(db):
+    n = _negocio(db)
+    for i in range(rs.MAX_ACCESOS):
+        rs.crear_acceso(db, n["id"], f"Persona {i}", "t")
+    with pytest.raises(rs.NoSePuede):
+        rs.crear_acceso(db, n["id"], "Una más", "t")
+
+
+def test_novedades_desde_la_ultima_visita(db, reloj):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Dueño", "t")
+    assert rs.marcar_visita(db, a["id"]) is None
+    reloj["ahora"] = AHORA + timedelta(hours=5)
+    rs.opinar(db, n["id"], 2, ip="1")
+    o = rs.opinar(db, n["id"], 5, ip="2")
+    rs.ir_a_google(db, o["codigo"])
+    reloj["ahora"] = AHORA + timedelta(days=1)
+    antes = rs.marcar_visita(db, a["id"])
+    assert antes == rs._txt(AHORA)
+    assert rs.novedades(db, n["id"], antes) == {"desde": antes, "opiniones": 2, "quejas": 1, "google": 1}
+    # Recargar o resolver algo enseguida no borra las novedades.
+    reloj["ahora"] = AHORA + timedelta(days=1, minutes=10)
+    assert rs.marcar_visita(db, a["id"]) == antes
+
+
+def test_borrar_el_comercio_se_lleva_los_accesos(db):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Dueño", "t")
+    rs.borrar_negocio(db, n["id"])
+    assert rs.por_token(db, a["token"]) is None
+
+
+def test_el_equipo_crea_y_revoca_links_por_api(app, db):
+    c = _login(app, db)
+    n = _negocio(db)
+    base = f"/api/resenas/negocios/{n['id']}/accesos"
+    r = c.post(base, json={"nombre": "Marcela"})
+    assert r.status_code == 201
+    d = r.get_json()
+    assert d["link"].startswith("https://crm.test/comercio/") and "token" not in d["acceso"]
+    assert d["whatsapp"].startswith("https://wa.me/59899111222?text=")
+    lista = c.get(base).get_json()["accesos"]
+    assert len(lista) == 1 and "token_hash" not in lista[0]
+    assert c.get(f"/api/resenas/negocios/{n['id']}").get_json()["accesos"][0]["nombre"] == "Marcela"
+    assert c.post(base, json={"nombre": ""}).status_code == 400
+    sin = _login(app, db, "otro@scalerics.com", paneles=("clientes",))
+    assert sin.post(base, json={"nombre": "x"}).status_code == 403
+    assert app.test_client().get(base).status_code == 401
+    token = d["link"].rsplit("/", 1)[1]
+    assert app.test_client().get(f"/comercio/{token}").status_code == 200
+    assert c.delete(f"{base}/{lista[0]['id']}").get_json()["ok"]
+    assert app.test_client().get(f"/comercio/{token}").status_code == 404
+
+
+def test_el_panel_del_comercio_abre_con_su_link_y_sin_scripts(app, db):
+    n = _negocio(db)
+    rs.crear_fuente(db, n["id"], "Mesas")
+    a = rs.crear_acceso(db, n["id"], "Marcela", "t")
+    o = rs.opinar(db, n["id"], 1, "mesas", ip="9")
+    rs.comentar(db, o["codigo"], {"comentario": "<img src=x onerror=alert(1)>", "contacto": "099 222 333",
+                                  "quiere_contacto": "1"})
+    c = app.test_client()
+    r = c.get(f"/comercio/{a['token']}")
+    assert r.status_code == 200
+    cuerpo = r.get_data(as_text=True)
+    assert "Parrilla El Fogón" in cuerpo and "hola, Marcela" in cuerpo
+    assert "&lt;img src=x" in cuerpo and "<img src=x" not in cuerpo
+    assert "<script" not in cuerpo and " style=" not in cuerpo
+    assert "https://wa.me/59899222333" in cuerpo and f"/comercio/{a['token']}/o/{o['id']}" in cuerpo
+    assert "default-src 'none'" in r.headers["Content-Security-Policy"]
+    assert r.headers["Referrer-Policy"] == "no-referrer" and r.headers["Cache-Control"] == "no-store"
+    assert c.get("/comercio/inventado-pero-bien-largo-xxxxxxxx").status_code == 404
+    qr = c.get(f"/comercio/{a['token']}?v=qr").get_data(as_text=True)
+    assert "https://crm.test/opina/parrilla-el-fogon?f=mesas" in qr and f"/comercio/{a['token']}/cartel" in qr
+    cartel = c.get(f"/comercio/{a['token']}/cartel")
+    assert cartel.status_code == 200 and "¿Cómo te atendimos?" in cartel.get_data(as_text=True)
+    # Lo de adentro del CRM sigue pidiendo sesión.
+    assert c.get(f"/resenas/cartel/{n['id']}").status_code in (302, 401)
+
+
+def test_el_comercio_toma_y_resuelve_sus_quejas(app, db):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Marcela", "t")
+    o = rs.opinar(db, n["id"], 2, ip="1")
+    c = app.test_client()
+    base = f"/comercio/{a['token']}/o/{o['id']}"
+    r = c.post(base, data={"accion": "tomar"})
+    assert r.status_code == 303 and "ok=1" in r.headers["Location"]
+    assert rs.opinion(db, o["id"])["estado"] == "en_curso"
+    r = c.post(base, data={"accion": "resolver", "nota": ""})
+    assert "error=" in r.headers["Location"] and rs.opinion(db, o["id"])["estado"] == "en_curso"
+    c.post(base, data={"accion": "resolver", "nota": "Lo llamé y vuelve el sábado"})
+    hecha = rs.opinion(db, o["id"])
+    assert hecha["estado"] == "resuelta" and hecha["atendido_por"] == "Marcela · comercio"
+    assert "error=" in c.post(base, data={"accion": "borrar"}).headers["Location"]
+    c.post(base, data={"accion": "reabrir"})
+    assert rs.opinion(db, o["id"])["estado"] == "abierta"
+
+
+def test_un_link_no_toca_opiniones_de_otro_comercio(app, db):
+    n = _negocio(db)
+    otro = rs.crear_negocio(db, {"nombre": "Otro"}, "t")
+    a = rs.crear_acceso(db, otro["id"], "Intruso", "t")
+    o = rs.opinar(db, n["id"], 1, ip="1")
+    r = app.test_client().post(f"/comercio/{a['token']}/o/{o['id']}", data={"accion": "tomar"})
+    assert r.status_code == 404 and rs.opinion(db, o["id"])["estado"] == "abierta"
+    assert "Opiniones de Parrilla" not in app.test_client().get(f"/comercio/{a['token']}").get_data(as_text=True)

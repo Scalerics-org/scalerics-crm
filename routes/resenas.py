@@ -7,6 +7,10 @@ Dos grupos:
   sesión (exenta en dashboard.require_login): es pública a propósito, va en
   un QR. Cada opinión tiene su link `/opina/<slug>/r/<código>` con un código
   al azar para agregar el comentario; sin ese código no se ve nada de nadie.
+- El panel del comercio, `/comercio/<token>`, también abre sin sesión: el
+  link privado ES la credencial (192 bits al azar, en la base solo su hash).
+  El dueño ve sus números, trabaja su bandeja de quejas y baja sus QR. Cada
+  link es de una persona y el equipo lo revoca desde PRODUCTOS › Reseñas.
 
 La página no lleva scripts: las estrellas son botones de un formulario común,
 así anda en cualquier celular y con CSP estricta.
@@ -25,7 +29,7 @@ from services.auth import require_panel
 
 resenas_bp = Blueprint("resenas", __name__)
 
-PUBLICAS = ("/opina/",)
+PUBLICAS = ("/opina/", "/comercio/")
 
 
 def _db() -> str:
@@ -104,7 +108,8 @@ def api_negocio(nid):
         return _error(e, _codigo_error(e))
     except ValueError:
         return _error("Período no válido.")
-    return jsonify({"ok": True, "negocio": _con_links(n), "metricas": m, "opiniones": ops, "filtro": filtro})
+    return jsonify({"ok": True, "negocio": _con_links(n), "metricas": m, "opiniones": ops, "filtro": filtro,
+                    "accesos": rs.accesos(_db(), nid)})
 
 
 @resenas_bp.route("/api/resenas/negocios/<int:nid>", methods=["PATCH"])
@@ -170,6 +175,81 @@ def api_atender(nid, oid):
     return jsonify({"ok": True, "opinion": _opinion_json(n, o)})
 
 
+def _link_acceso(token: str) -> str:
+    return f"{_base()}/comercio/{token}"
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/accesos")
+def api_accesos(nid):
+    try:
+        rs.negocio(_db(), nid)
+    except rs.NoSePuede as e:
+        return _error(e, 404)
+    return jsonify({"ok": True, "accesos": rs.accesos(_db(), nid)})
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/accesos", methods=["POST"])
+def api_crear_acceso(nid):
+    try:
+        n = rs.negocio(_db(), nid)
+        a = rs.crear_acceso(_db(), nid, (request.get_json(silent=True) or {}).get("nombre"), _quien())
+    except rs.NoSePuede as e:
+        return _error(e, _codigo_error(e))
+    log_activity(_db(), _quien(), "resenas_acceso", "resenas", nid, n["nombre"], a["nombre"],
+                 user_id=session.get("user_id"))
+    link = _link_acceso(a.pop("token"))
+    # El link se ve una sola vez. El WhatsApp es un wa.me que abre una persona.
+    wa = ""
+    if n.get("whatsapp"):
+        texto = (f"Hola, este es el link a tu panel de opiniones de {n['nombre']}: {link} . "
+                 "Es personal, no lo compartas. Ahí ves las opiniones, las quejas para resolver y tus QR.")
+        wa = f"https://wa.me/{n['whatsapp']}?" + urlencode({"text": texto})
+    return jsonify({"ok": True, "acceso": a, "link": link, "whatsapp": wa}), 201
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/accesos/<int:aid>", methods=["DELETE"])
+def api_revocar_acceso(nid, aid):
+    try:
+        a = rs.acceso(_db(), aid)
+        rs.revocar_acceso(_db(), nid, aid)
+    except rs.NoSePuede as e:
+        return _error(e, 404)
+    log_activity(_db(), _quien(), "resenas_revoca", "resenas", nid, "", a["nombre"], user_id=session.get("user_id"))
+    return jsonify({"ok": True})
+
+
+def _fuente_de(n: dict):
+    fid = request.args.get("f", type=int)
+    return next((f for f in n["fuentes"] if f["id"] == fid), None)
+
+
+def _qr_resp(n: dict) -> Response:
+    fuente = _fuente_de(n)
+    svg = rs.qr_svg(rs.link_publico(_base(), n, fuente))
+    if not svg:
+        return _error("Falta la librería segno para dibujar el QR.", 501)
+    resp = Response(svg, mimetype="image/svg+xml")
+    resp.headers["Content-Security-Policy"] = "default-src 'none'"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "private, max-age=300"
+    if request.args.get("bajar"):
+        nombre = n["slug"] + (f"-{fuente['codigo']}" if fuente else "")
+        resp.headers["Content-Disposition"] = f'attachment; filename="qr-{nombre}.svg"'
+    return resp
+
+
+def _cartel_resp(n: dict) -> Response:
+    link = rs.link_publico(_base(), n, _fuente_de(n))
+    qr = rs.qr_svg(link) or ""
+    e = html.escape
+    cuerpo = (f"<div class='cartel'><p class='chico'>{e(n['nombre'])}</p>"
+              "<h1>¿Cómo te atendimos?</h1><p>Escaneá y contanos en 10 segundos.</p>"
+              f"<div class='qr'>{qr}</div><p class='link'>{e(link)}</p>"
+              "<p class='chico'>Tu opinión la lee el dueño. ¡Gracias!</p></div>")
+    # El SVG del QR va inline y se pinta con atributos, no con style: entra en la CSP.
+    return _pagina(n, f"Cartel · {n['nombre']}", cuerpo, cartel=True)
+
+
 @resenas_bp.route("/resenas/qr/<int:nid>.svg")
 def qr(nid):
     """El QR solo, para verlo en el panel o bajarlo y mandarlo a la imprenta."""
@@ -177,18 +257,7 @@ def qr(nid):
         n = rs.negocio(_db(), nid)
     except rs.NoSePuede:
         return _error("El comercio no existe.", 404)
-    fid = request.args.get("f", type=int)
-    fuente = next((f for f in n["fuentes"] if f["id"] == fid), None)
-    svg = rs.qr_svg(rs.link_publico(_base(), n, fuente))
-    if not svg:
-        return _error("Falta la librería segno para dibujar el QR.", 501)
-    resp = Response(svg, mimetype="image/svg+xml")
-    resp.headers["Content-Security-Policy"] = "default-src 'none'"
-    resp.headers["X-Content-Type-Options"] = "nosniff"
-    if request.args.get("bajar"):
-        nombre = n["slug"] + (f"-{fuente['codigo']}" if fuente else "")
-        resp.headers["Content-Disposition"] = f'attachment; filename="qr-{nombre}.svg"'
-    return resp
+    return _qr_resp(n)
 
 
 @resenas_bp.route("/resenas/cartel/<int:nid>")
@@ -198,17 +267,7 @@ def cartel(nid):
         n = rs.negocio(_db(), nid)
     except rs.NoSePuede:
         return _no_existe()
-    fid = request.args.get("f", type=int)
-    fuente = next((f for f in n["fuentes"] if f["id"] == fid), None)
-    link = rs.link_publico(_base(), n, fuente)
-    qr = rs.qr_svg(link) or ""
-    e = html.escape
-    cuerpo = (f"<div class='cartel'><p class='chico'>{e(n['nombre'])}</p>"
-              "<h1>¿Cómo te atendimos?</h1><p>Escaneá y contanos en 10 segundos.</p>"
-              f"<div class='qr'>{qr}</div><p class='link'>{e(link)}</p>"
-              "<p class='chico'>Tu opinión la lee el dueño. ¡Gracias!</p></div>")
-    # El SVG del QR va inline y se pinta con atributos, no con style: entra en la CSP.
-    return _pagina(n, f"Cartel · {n['nombre']}", cuerpo, cartel=True)
+    return _cartel_resp(n)
 
 
 # ── página pública ───────────────────────────────────────────────────────────
@@ -264,7 +323,69 @@ outline-offset:2px}
 .cartel .link{font-size:.85rem;color:#64748b;overflow-wrap:anywhere}
 .cartel .chico{color:#64748b;font-size:1rem}
 @media print{body{background:#fff}.pie{display:none}}
+.wrap.ancho{max-width:880px}
+.cab.izq{text-align:left;display:flex;gap:12px;align-items:center}
+.cab.izq .logo{margin:0;flex:none}
+.cab.izq h1{margin:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.kpi{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px}
+.kpi .l{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+.kpi .v{font-size:1.55rem;font-weight:800;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:.78rem;color:#64748b}
+.bien{color:#047857}.mal{color:#b91c1c}
+.novedad{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:12px;padding:10px 14px;
+margin-top:14px;font-size:.92rem}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 4px}
+.tabs a{padding:8px 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#334155;
+text-decoration:none;font-size:.88rem}
+.tabs a[aria-current]{background:var(--acc);border-color:var(--acc);color:#fff}
+.tabs .n{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#f59e0b;color:#fff;
+font-size:.72rem;font-weight:700;text-align:center;margin-left:4px}
+.periodo{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:#64748b;margin-top:10px}
+.periodo a{color:#334155;padding:3px 9px;border-radius:999px;border:1px solid #e2e8f0;text-decoration:none;
+background:#fff}
+.periodo a[aria-current]{border-color:var(--acc);color:var(--acc);font-weight:700}
+.op{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #10b981;border-radius:12px;padding:12px 14px;
+margin-top:10px}
+.op.baja{border-left-color:#ef4444}
+.op.e-resuelta{border-left-color:#94a3b8}
+.op .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:#64748b}
+.op .est{color:#f59e0b;font-size:1rem;letter-spacing:1px}
+.op .txt{margin:8px 0 4px;font-size:.98rem}
+.pill{border-radius:999px;padding:1px 9px;font-size:.74rem;font-weight:700;background:#f1f5f9;color:#475569}
+.pill.e-abierta{background:#fef3c7;color:#92400e}
+.pill.e-en_curso{background:#dbeafe;color:#1e40af}
+.pill.e-resuelta{background:#dcfce7;color:#166534}
+.nota-int{background:#f8fafc;border-radius:8px;padding:6px 10px;font-size:.85rem;color:#475569;margin-top:6px}
+.acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.acc form{margin:0}
+.b2{display:inline-block;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:10px;padding:8px 12px;
+font:inherit;font-size:.88rem;cursor:pointer;text-decoration:none}
+.b2.prim{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.cierre{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.cierre input[type=text]{flex:1 1 240px}
+details.res summary{cursor:pointer;color:#334155;font-size:.88rem;margin-top:8px}
+.barras{display:flex;gap:6px;align-items:flex-end;height:120px;margin-top:10px}
+.barra{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.barra .col{width:100%;max-width:40px;background:#cbd5e1;border-radius:6px 6px 0 0}
+.barra .lb{font-size:.68rem;color:#94a3b8;margin-top:4px}
+.barra .pv{font-size:.68rem;color:#475569;margin-bottom:2px}
+.dist{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:4px 0}
+.dist .b{flex:1;height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden}
+.dist .f{height:100%;background:#f59e0b}
+.dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+table.t{width:100%;border-collapse:collapse;font-size:.86rem;margin-top:8px}
+table.t th{text-align:left;color:#64748b;font-weight:600;font-size:.75rem;border-bottom:1px solid #e2e8f0;padding:6px 4px}
+table.t td{border-bottom:1px solid #f1f5f9;padding:7px 4px}
+.qrs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}
+.qrs .card{margin:0;text-align:center}
+.qrs img{width:150px;height:150px}
+.qrs .link{font-size:.75rem;color:#64748b;overflow-wrap:anywhere}
+.vacio{color:#64748b;text-align:center;padding:26px 10px}
 """
+# Las barras y el reparto de estrellas van con clases y no con style="height:…":
+# la CSP no deja estilos en línea.
+_CSS += "".join(f".h{i}{{height:{i * 5}%}}.w{i}{{width:{i * 5}%}}" for i in range(21))
 
 
 def _cabeceras(resp: Response, nonce: str) -> Response:
@@ -278,7 +399,7 @@ def _cabeceras(resp: Response, nonce: str) -> Response:
     return resp
 
 
-def _pagina(n, titulo: str, cuerpo: str, codigo: int = 200, cartel: bool = False) -> Response:
+def _pagina(n, titulo: str, cuerpo: str, codigo: int = 200, cartel: bool = False, ancho: bool = False) -> Response:
     nonce = secrets.token_urlsafe(12)
     color = rs._color(n.get("color") if n else None)
     pie = "" if cartel else "<p class='pie'>Opiniones con <a href='https://scalerics.com'>Scalerics</a></p>"
@@ -286,7 +407,7 @@ def _pagina(n, titulo: str, cuerpo: str, codigo: int = 200, cartel: bool = False
            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
            f"<meta name='theme-color' content='{color}'><meta name='robots' content='noindex,nofollow'>"
            f"<title>{html.escape(titulo)}</title><style nonce='{nonce}'>:root{{--acc:{color}}}{_CSS}</style></head>"
-           f"<body><div class='wrap'>{cuerpo}{pie}</div></body></html>")
+           f"<body><div class='wrap{' ancho' if ancho else ''}'>{cuerpo}{pie}</div></body></html>")
     return _cabeceras(Response(doc, status=codigo, mimetype="text/html"), nonce)
 
 
@@ -439,3 +560,232 @@ def opina_google(slug, codigo):
     if not destino:
         return redirect(f"/opina/{n['slug']}/r/{o['codigo']}", 303)
     return redirect(destino, 302)
+
+
+# ── panel del comercio ───────────────────────────────────────────────────────
+#
+# Lo que ve el dueño con su link privado. Sin JavaScript, igual que la página
+# donde opinan sus clientes: cada acción es un formulario que vuelve con 303.
+
+VISTAS_COMERCIO = (("bandeja", "Para atender"), ("todas", "Todas"), ("resueltas", "Resueltas"), ("qr", "QR y carteles"))
+DIAS_COMERCIO = (7, 30, 90, 365)
+_ACTUAL = " aria-current='page'"
+
+
+def _acceso_de(token: str):
+    a = rs.por_token(_db(), token)
+    return (a, a["negocio"]) if a else (None, None)
+
+
+def _num(v, suf: str = "") -> str:
+    return "—" if v is None else str(v).replace(".", ",") + suf
+
+
+def _estrellas(p: int) -> str:
+    return "★" * p + f"<span class='apagada'>{'★' * (5 - p)}</span>"
+
+
+def _kpis_comercio(m: dict) -> str:
+    g = m["google_evolucion"]
+    k = [
+        ("Opiniones", str(m["opiniones"]), f"{m['vistas']} abrieron el link", ""),
+        ("Promedio", _num(m["promedio"]) + " ★", f"{_num(m['positivas_pct'], '%')} con 4 o 5 estrellas",
+         "mal" if m["promedio"] is not None and m["promedio"] < 3.5 else ""),
+        ("Fueron a Google", str(m["google"]), f"{_num(m['google_de_positivas_pct'], '%')} de los contentos", "bien"),
+        ("Para atender", str(m["abiertas"] + m["en_curso"]), f"{m['abiertas']} sin tocar · {m['en_curso']} en curso",
+         "mal" if m["abiertas"] else ""),
+        ("Quejas resueltas", _num(m["resueltas_pct"], "%"),
+         f"{m['quejas']} quejas en el período" if m["horas_resolucion"] is None
+         else f"en {_num(m['horas_resolucion'])} h (mediana)", ""),
+    ]
+    if g:
+        k.append(("Google", _num(g["ultimo"]["rating"]) + " ★",
+                  f"{'+' if g['nuevas'] >= 0 else ''}{g['nuevas']} reseñas desde el "
+                  + "/".join(reversed(g["primero"]["fecha"].split("-"))),
+                  "bien" if g["delta_rating"] > 0 else ""))
+    e = html.escape
+    return "<div class='kpis'>" + "".join(
+        f"<div class='kpi'><div class='l'>{e(l)}</div><div class='v {c}'>{e(v)}</div><div class='s'>{e(s)}</div></div>"
+        for l, v, s, c in k) + "</div>"
+
+
+def _graficos_comercio(m: dict) -> str:
+    e = html.escape
+    tope = max([1] + [s["opiniones"] for s in m["semanas"]])
+    barras = "".join(
+        f"<div class='barra' title='{e('Semana del ' + s['desde'] + ': ' + str(s['opiniones']) + ' opiniones')}'>"
+        f"<div class='pv'>{_num(s['promedio']) if s['promedio'] else ''}</div>"
+        f"<div class='col h{round(20 * s['opiniones'] / tope)}'></div>"
+        f"<div class='lb'>{e(s['desde'][8:10] + '/' + s['desde'][5:7])}</div></div>" for s in m["semanas"])
+    total = max(1, m["opiniones"])
+    dist = "".join(
+        f"<div class='dist'><span>{i} ★</span><div class='b'><div class='f w{round(20 * m['distribucion'][str(i)] / total)}'>"
+        f"</div></div><b>{m['distribucion'][str(i)]}</b></div>" for i in range(5, 0, -1))
+    fuentes = ""
+    if m["por_fuente"]:
+        fuentes = ("<div class='card'><h2 class='m0'>Qué QR rinde</h2><table class='t'><thead><tr><th>Dónde</th>"
+                   "<th>Abrieron</th><th>Puntuaron</th><th>Promedio</th><th>A Google</th></tr></thead><tbody>"
+                   + "".join(f"<tr><td>{e(f['nombre'])}</td><td>{f['vistas']}</td><td>{f['opiniones']}</td>"
+                             f"<td>{_num(f['promedio'])}</td><td>{f['google']}</td></tr>" for f in m["por_fuente"])
+                   + "</tbody></table></div>")
+    return ("<div class='dos'><div class='card'><h2 class='m0'>Opiniones por semana</h2>"
+            f"<p class='sub'>Arriba de cada barra, el promedio.</p><div class='barras'>{barras}</div></div>"
+            f"<div class='card'><h2 class='m0'>Estrellas ({m['dias']} días)</h2>{dist}</div></div>" + fuentes)
+
+
+def _opiniones_comercio(n: dict, ops: list, token: str, vista: str) -> str:
+    e = html.escape
+    if not ops:
+        return ("<div class='card vacio'>" + ("Nada para atender. Cuando alguien puntúe de 1 a 3 o pida que lo "
+                                              "contacten, aparece acá." if vista == "bandeja"
+                                              else "No hay opiniones en esta vista.") + "</div>")
+    partes = []
+    for o in ops:
+        accion = f"/comercio/{e(token)}/o/{int(o['id'])}"
+        meta = [e(o["creado_en"][8:10] + "/" + o["creado_en"][5:7] + " " + o["creado_en"][11:16]),
+                "QR " + e(o["fuente"]) if o.get("fuente") else "link directo"]
+        if o.get("fue_a_google_en"):
+            meta.append("fue a Google")
+        quien = ""
+        if o.get("nombre") or o.get("contacto"):
+            quien = ("<p class='sub'>" + " · ".join(e(x) for x in (o.get("nombre"), o.get("contacto")) if x)
+                     + (" · <b>quiere que lo contacten</b>" if o.get("quiere_contacto") else "") + "</p>")
+        acc = []
+        wa = rs.whatsapp_respuesta(n, o)
+        if wa:
+            acc.append(f"<a class='b2 prim' href='{e(wa)}' target='_blank' rel='noopener'>Contestar por WhatsApp</a>")
+        if o["estado"] == "abierta":
+            acc.append(f"<form method='post' action='{accion}'><input type='hidden' name='accion' value='tomar'>"
+                       "<button class='b2' type='submit'>La tomo yo</button></form>")
+        if o["estado"] == "resuelta":
+            acc.append(f"<form method='post' action='{accion}'><input type='hidden' name='accion' value='reabrir'>"
+                       "<button class='b2' type='submit'>Reabrir</button></form>")
+        cierre = ""
+        if o["estado"] in ("abierta", "en_curso"):
+            cierre = (f"<details class='res'><summary>Marcar resuelta…</summary><form class='cierre' method='post' "
+                      f"action='{accion}'><input type='hidden' name='accion' value='resolver'>"
+                      f"<input type='text' name='nota' maxlength='{rs.LARGO_NOTA}' required "
+                      "placeholder='Qué se hizo: lo llamé, le devolvimos, hablé con el mozo…' aria-label='Qué se hizo' "
+                      f"value='{e(o.get('nota') or '')}'><button class='b2 prim' type='submit'>Resuelta</button>"
+                      "</form></details>")
+        partes.append(
+            f"<div class='op e-{e(o['estado'])}{' baja' if o['puntaje'] <= rs.QUEJA_HASTA else ''}'>"
+            f"<div class='top'><span class='est' aria-label='{int(o['puntaje'])} de 5'>{_estrellas(int(o['puntaje']))}"
+            f"</span><span class='pill e-{e(o['estado'])}'>{e(ESTADOS_TXT.get(o['estado'], o['estado']))}</span>"
+            f"<span>{' · '.join(meta)}</span></div>"
+            + (f"<p class='txt'>“{e(o['comentario'])}”</p>" if o.get("comentario") else "<p class='sub'>Sin comentario.</p>")
+            + quien
+            + (f"<div class='nota-int'>{e(o.get('atendido_por') or '')}: {e(o['nota'])}</div>" if o.get("nota") else "")
+            + (f"<div class='acc'>{''.join(acc)}</div>" if acc else "") + cierre + "</div>")
+    return "".join(partes)
+
+
+ESTADOS_TXT = {"abierta": "Para atender", "en_curso": "En curso", "resuelta": "Resuelta", "sin_accion": "Sin acción"}
+
+
+def _qr_comercio(n: dict, token: str) -> str:
+    e = html.escape
+    base = f"/comercio/{e(token)}"
+    items = [{"id": None, "nombre": "Link directo (Instagram, WhatsApp, firma de mail)"}] + n["fuentes"]
+    tarjetas = []
+    for f in items:
+        q = f"?f={int(f['id'])}" if f["id"] else ""
+        link = rs.link_publico(_base(), n, f if f["id"] else None)
+        tarjetas.append(
+            f"<div class='card'><img src='{base}/qr.svg{q}' alt='QR {e(f['nombre'])}' loading='lazy' width='150' "
+            f"height='150'><p><b>{e(f['nombre'])}</b></p><p class='link'>{e(link)}</p><div class='acc'>"
+            f"<a class='b2 prim' href='{base}/cartel{q}' target='_blank' rel='noopener'>Cartel para imprimir</a>"
+            f"<a class='b2' href='{base}/qr.svg{q}{'&' if q else '?'}bajar=1'>Bajar QR</a></div></div>")
+    return ("<p class='sub'>Un QR por lugar: así sabés cuál rinde. Si necesitás uno nuevo (otra mesa, el ticket, "
+            "la bolsa), pedíselo a Scalerics.</p><div class='qrs'>" + "".join(tarjetas) + "</div>")
+
+
+@resenas_bp.route("/comercio/<token>")
+def comercio_panel(token):
+    a, n = _acceso_de(token)
+    if not a:
+        return _no_existe()
+    e = html.escape
+    antes = rs.marcar_visita(_db(), a["id"])
+    vista = request.args.get("v") or "bandeja"
+    if vista not in dict(VISTAS_COMERCIO):
+        vista = "bandeja"
+    dias = request.args.get("dias", type=int) or 30
+    if dias not in DIAS_COMERCIO:
+        dias = 30
+    m = rs.metricas(_db(), n["id"], dias)
+    base = f"/comercio/{e(token)}"
+    partes = [f"<div class='cab izq'><div class='logo' aria-hidden='true'>{e((n['nombre'].strip()[:1] or '·').upper())}"
+              f"</div><div><h1>{e(n['nombre'])}</h1><p class='sub m0'>Tu panel de opiniones · hola, "
+              f"{e(a['nombre'])}</p></div></div>"]
+    if request.args.get("ok"):
+        partes.append("<div class='aviso ok mt' role='status'>Listo, quedó guardado.</div>")
+    elif request.args.get("error"):
+        partes.append(f"<div class='aviso mal mt' role='alert'>{e(request.args['error'][:300])}</div>")
+    nov = rs.novedades(_db(), n["id"], antes)
+    if nov["desde"] and not request.args.get("ok"):
+        if nov["opiniones"]:
+            partes.append(f"<div class='novedad'>Desde tu última visita ({e(nov['desde'][8:10])}/"
+                          f"{e(nov['desde'][5:7])}): <b>{nov['opiniones']}</b> opiniones nuevas, "
+                          f"{nov['google']} fueron a Google y {nov['quejas']} "
+                          f"{'queja' if nov['quejas'] == 1 else 'quejas'}.</div>")
+        else:
+            partes.append("<div class='novedad'>Nada nuevo desde tu última visita.</div>")
+    if not n["activo"]:
+        partes.append("<div class='aviso mal mt'>El link para opinar está pausado: tus clientes no pueden dejar "
+                      "opiniones nuevas. Hablá con Scalerics para reactivarlo.</div>")
+    partes.append("<div class='periodo'>Período: " + "".join(
+        f"<a href='{base}?v={vista}&amp;dias={d}'{_ACTUAL if d == dias else ''}>{d} días</a>"
+        for d in DIAS_COMERCIO) + "</div>")
+    partes.append(_kpis_comercio(m))
+    pendientes = m["abiertas"] + m["en_curso"]
+    partes.append("<nav class='tabs' aria-label='Vista'>" + "".join(
+        f"<a href='{base}?v={k}&amp;dias={dias}'{_ACTUAL if k == vista else ''}>{e(t)}"
+        + (f"<span class='n'>{pendientes}</span>" if k == "bandeja" and pendientes else "") + "</a>"
+        for k, t in VISTAS_COMERCIO) + "</nav>")
+    if vista == "qr":
+        partes.append(_qr_comercio(n, token))
+    else:
+        ops = rs.opiniones(_db(), n["id"], vista, limite=100)
+        partes.append(_opiniones_comercio(n, ops, token, vista))
+        if vista == "bandeja":
+            partes.append("<h2>Cómo venís</h2>" + _graficos_comercio(m))
+    partes.append("<p class='sub mt'>Este link es personal: no lo compartas. Si lo perdiste o lo vio alguien que no "
+                  "debía, pedile a Scalerics uno nuevo y este deja de andar.</p>")
+    return _pagina(n, f"Panel · {n['nombre']}", "".join(partes), ancho=True)
+
+
+@resenas_bp.route("/comercio/<token>/o/<int:oid>", methods=["POST"])
+def comercio_atender(token, oid):
+    a, n = _acceso_de(token)
+    if not a:
+        return _no_existe()
+    accion = request.form.get("accion")
+    datos = {"tomar": {"estado": "en_curso"}, "reabrir": {"estado": "abierta"},
+             "resolver": {"estado": "resuelta", "nota": request.form.get("nota", "")}}.get(accion)
+    volver = f"/comercio/{token}?v=" + ("resueltas" if accion == "resolver" else "bandeja")
+    if not datos:
+        return redirect(volver + "&" + urlencode({"error": "Acción no válida."}), 303)
+    try:
+        rs.atender(_db(), oid, datos, f"{a['nombre']} · comercio"[:120], nid=n["id"])
+    except rs.NoSePuede as err:
+        if _codigo_error(err) == 404:
+            return _no_existe()
+        return redirect(f"/comercio/{token}?v=bandeja&" + urlencode({"error": str(err)}), 303)
+    return redirect(volver + "&ok=1", 303)
+
+
+@resenas_bp.route("/comercio/<token>/qr.svg")
+def comercio_qr(token):
+    a, n = _acceso_de(token)
+    if not a:
+        return _error("El link no existe.", 404)
+    return _qr_resp(n)
+
+
+@resenas_bp.route("/comercio/<token>/cartel")
+def comercio_cartel(token):
+    a, n = _acceso_de(token)
+    if not a:
+        return _no_existe()
+    return _cartel_resp(n)

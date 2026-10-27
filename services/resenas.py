@@ -191,6 +191,17 @@ def init_resenas(conn: sqlite3.Connection) -> None:
             cantidad INTEGER NOT NULL,
             cargado_por TEXT
         );
+        CREATE TABLE IF NOT EXISTS rs_accesos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            negocio_id INTEGER NOT NULL REFERENCES rs_negocios(id) ON DELETE CASCADE,
+            nombre TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            creado_por TEXT,
+            creado_en TEXT NOT NULL,
+            visto_en TEXT,
+            visto_antes TEXT,
+            revocado_en TEXT
+        );
     """)
 
 
@@ -602,6 +613,133 @@ def borrar_google(db: str, nid: int, gid: int) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# ── acceso del comercio ──────────────────────────────────────────────────────
+#
+# El dueño (o el encargado) entra a su panel con un link privado, sin usuario
+# ni clave: /comercio/<token>. Como las API keys de Stripe, el token se muestra
+# una sola vez al crearlo y en la base queda solo su hash: si se pierde, se
+# hace otro y el viejo se revoca. Un link por persona, así la bandeja dice
+# quién resolvió cada queja y se le puede cortar el acceso a uno solo.
+
+MAX_ACCESOS = 10
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(("rs-acceso|" + token).encode()).hexdigest()
+
+
+def crear_acceso(db: str, nid: int, nombre: str, quien: str) -> dict:
+    """Devuelve el acceso con el `token` en claro: es la única vez que se ve."""
+    negocio(db, nid)
+    nombre = _limpio(nombre, 60)
+    if not nombre:
+        raise NoSePuede("Poné para quién es el link: el dueño, la encargada, Martín…")
+    token = secrets.token_urlsafe(24)
+    conn = _con(db)
+    try:
+        if conn.execute("SELECT COUNT(*) FROM rs_accesos WHERE negocio_id = ? AND revocado_en IS NULL",
+                        (nid,)).fetchone()[0] >= MAX_ACCESOS:
+            raise NoSePuede(f"El comercio ya tiene {MAX_ACCESOS} links activos. Revocá alguno antes.")
+        aid = conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en) "
+                           "VALUES (?,?,?,?,?)", (nid, nombre, _hash_token(token), quien, _txt(ahora_uy()))).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    return {**acceso(db, aid), "token": token}
+
+
+def acceso(db: str, aid: int) -> dict:
+    conn = _con(db)
+    try:
+        a = conn.execute("SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en "
+                         "FROM rs_accesos WHERE id = ?", (aid,)).fetchone()
+    finally:
+        conn.close()
+    if not a:
+        raise NoSePuede("El acceso no existe.")
+    return dict(a)
+
+
+def accesos(db: str, nid: int) -> list:
+    """Los activos primero; los revocados quedan para saber quién tuvo link."""
+    conn = _con(db)
+    try:
+        return [dict(f) for f in conn.execute(
+            "SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en FROM rs_accesos "
+            "WHERE negocio_id = ? ORDER BY revocado_en IS NOT NULL, id", (nid,))]
+    finally:
+        conn.close()
+
+
+def revocar_acceso(db: str, nid: int, aid: int) -> None:
+    conn = _con(db)
+    try:
+        if not conn.execute("UPDATE rs_accesos SET revocado_en = ? WHERE id = ? AND negocio_id = ? "
+                            "AND revocado_en IS NULL", (_txt(ahora_uy()), aid, nid)).rowcount:
+            raise NoSePuede("El acceso no existe o ya estaba revocado.")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def por_token(db: str, token: str) -> Optional[dict]:
+    """El acceso vigente de ese link, con su comercio, o None.
+
+    Un comercio pausado sigue entrando: pausar corta las opiniones nuevas, no
+    el panel. Uno borrado se lleva sus accesos (ON DELETE CASCADE).
+    """
+    if not re.fullmatch(r"[\w-]{24,64}", token or ""):
+        return None
+    conn = _con(db)
+    try:
+        a = conn.execute("SELECT id FROM rs_accesos WHERE token_hash = ? AND revocado_en IS NULL",
+                         (_hash_token(token),)).fetchone()
+    finally:
+        conn.close()
+    if not a:
+        return None
+    a = acceso(db, a["id"])
+    a["negocio"] = negocio(db, a["negocio_id"])
+    return a
+
+
+def marcar_visita(db: str, aid: int) -> Optional[str]:
+    """Anota que entró y devuelve cuándo había entrado antes, para las novedades.
+
+    Las visitas a menos de 30 minutos cuentan como la misma: recargar la página
+    o resolver una queja no borra el "desde tu última visita".
+    """
+    ahora = ahora_uy()
+    conn = _con(db)
+    try:
+        f = conn.execute("SELECT visto_en, visto_antes FROM rs_accesos WHERE id = ?", (aid,)).fetchone()
+        visto = _dt(f["visto_en"]) if f else None
+        if visto and ahora - visto < timedelta(minutes=30):
+            conn.execute("UPDATE rs_accesos SET visto_en = ? WHERE id = ?", (_txt(ahora), aid))
+            antes = f["visto_antes"]
+        else:
+            antes = f["visto_en"] if f else None
+            conn.execute("UPDATE rs_accesos SET visto_antes = visto_en, visto_en = ? WHERE id = ?", (_txt(ahora), aid))
+        conn.commit()
+    finally:
+        conn.close()
+    return antes
+
+
+def novedades(db: str, nid: int, desde: Optional[str]) -> dict:
+    """Lo que entró desde la última visita: el "qué me perdí" del dueño."""
+    if not desde:
+        return {"desde": None, "opiniones": 0, "quejas": 0, "google": 0}
+    conn = _con(db)
+    try:
+        f = conn.execute("SELECT COUNT(*) c, SUM(puntaje <= ?) q, SUM(fue_a_google_en IS NOT NULL) g "
+                         "FROM rs_opiniones WHERE negocio_id = ? AND creado_en > ?",
+                         (QUEJA_HASTA, nid, desde)).fetchone()
+    finally:
+        conn.close()
+    return {"desde": desde, "opiniones": f["c"] or 0, "quejas": f["q"] or 0, "google": f["g"] or 0}
 
 
 # ── métricas ─────────────────────────────────────────────────────────────────

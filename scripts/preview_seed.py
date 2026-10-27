@@ -80,6 +80,9 @@ COMENTARIOS_ALTOS = [
 ]
 
 
+TOKEN_COMERCIO = "vista-previa-panel-del-comercio"
+
+
 def sembrar_resenas(db: str) -> None:
     from datetime import timedelta
 
@@ -140,6 +143,19 @@ def sembrar_resenas(db: str) -> None:
     o = rs.opinar(db, nid, 2, "mesas", "vista-previa")
     conn = sqlite3.connect(db)
     conn.execute("UPDATE rs_opiniones SET codigo = 'vista-previa-opinion-baja' WHERE id = ?", (o["id"],))
+    conn.commit()
+    conn.close()
+
+    # El panel del dueño, con un link fijo para la PR. El token real sale al azar
+    # y no se guarda; acá se guarda el hash de uno conocido.
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en, visto_en) "
+                 "VALUES (?,?,?,?,?,?)", (nid, "Marcela (dueña)", rs._hash_token(TOKEN_COMERCIO), "Vista previa",
+                                         rs._txt(ahora - timedelta(days=20)), rs._txt(ahora - timedelta(days=3))))
+    conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en, revocado_en) "
+                 "VALUES (?,?,?,?,?,?)", (nid, "Encargado anterior", rs._hash_token("vista-previa-revocado-" + "x" * 10),
+                                         "Vista previa", rs._txt(ahora - timedelta(days=50)),
+                                         rs._txt(ahora - timedelta(days=21))))
     conn.commit()
     conn.close()
 

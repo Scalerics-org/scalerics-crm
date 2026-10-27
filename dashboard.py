@@ -2116,6 +2116,8 @@ let rsSel = null;
 let rsDatos = null;
 let rsTab = 'bandeja';
 let rsDias = 30;
+// El link del comercio se ve una sola vez, al crearlo: en la base queda solo el hash.
+let rsLinkNuevo = null;
 
 function rsNum(v, suf) { return v === null || v === undefined ? '—' : String(v).replace('.', ',') + (suf || ''); }
 function rsEstrellas(p) { return '★'.repeat(p) + '<span class="rs-apagada">' + '★'.repeat(5 - p) + '</span>'; }
@@ -2203,7 +2205,7 @@ function rsGraficos(m) {
 
 function rsPintar() {
   const n = rsDatos.negocio;
-  const tabs = RS_FILTROS.concat([['qr', 'QR y carteles'], ['google', 'Google'], ['ajustes', 'Ajustes']]);
+  const tabs = RS_FILTROS.concat([['qr', 'QR y carteles'], ['google', 'Google'], ['acceso', 'Acceso del comercio'], ['ajustes', 'Ajustes']]);
   const avisoG = n.google_url ? '' : '<div class="rs-alerta">Falta el link de Google: sin él, nadie puede ir a dejar la reseña. Cargalo en "Ajustes".</div>';
   document.getElementById('rs-cuerpo').innerHTML = avisoG
     + '<div class="rs-link"><span>Link para opinar' + (n.activo ? '' : ' <b class="rs-mal">(pausado)</b>') + '</span>'
@@ -2213,7 +2215,7 @@ function rsPintar() {
     + rsKpis(rsDatos.metricas) + rsGraficos(rsDatos.metricas)
     + '<div class="rs-tabs" role="tablist" aria-label="Vista">' + tabs.map(([k, l]) => '<button type="button" role="tab" class="rs-tab' + (rsTab === k ? ' activo' : '')
       + '" aria-selected="' + (rsTab === k) + '" data-rs="tab" data-tab="' + k + '">' + l + (k === 'bandeja' && rsDatos.metricas.abiertas + rsDatos.metricas.en_curso ? ' <span class="rs-badge">' + (rsDatos.metricas.abiertas + rsDatos.metricas.en_curso) + '</span>' : '') + '</button>').join('') + '</div>'
-    + '<div id="rs-vista">' + (rsTab === 'qr' ? rsQrHtml() : rsTab === 'google' ? rsGoogleHtml() : rsTab === 'ajustes' ? rsAjustesHtml() : rsOpinionesHtml()) + '</div>';
+    + '<div id="rs-vista">' + (rsTab === 'qr' ? rsQrHtml() : rsTab === 'google' ? rsGoogleHtml() : rsTab === 'acceso' ? rsAccesoHtml() : rsTab === 'ajustes' ? rsAjustesHtml() : rsOpinionesHtml()) + '</div>';
 }
 
 function rsOpinionesHtml() {
@@ -2276,6 +2278,25 @@ function rsGoogleHtml() {
     + (filas ? '<table class="rs-tabla"><thead><tr><th>Fecha</th><th>Puntaje</th><th>Reseñas</th><th>Cargó</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '');
 }
 
+function rsAccesoHtml() {
+  const acc = rsDatos.accesos || [];
+  let nuevo = '';
+  if (rsLinkNuevo && rsLinkNuevo.nid === rsSel) {
+    nuevo = '<div class="rs-nuevo-link"><b>Link de ' + crEsc(rsLinkNuevo.nombre) + '</b> · copialo ahora: no se vuelve a mostrar.'
+      + '<div class="rs-link"><a href="' + crEsc(rsLinkNuevo.link) + '" target="_blank" rel="noopener">' + crEsc(rsLinkNuevo.link) + '</a>'
+      + '<button type="button" class="of-btn prim" data-rs="copiar" data-link="' + crEsc(rsLinkNuevo.link) + '">Copiar link</button>'
+      + (rsLinkNuevo.whatsapp ? '<a class="of-btn" href="' + crEsc(rsLinkNuevo.whatsapp) + '" target="_blank" rel="noopener">Mandar por WhatsApp</a>' : '') + '</div></div>';
+  }
+  const filas = acc.map(a => '<tr' + (a.revocado_en ? ' class="rs-revocado"' : '') + '><td>' + crEsc(a.nombre) + '</td><td class="rs-meta">' + crEsc(a.creado_en) + ' · ' + crEsc(a.creado_por || '') + '</td>'
+    + '<td>' + (a.revocado_en ? '<span class="rs-meta">revocado ' + crEsc(a.revocado_en) + '</span>' : a.visto_en ? crEsc(a.visto_en) : '<span class="rs-meta">nunca entró</span>') + '</td>'
+    + '<td>' + (a.revocado_en ? '' : '<button type="button" class="of-btn" data-rs="revocar" data-id="' + Number(a.id) + '">Revocar</button>') + '</td></tr>').join('');
+  return '<div class="rs-meta">El comercio ve su propio panel con un link privado, sin usuario ni clave: sus números, la bandeja de quejas para resolver y sus QR. Un link por persona (el dueño, la encargada), así queda quién resolvió cada queja y se le puede cortar a uno solo.</div>'
+    + nuevo
+    + '<form class="rs-fila" data-rs-form="acceso"><input name="nombre" maxlength="60" required placeholder="Para quién: Marcela (dueña), Encargado de turno…" aria-label="Para quién es el link">'
+    + '<button type="submit" class="of-btn prim">+ Crear link</button></form>'
+    + (filas ? '<table class="rs-tabla"><thead><tr><th>Para</th><th>Creado</th><th>Última visita</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<div class="rs-vacio">El comercio todavía no tiene acceso. Creale un link y mandáselo.</div>');
+}
+
 function rsAjustesHtml() {
   const n = rsDatos.negocio;
   const v = k => crEsc(n[k] === null || n[k] === undefined ? '' : n[k]);
@@ -2320,6 +2341,7 @@ async function rsAccion(e) {
     if (a === 'estado') { await ofPedir(base + '/opiniones/' + id, 'PATCH', {estado: b.dataset.estado}); return rsCargar(); }
     if (a === 'borrar-fuente') { if (!confirm('¿Borrar este QR? Las opiniones que entraron por ahí quedan como link directo.')) return; await ofPedir(base + '/fuentes/' + id, 'DELETE'); return rsCargarNegocio(); }
     if (a === 'borrar-google') { await ofPedir(base + '/google/' + id, 'DELETE'); return rsCargarNegocio(); }
+    if (a === 'revocar') { if (!confirm('¿Revocar este link? Deja de andar en el momento.')) return; await ofPedir(base + '/accesos/' + id, 'DELETE'); rsLinkNuevo = null; return rsCargarNegocio(); }
     if (a === 'borrar-negocio') {
       if (!confirm('¿Borrar el comercio con todas sus opiniones? No se puede deshacer. Los QR impresos dejan de andar.')) return;
       await ofPedir(base, 'DELETE');
@@ -2358,6 +2380,10 @@ async function rsEnviar(e) {
     if (tipo === 'resolver') { await ofPedir(base + '/opiniones/' + Number(f.dataset.id), 'PATCH', {estado: 'resuelta', nota: datos.nota}); return rsCargar(); }
     if (tipo === 'fuente') await ofPedir(base + '/fuentes', 'POST', datos);
     if (tipo === 'google') await ofPedir(base + '/google', 'POST', datos);
+    if (tipo === 'acceso') {
+      const d = await ofPedir(base + '/accesos', 'POST', datos);
+      rsLinkNuevo = {nid: rsSel, nombre: d.acceso.nombre, link: d.link, whatsapp: d.whatsapp};
+    }
     if (tipo === 'ajustes') { await ofPedir(base, 'PATCH', datos); return rsCargar(); }
     return rsCargarNegocio();
   } catch (err) {
@@ -5011,6 +5037,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .rs-link a{color:var(--azul-claro);overflow-wrap:anywhere;font-weight:600}
 .rs-sep{flex:1}
 .rs-alerta{background:var(--rojo-tinte);color:var(--rojo-texto);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.82rem}
+.rs-nuevo-link{background:var(--superficie);border:1px solid #10B981;border-radius:10px;padding:10px 12px;margin:10px 0}
+.rs-revocado td{opacity:.55}
 .rs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
 .rs-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px}
 .rs-kpi-l{font-size:.7rem;color:var(--texto-tenue);text-transform:uppercase;letter-spacing:.5px}
