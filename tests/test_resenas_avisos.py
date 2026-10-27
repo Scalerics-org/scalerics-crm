@@ -262,3 +262,87 @@ def test_init_es_idempotente_y_migra(db):
     cols = {c[1] for c in conn.execute("PRAGMA table_info(rs_accesos)")}
     conn.close()
     assert {"email", "aviso", "aviso_desde"} <= cols
+
+
+# ── reseñas malas de Google en el aviso al momento ───────────────────────────
+
+def _google(db, nid, *resenas, publicada="2026-10-26T15:30:00Z"):
+    from services import resenas_google as rg
+    from tests.test_resenas_google import PID, Google, _datos
+    datos = _datos(*resenas)
+    for x in datos["reviews"]:
+        x["publishTime"] = publicada
+    rs.editar_negocio(db, nid, {"place_id": PID})
+    return rg.leer(db, nid, "manual", pedir=Google(datos))
+
+
+def test_una_resena_mala_de_google_llega_con_la_respuesta_y_una_sola_vez(db, reloj):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Marcela", "t")
+    ra.guardar_preferencias(db, a["id"], "marcela@gmail.com", "al_momento")
+    reloj["ahora"] += timedelta(minutes=1)
+    _google(db, n["id"], ("a", 2, "Sofía", "Tardaron una hora y <b>nadie</b> avisó"), ("b", 5, "Lu", "Riquísimo"))
+    buzon = Buzon()
+    r = _revisar(db, reloj, buzon)
+    assert r["quejas"] == 1 and len(buzon.mails) == 1
+    m = buzon.mails[0]
+    assert "una reseña mala en Google para responder" in m["asunto"]
+    assert "Tardaron una hora y &lt;b&gt;nadie&lt;/b&gt;" in m["html"] and "<b>nadie</b>" not in m["html"]
+    assert "Respuesta sugerida" in m["html"] and "Responder en Google" in m["html"]
+    assert "https://www.google.com/maps/reviews/a" in m["html"] and "Riquísimo" not in m["html"]
+    assert "Responder: https://www.google.com/maps/reviews/a" in m["texto"]
+    reloj["ahora"] += timedelta(hours=1)
+    _revisar(db, reloj, buzon)
+    assert len(buzon.mails) == 1  # no se repite
+
+
+def test_queja_y_resena_de_google_van_en_el_mismo_mail(db, reloj):
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Marcela", "t")
+    ra.guardar_preferencias(db, a["id"], "marcela@gmail.com", "al_momento")
+    reloj["ahora"] += timedelta(minutes=1)
+    _queja(db, n["id"], 1, "Llegó cruda")
+    _google(db, n["id"], ("a", 3, "Sofía", "Caro para lo que es"))
+    buzon = Buzon()
+    _revisar(db, reloj, buzon)
+    assert len(buzon.mails) == 1
+    m = buzon.mails[0]
+    assert "2 opiniones para atender, 1 en Google" in m["asunto"]
+    assert "Llegó cruda" in m["html"] and "Caro para lo que es" in m["html"]
+    assert ra.avisos(db, n["id"])[0]["cantidad"] == 2
+
+
+def test_de_google_no_se_avisan_las_viejas_ni_las_respondidas_ni_las_buenas(db, reloj):
+    from services import resenas_google as rg
+    n = _negocio(db)
+    a = rs.crear_acceso(db, n["id"], "Marcela", "t")
+    # Leídas antes de prender el aviso: no se mandan.
+    _google(db, n["id"], ("antes", 1, "X", "Horrible"))
+    reloj["ahora"] += timedelta(minutes=1)
+    ra.guardar_preferencias(db, a["id"], "marcela@gmail.com", "al_momento")
+    reloj["ahora"] += timedelta(minutes=1)
+    # La primera lectura trae reseñas de hace meses: tampoco.
+    _google(db, n["id"], ("vieja", 1, "Y", "Malísimo"), publicada="2026-06-01T10:00:00Z")
+    reloj["ahora"] += timedelta(hours=6)  # pasa el tope de lecturas a mano
+    _google(db, n["id"], ("buena", 4, "Z", "Bien"), ("resp", 2, "W", "Lento"))
+    rid = [x for x in rg.resenas(db, n["id"], "todas") if x["texto"] == "Lento"][0]["id"]
+    rg.marcar(db, n["id"], rid, "respondida", "Gracias", "Marcela")
+    buzon = Buzon()
+    _revisar(db, reloj, buzon)
+    assert buzon.mails == []
+
+
+def test_el_resumen_y_el_mail_de_ejemplo_muestran_la_de_google(app, db):
+    n = _negocio(db)
+    _google(db, n["id"], ("a", 2, "Sofía", "Tardaron una hora"))
+    c = _login(app, db)
+    html = c.get(f"/resenas/aviso-ejemplo/{n['id']}").get_data(as_text=True)
+    assert "Tardaron una hora" in html and "Responder en Google" in html
+
+
+def test_init_crea_la_tabla_de_avisos_de_google(db):
+    conn = sqlite3.connect(db)
+    rs.init_resenas(conn)
+    tablas = {f[0] for f in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    conn.close()
+    assert "rs_avisos_gr" in tablas

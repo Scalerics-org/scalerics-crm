@@ -6,8 +6,10 @@ llamar y se evita la estrella pública. Por eso, como Birdeye o Podium, cada
 persona con link puede dejar su mail y elegir cómo quiere enterarse:
 
 - `al_momento`: un mail cuando entra una queja (1 a 3 estrellas, o un pedido
-  de contacto). Si entran varias juntas van en el mismo mail, como las
-  notificaciones agrupadas de Linear;
+  de contacto) o cuando la lectura diaria trae una reseña de 1 a 3 estrellas
+  en Google, con la respuesta sugerida y el botón para responderla. Si entran
+  varias juntas van en el mismo mail, como las notificaciones agrupadas de
+  Linear;
 - `diario`: un resumen a las 9 con lo de ayer y lo que sigue sin atender;
 - `no`: nada. El panel sigue andando igual.
 
@@ -19,7 +21,11 @@ se corta igual que el otro.
 Topes, porque esto le manda correo a gente de afuera y corre en un hilo que
 arranca en cada boot (regla 3 de COORDINACION.md):
 - una queja se avisa una sola vez por persona (tabla rs_avisos_op, con clave
-  primaria: dos revisiones a la vez no la mandan dos veces);
+  primaria: dos revisiones a la vez no la mandan dos veces); una reseña de
+  Google, igual (rs_avisos_gr);
+- de Google solo las publicadas en los últimos DIAS_GOOGLE días y leídas
+  después de prender el aviso: la primera lectura de un comercio trae
+  reseñas viejas y esas no son una urgencia;
 - solo quejas que entraron después de que esa persona prendió los avisos y de
   las últimas 48 horas: prender el aviso no manda el historial;
 - se espera ESPERA_COMENTARIO minutos al comentario antes de avisar una queja
@@ -60,6 +66,7 @@ SILENCIO_DESDE = 22
 SILENCIO_HASTA = 8
 HORA_RESUMEN = 9
 DIAS_LINK_FIRMADO = 30
+DIAS_GOOGLE = 3
 LARGO_EMAIL = 160
 
 REVISAR_CADA_S = 300
@@ -98,6 +105,12 @@ def init_avisos(conn: sqlite3.Connection) -> None:
             opinion_id INTEGER NOT NULL REFERENCES rs_opiniones(id) ON DELETE CASCADE,
             aviso_id INTEGER NOT NULL REFERENCES rs_avisos(id) ON DELETE CASCADE,
             PRIMARY KEY (acceso_id, opinion_id)
+        );
+        CREATE TABLE IF NOT EXISTS rs_avisos_gr (
+            acceso_id INTEGER NOT NULL REFERENCES rs_accesos(id) ON DELETE CASCADE,
+            resena_id INTEGER NOT NULL REFERENCES rs_google_resenas(id) ON DELETE CASCADE,
+            aviso_id INTEGER NOT NULL REFERENCES rs_avisos(id) ON DELETE CASCADE,
+            PRIMARY KEY (acceso_id, resena_id)
         );
     """)
 
@@ -189,6 +202,22 @@ def quejas_para_avisar(conn, a: dict, ahora: datetime) -> list:
         "ORDER BY o.creado_en", (a["negocio_id"], desde, sin_texto_hasta, a["id"]))]
 
 
+def google_para_avisar(conn, a: dict, ahora: datetime) -> list:
+    """Las reseñas de Google de 1 a 3 estrellas, sin responder, que esa persona
+    todavía no recibió. Leídas después de prender el aviso y publicadas hace
+    poco: la primera lectura de un comercio trae reseñas de hace meses."""
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'rs_google_resenas'").fetchone():
+        return []
+    desde = max(a["aviso_desde"] or "9999", rs._txt(ahora - timedelta(hours=VENTANA_HORAS)))
+    return [dict(f) for f in conn.execute(
+        "SELECT g.id, g.rating, g.texto, g.autor, g.link, g.publicada_en, g.leida_en, g.sugerida "
+        "FROM rs_google_resenas g WHERE g.negocio_id = ? AND g.estado = 'sin_responder' AND g.rating <= ? "
+        "AND g.leida_en >= ? AND IFNULL(g.publicada_en, g.leida_en) >= ? "
+        "AND NOT EXISTS (SELECT 1 FROM rs_avisos_gr x WHERE x.acceso_id = ? AND x.resena_id = g.id) "
+        "ORDER BY IFNULL(g.publicada_en, g.leida_en)",
+        (a["negocio_id"], rs.QUEJA_HASTA, desde, rs._txt(ahora - timedelta(days=DIAS_GOOGLE)), a["id"]))]
+
+
 def resumen_de_ayer(conn, nid: int, ahora: datetime) -> dict:
     hoy = ahora.date().isoformat()
     ayer = (ahora.date() - timedelta(days=1)).isoformat()
@@ -242,29 +271,74 @@ def _tarjeta(o: dict) -> str:
             + '</div>')
 
 
+def _tarjeta_google(n: dict, g: dict) -> str:
+    from services.resenas_google import link_responder
+    e = html.escape
+    p = int(g["rating"])
+    color = "#dc2626" if p <= 2 else "#d97706"
+    cuando = _fecha(g.get("publicada_en") or g["leida_en"])
+    quien = (" · " + e(g["autor"])) if g.get("autor") else ""
+    return (f'<div style="border:1px solid #e2e8f0;border-left:4px solid {color};border-radius:8px;'
+            f'padding:12px 14px;margin:0 0 10px">'
+            f'<div style="font-size:15px;color:{color};letter-spacing:1px">{"★" * p}'
+            f'<span style="color:#cbd5e1">{"★" * (5 - p)}</span>'
+            f'<span style="font-size:12px;color:#64748b;letter-spacing:0"> · {e(cuando)} · en Google{quien}'
+            f'</span></div>'
+            + (f'<p style="margin:8px 0 0;font-size:14px;color:#0f172a">“{e(g["texto"])}”</p>'
+               if g.get("texto") else '<p style="margin:8px 0 0;font-size:13px;color:#64748b">Sin texto, solo estrellas.</p>')
+            + (f'<p style="margin:10px 0 4px;font-size:12px;color:#64748b">Respuesta sugerida (ajustala si querés):</p>'
+               f'<p style="margin:0;padding:8px 10px;background:#f1f5f9;border-radius:6px;font-size:13px;'
+               f'color:#334155;white-space:pre-wrap">{e(g["sugerida"])}</p>' if g.get("sugerida") else '')
+            + f'<p style="margin:10px 0 0;font-size:13px"><a href="{e(link_responder(n, g))}" '
+              f'style="color:#0088cc;font-weight:600">Responder en Google</a></p>'
+            + '</div>')
+
+
 def _texto_plano(lineas: list, link: str) -> str:
     return "\n".join(lineas + ["", f"Abrí tu panel: {link}", "",
                                "Para dejar de recibir estos mails, cambialo en tu panel, en Avisos."])
 
 
-def armar_mail_quejas(n: dict, a: dict, quejas: list, link: str) -> dict:
+def armar_mail_quejas(n: dict, a: dict, quejas: list, link: str, google: tuple = ()) -> dict:
+    """Las quejas privadas y, si hay, las reseñas malas que entraron en Google."""
     from services.email_service import _layout
-    cant = len(quejas)
-    asunto = (f"{n['nombre']}: una queja nueva para atender" if cant == 1
-              else f"{n['nombre']}: {cant} quejas nuevas para atender")
-    cuerpo = (f'<p style="margin:0 0 16px;font-size:14px;color:#334155">Hola {html.escape(a["nombre"])}, '
-              + ("entró una opinión" if cant == 1 else f"entraron {cant} opiniones")
-              + " que conviene atender hoy. Llamar o escribir en la primera hora es lo que más evita "
-                "que termine en una reseña mala en Google.</p>"
-              + "".join(_tarjeta(o) for o in quejas))
+    from services.resenas_google import link_responder
+    cant, cg = len(quejas), len(google)
+    if not cg:
+        asunto = (f"{n['nombre']}: una queja nueva para atender" if cant == 1
+                  else f"{n['nombre']}: {cant} quejas nuevas para atender")
+        titulo = "Hay que atender una queja" if cant == 1 else f"Hay {cant} quejas para atender"
+    elif not cant:
+        asunto = (f"{n['nombre']}: una reseña mala en Google para responder" if cg == 1
+                  else f"{n['nombre']}: {cg} reseñas malas en Google para responder")
+        titulo = "Hay una reseña para responder" if cg == 1 else f"Hay {cg} reseñas para responder"
+    else:
+        asunto = f"{n['nombre']}: {cant + cg} opiniones para atender, {cg} en Google"
+        titulo = f"Hay {cant + cg} opiniones para atender"
+    cuerpo = f'<p style="margin:0 0 16px;font-size:14px;color:#334155">Hola {html.escape(a["nombre"])}, '
+    if cant:
+        cuerpo += (("entró una opinión" if cant == 1 else f"entraron {cant} opiniones")
+                   + " que conviene atender hoy. Llamar o escribir en la primera hora es lo que más evita "
+                     "que termine en una reseña mala en Google.</p>"
+                   + "".join(_tarjeta(o) for o in quejas))
+    if cg:
+        cuerpo += (('<p style="margin:20px 0 10px;font-size:14px;color:#334155">' if cant else "")
+                   + ("En" if cant else "en")
+                   + (" Google entró una reseña" if cg == 1 else f" Google entraron {cg} reseñas")
+                   + " de pocas estrellas. Una respuesta amable y rápida la ve todo el que lea la reseña: "
+                     "te dejamos una escrita para que la publiques.</p>"
+                   + "".join(_tarjeta_google(n, g) for g in google))
     pie = ("Te llega porque pediste avisos de quejas en tu panel de opiniones. "
            f'<a href="{html.escape(link)}&amp;v=avisos" style="color:#64748b">Cambiar o apagar los avisos</a>.')
     lineas = [asunto, ""] + [f"- {o['puntaje']}/5 · {_fecha(o['creado_en'])}"
                              + (f": {o['comentario']}" if o.get("comentario") else "")
                              + (f" ({o['contacto']})" if o.get("contacto") else "") for o in quejas]
+    lineas += [f"- Google {g['rating']}/5 · {_fecha(g.get('publicada_en') or g['leida_en'])}"
+               + (f": {g['texto']}" if g.get("texto") else "") + f"\n  Responder: {link_responder(n, g)}"
+               for g in google]
     return {"asunto": asunto, "texto": _texto_plano(lineas, link),
-            "html": _layout("Opiniones · " + html.escape(n["nombre"]), "Hay que atender una queja" if cant == 1
-                            else f"Hay {cant} quejas para atender", cuerpo, link, "Abrir mi panel", footer=pie)}
+            "html": _layout("Opiniones · " + html.escape(n["nombre"]), titulo, cuerpo, link, "Abrir mi panel",
+                            footer=pie)}
 
 
 def armar_mail_resumen(n: dict, a: dict, r: dict, link: str) -> dict:
@@ -330,7 +404,8 @@ def revisar(db: str, base: str, secreto: str, enviar: Optional[Enviar] = None,
             conn.execute("BEGIN IMMEDIATE")
             if a["aviso"] == "al_momento":
                 quejas = quejas_para_avisar(conn, a, ahora)
-                if not quejas:
+                google = google_para_avisar(conn, a, ahora)
+                if not quejas and not google:
                     conn.rollback()
                     continue
                 if _en_silencio(ahora) or not _cupo(conn, a["id"], ahora):
@@ -338,10 +413,12 @@ def revisar(db: str, base: str, secreto: str, enviar: Optional[Enviar] = None,
                     conn.rollback()
                     continue
                 avid = conn.execute("INSERT INTO rs_avisos (acceso_id, tipo, cantidad, creado_en) VALUES (?,?,?,?)",
-                                    (a["id"], "quejas", len(quejas), rs._txt(ahora))).lastrowid
+                                    (a["id"], "quejas", len(quejas) + len(google), rs._txt(ahora))).lastrowid
                 conn.executemany("INSERT INTO rs_avisos_op (acceso_id, opinion_id, aviso_id) VALUES (?,?,?)",
                                  [(a["id"], o["id"], avid) for o in quejas])
-                mail = armar_mail_quejas(n, a, quejas, link_panel(base, a["id"], secreto, ahora))
+                conn.executemany("INSERT INTO rs_avisos_gr (acceso_id, resena_id, aviso_id) VALUES (?,?,?)",
+                                 [(a["id"], g["id"], avid) for g in google])
+                mail = armar_mail_quejas(n, a, quejas, link_panel(base, a["id"], secreto, ahora), google)
                 tipo = "quejas"
             else:
                 if ahora.hour < HORA_RESUMEN or ahora.hour >= SILENCIO_DESDE or conn.execute(

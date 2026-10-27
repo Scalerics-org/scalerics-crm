@@ -298,7 +298,12 @@ def aviso_ejemplo(nid):
                 "WHERE o.negocio_id = ? AND o.estado = 'abierta' ORDER BY o.creado_en DESC LIMIT 3", (nid,))]
             quejas = quejas or [{**o, "creado_en": rs._txt(ahora - timedelta(minutes=20 * (i + 1)))}
                                 for i, o in enumerate(_OPINIONES_EJEMPLO)]
-            mail = ra.armar_mail_quejas(n, a, quejas, link)
+            # Y la reseña mala de Google sin responder, si la lectura diaria trajo alguna.
+            google = [dict(f) for f in conn.execute(
+                "SELECT id, rating, texto, autor, link, publicada_en, leida_en, sugerida FROM rs_google_resenas "
+                "WHERE negocio_id = ? AND estado = 'sin_responder' AND rating <= ? "
+                "ORDER BY IFNULL(publicada_en, leida_en) DESC LIMIT 2", (nid, rs.QUEJA_HASTA))]
+            mail = ra.armar_mail_quejas(n, a, quejas, link, google)
     finally:
         conn.close()
     resp = Response(mail["html"], mimetype="text/html")
@@ -875,7 +880,8 @@ def _avisos_comercio(a: dict, token: str) -> str:
                + "</p>")
     return ("<div class='card'><h2 class='m0'>Enterate de las quejas en el momento</h2>"
             "<p class='sub'>Cuando alguien puntúa de 1 a 3 o pide que lo llamen, te llega un mail con lo que "
-            f"escribió y un botón a este panel. Si entran varias juntas, van en un mail. De {ra.SILENCIO_DESDE} a "
+            "escribió y un botón a este panel. Lo mismo si entra una reseña de 1 a 3 estrellas en Google: el mail "
+            f"trae la respuesta ya escrita para publicarla. Si entran varias juntas, van en un mail. De {ra.SILENCIO_DESDE} a "
             f"{ra.SILENCIO_HASTA} no te escribimos: lo de la noche te llega a las {ra.SILENCIO_HASTA}.</p>"
             f"<form method='post' action='/comercio/{e(token)}/avisos'>"
             "<label class='campo'>Tu mail<input type='email' name='email' maxlength='160' autocomplete='email' "

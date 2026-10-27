@@ -2332,7 +2332,7 @@ function rsAccesoHtml() {
     + '<td>' + rsAvisoCelda(a) + '</td>'
     + '<td>' + (a.revocado_en ? '' : '<button type="button" class="of-btn" data-rs="revocar" data-id="' + Number(a.id) + '">Revocar</button>') + '</td></tr>').join('');
   const avisos = (rsDatos.avisos || []).slice(0, 8).map(v => '<li>' + crEsc(v.creado_en) + ' · ' + crEsc(v.nombre) + ' · '
-    + (v.tipo === 'resumen' ? 'resumen del día' : v.cantidad + (v.cantidad === 1 ? ' queja' : ' quejas'))
+    + (v.tipo === 'resumen' ? 'resumen del día' : v.cantidad + ' para atender')
     + (v.estado === 'enviado' ? '' : ' · <b>' + crEsc(v.estado === 'fallo' ? 'no salió' : v.estado) + '</b>') + '</li>').join('');
   const ejemplo = '/resenas/aviso-ejemplo/' + Number(rsSel);
   return '<div class="rs-meta">El comercio ve su propio panel con un link privado, sin usuario ni clave: sus números, la bandeja de quejas para resolver y sus QR. Un link por persona (el dueño, la encargada), así queda quién resolvió cada queja y se le puede cortar a uno solo.</div>'
@@ -2341,7 +2341,7 @@ function rsAccesoHtml() {
     + '<input type="email" name="email" maxlength="160" placeholder="Mail para avisos de quejas (opcional)" aria-label="Mail para avisos de quejas">'
     + '<button type="submit" class="of-btn prim">+ Crear link</button></form>'
     + (filas ? '<table class="rs-tabla rs-acc-tabla"><thead><tr><th>Para</th><th>Creado</th><th>Última visita</th><th>Avisos por mail</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<div class="rs-vacio">El comercio todavía no tiene acceso. Creale un link y mandáselo.</div>')
-    + '<div class="rs-meta">Con mail, a cada persona le llega un aviso cuando entra una queja (agrupadas, nunca de 22 a 8, con tope por día) o un resumen a las 9. El mail trae un link a su panel que vence a los 30 días. Cada uno lo puede cambiar o apagar desde su panel, en Avisos.'
+    + '<div class="rs-meta">Con mail, a cada persona le llega un aviso cuando entra una queja o una reseña de 1 a 3 estrellas en Google, con la respuesta sugerida (agrupadas, nunca de 22 a 8, con tope por día) o un resumen a las 9. El mail trae un link a su panel que vence a los 30 días. Cada uno lo puede cambiar o apagar desde su panel, en Avisos.'
     + ' <a href="' + ejemplo + '" target="_blank" rel="noopener">Ver el mail de una queja</a> · <a href="' + ejemplo + '?tipo=resumen" target="_blank" rel="noopener">Ver el resumen diario</a></div>'
     + (avisos ? '<div class="rs-meta"><b>Últimos avisos</b><ul class="rs-avisos">' + avisos + '</ul></div>' : '');
 }
