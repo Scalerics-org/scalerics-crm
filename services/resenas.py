@@ -203,6 +203,8 @@ def init_resenas(conn: sqlite3.Connection) -> None:
             revocado_en TEXT
         );
     """)
+    from services.resenas_avisos import init_avisos
+    init_avisos(conn)
 
 
 def _con(db: str) -> sqlite3.Connection:
@@ -653,7 +655,7 @@ def crear_acceso(db: str, nid: int, nombre: str, quien: str) -> dict:
 def acceso(db: str, aid: int) -> dict:
     conn = _con(db)
     try:
-        a = conn.execute("SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en "
+        a = conn.execute("SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en, email, aviso "
                          "FROM rs_accesos WHERE id = ?", (aid,)).fetchone()
     finally:
         conn.close()
@@ -667,7 +669,8 @@ def accesos(db: str, nid: int) -> list:
     conn = _con(db)
     try:
         return [dict(f) for f in conn.execute(
-            "SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en FROM rs_accesos "
+            "SELECT id, negocio_id, nombre, creado_por, creado_en, visto_en, revocado_en, email, aviso "
+            "FROM rs_accesos "
             "WHERE negocio_id = ? ORDER BY revocado_en IS NOT NULL, id", (nid,))]
     finally:
         conn.close()
@@ -684,18 +687,25 @@ def revocar_acceso(db: str, nid: int, aid: int) -> None:
         conn.close()
 
 
-def por_token(db: str, token: str) -> Optional[dict]:
+def por_token(db: str, token: str, secreto: Optional[str] = None) -> Optional[dict]:
     """El acceso vigente de ese link, con su comercio, o None.
 
     Un comercio pausado sigue entrando: pausar corta las opiniones nuevas, no
-    el panel. Uno borrado se lleva sus accesos (ON DELETE CASCADE).
+    el panel. Uno borrado se lleva sus accesos (ON DELETE CASCADE). Con
+    `secreto` también vale el link firmado de los mails de aviso
+    (services/resenas_avisos.py), que se corta igual al revocar.
     """
     if not re.fullmatch(r"[\w-]{24,64}", token or ""):
         return None
+    from services.resenas_avisos import acceso_firmado
+    firmado = acceso_firmado(token, secreto) if secreto else None
     conn = _con(db)
     try:
-        a = conn.execute("SELECT id FROM rs_accesos WHERE token_hash = ? AND revocado_en IS NULL",
-                         (_hash_token(token),)).fetchone()
+        if firmado:
+            a = conn.execute("SELECT id FROM rs_accesos WHERE id = ? AND revocado_en IS NULL", (firmado,)).fetchone()
+        else:
+            a = conn.execute("SELECT id FROM rs_accesos WHERE token_hash = ? AND revocado_en IS NULL",
+                             (_hash_token(token),)).fetchone()
     finally:
         conn.close()
     if not a:

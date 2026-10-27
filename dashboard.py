@@ -2289,12 +2289,31 @@ function rsAccesoHtml() {
   }
   const filas = acc.map(a => '<tr' + (a.revocado_en ? ' class="rs-revocado"' : '') + '><td>' + crEsc(a.nombre) + '</td><td class="rs-meta">' + crEsc(a.creado_en) + ' · ' + crEsc(a.creado_por || '') + '</td>'
     + '<td>' + (a.revocado_en ? '<span class="rs-meta">revocado ' + crEsc(a.revocado_en) + '</span>' : a.visto_en ? crEsc(a.visto_en) : '<span class="rs-meta">nunca entró</span>') + '</td>'
+    + '<td>' + rsAvisoCelda(a) + '</td>'
     + '<td>' + (a.revocado_en ? '' : '<button type="button" class="of-btn" data-rs="revocar" data-id="' + Number(a.id) + '">Revocar</button>') + '</td></tr>').join('');
+  const avisos = (rsDatos.avisos || []).slice(0, 8).map(v => '<li>' + crEsc(v.creado_en) + ' · ' + crEsc(v.nombre) + ' · '
+    + (v.tipo === 'resumen' ? 'resumen del día' : v.cantidad + (v.cantidad === 1 ? ' queja' : ' quejas'))
+    + (v.estado === 'enviado' ? '' : ' · <b>' + crEsc(v.estado === 'fallo' ? 'no salió' : v.estado) + '</b>') + '</li>').join('');
+  const ejemplo = '/resenas/aviso-ejemplo/' + Number(rsSel);
   return '<div class="rs-meta">El comercio ve su propio panel con un link privado, sin usuario ni clave: sus números, la bandeja de quejas para resolver y sus QR. Un link por persona (el dueño, la encargada), así queda quién resolvió cada queja y se le puede cortar a uno solo.</div>'
     + nuevo
     + '<form class="rs-fila" data-rs-form="acceso"><input name="nombre" maxlength="60" required placeholder="Para quién: Marcela (dueña), Encargado de turno…" aria-label="Para quién es el link">'
+    + '<input type="email" name="email" maxlength="160" placeholder="Mail para avisos de quejas (opcional)" aria-label="Mail para avisos de quejas">'
     + '<button type="submit" class="of-btn prim">+ Crear link</button></form>'
-    + (filas ? '<table class="rs-tabla"><thead><tr><th>Para</th><th>Creado</th><th>Última visita</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<div class="rs-vacio">El comercio todavía no tiene acceso. Creale un link y mandáselo.</div>');
+    + (filas ? '<table class="rs-tabla rs-acc-tabla"><thead><tr><th>Para</th><th>Creado</th><th>Última visita</th><th>Avisos por mail</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>' : '<div class="rs-vacio">El comercio todavía no tiene acceso. Creale un link y mandáselo.</div>')
+    + '<div class="rs-meta">Con mail, a cada persona le llega un aviso cuando entra una queja (agrupadas, nunca de 22 a 8, con tope por día) o un resumen a las 9. El mail trae un link a su panel que vence a los 30 días. Cada uno lo puede cambiar o apagar desde su panel, en Avisos.'
+    + ' <a href="' + ejemplo + '" target="_blank" rel="noopener">Ver el mail de una queja</a> · <a href="' + ejemplo + '?tipo=resumen" target="_blank" rel="noopener">Ver el resumen diario</a></div>'
+    + (avisos ? '<div class="rs-meta"><b>Últimos avisos</b><ul class="rs-avisos">' + avisos + '</ul></div>' : '');
+}
+
+const RS_MODOS = [['al_momento', 'Al momento'], ['diario', 'Resumen diario'], ['no', 'Apagado']];
+
+function rsAvisoCelda(a) {
+  if (a.revocado_en) return '<span class="rs-meta">—</span>';
+  return '<form class="rs-fila rs-aviso" data-rs-form="avisos" data-id="' + Number(a.id) + '">'
+    + '<input type="email" name="email" maxlength="160" value="' + crEsc(a.email || '') + '" placeholder="mail" aria-label="Mail de ' + crEsc(a.nombre) + '">'
+    + '<select name="aviso" aria-label="Cuándo avisar">' + RS_MODOS.map(m => '<option value="' + m[0] + '"' + ((a.aviso || 'no') === m[0] ? ' selected' : '') + '>' + m[1] + '</option>').join('') + '</select>'
+    + '<button type="submit" class="of-btn">Guardar</button></form>';
 }
 
 function rsAjustesHtml() {
@@ -2384,6 +2403,7 @@ async function rsEnviar(e) {
       const d = await ofPedir(base + '/accesos', 'POST', datos);
       rsLinkNuevo = {nid: rsSel, nombre: d.acceso.nombre, link: d.link, whatsapp: d.whatsapp};
     }
+    if (tipo === 'avisos') await ofPedir(base + '/accesos/' + Number(f.dataset.id) + '/avisos', 'PUT', datos);
     if (tipo === 'ajustes') { await ofPedir(base, 'PATCH', datos); return rsCargar(); }
     return rsCargarNegocio();
   } catch (err) {
@@ -5089,6 +5109,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .rs-fila{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .rs-fila input{flex:1 1 200px}
 .rs-fila input.rs-corto{flex:0 0 120px;width:120px;min-width:0}
+.rs-fila select{background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 8px;font-family:inherit;font-size:.82rem}
+.rs-fila.rs-aviso{margin:0}
+.rs-fila.rs-aviso input{flex:1 1 150px;min-width:0}
+.rs-meta a{color:var(--azul-claro);font-weight:600}
+@media (max-width:700px){.rs-acc-tabla thead,.rs-acc-tabla td:nth-child(2){display:none}.rs-acc-tabla,.rs-acc-tabla tbody,.rs-acc-tabla tr,.rs-acc-tabla td{display:block;width:100%}.rs-acc-tabla tr{border-top:1px solid var(--borde);padding:6px 0}.rs-acc-tabla td{border-top:0;padding:3px 0}}
+.rs-avisos{margin:4px 0 0;padding-left:18px}
 .rs-qrs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:10px 0}
 .rs-qr{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .rs-qr img{border-radius:8px;padding:4px;align-self:center}
@@ -24794,6 +24820,11 @@ loadBackups();
         # lo apaga; la guarda contra cobrar dos veces es la tabla plexo_cobros.
         from services.plexo import start_plexo_cobros
         start_plexo_cobros(app)
+
+        # Avisos de quejas a los comercios de Reseñas. RESENAS_AVISOS=off los
+        # apaga; los topes y lo ya avisado viven en la base (rs_avisos).
+        from services.resenas_avisos import start_avisos_resenas
+        start_avisos_resenas(app)
 
     try:
         from database import get_all_users

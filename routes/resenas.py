@@ -19,12 +19,14 @@ así anda en cualquier celular y con CSP estricta.
 import html
 import os
 import secrets
+from datetime import timedelta
 from urllib.parse import urlencode
 
 from flask import Blueprint, Response, current_app, jsonify, redirect, request, session
 
 from database import log_activity
 from services import resenas as rs
+from services import resenas_avisos as ra
 from services.auth import require_panel
 
 resenas_bp = Blueprint("resenas", __name__)
@@ -109,7 +111,7 @@ def api_negocio(nid):
     except ValueError:
         return _error("Período no válido.")
     return jsonify({"ok": True, "negocio": _con_links(n), "metricas": m, "opiniones": ops, "filtro": filtro,
-                    "accesos": rs.accesos(_db(), nid)})
+                    "accesos": rs.accesos(_db(), nid), "avisos": ra.avisos(_db(), nid)})
 
 
 @resenas_bp.route("/api/resenas/negocios/<int:nid>", methods=["PATCH"])
@@ -185,14 +187,22 @@ def api_accesos(nid):
         rs.negocio(_db(), nid)
     except rs.NoSePuede as e:
         return _error(e, 404)
-    return jsonify({"ok": True, "accesos": rs.accesos(_db(), nid)})
+    return jsonify({"ok": True, "accesos": rs.accesos(_db(), nid), "avisos": ra.avisos(_db(), nid)})
 
 
 @resenas_bp.route("/api/resenas/negocios/<int:nid>/accesos", methods=["POST"])
 def api_crear_acceso(nid):
+    datos = request.get_json(silent=True) or {}
+    email = (datos.get("email") or "").strip()
     try:
         n = rs.negocio(_db(), nid)
-        a = rs.crear_acceso(_db(), nid, (request.get_json(silent=True) or {}).get("nombre"), _quien())
+        if email and not ra.EMAIL.fullmatch(email):
+            raise rs.NoSePuede("Ese mail no parece válido.")
+        a = rs.crear_acceso(_db(), nid, datos.get("nombre"), _quien())
+        if email:
+            # Con mail, el aviso de quejas arranca prendido: es para lo que se pide el mail.
+            ra.guardar_preferencias(_db(), a["id"], email, datos.get("aviso") or "al_momento", nid=nid)
+            a.update({"email": email, "aviso": datos.get("aviso") if datos.get("aviso") in ra.MODOS else "al_momento"})
     except rs.NoSePuede as e:
         return _error(e, _codigo_error(e))
     log_activity(_db(), _quien(), "resenas_acceso", "resenas", nid, n["nombre"], a["nombre"],
@@ -216,6 +226,57 @@ def api_revocar_acceso(nid, aid):
         return _error(e, 404)
     log_activity(_db(), _quien(), "resenas_revoca", "resenas", nid, "", a["nombre"], user_id=session.get("user_id"))
     return jsonify({"ok": True})
+
+
+@resenas_bp.route("/api/resenas/negocios/<int:nid>/accesos/<int:aid>/avisos", methods=["PUT"])
+def api_avisos_acceso(nid, aid):
+    datos = request.get_json(silent=True) or {}
+    try:
+        p = ra.guardar_preferencias(_db(), aid, datos.get("email"), datos.get("aviso"), nid=nid)
+    except rs.NoSePuede as e:
+        return _error(e, _codigo_error(e))
+    return jsonify({"ok": True, "avisos": p})
+
+
+_OPINIONES_EJEMPLO = [
+    {"id": 0, "puntaje": 2, "comentario": "Pedimos la parrillada para dos y llegó fría. El mozo ni se disculpó.",
+     "nombre": "Laura", "contacto": "099 123 456", "quiere_contacto": 1, "fuente": "Mesas"},
+    {"id": 0, "puntaje": 3, "comentario": None, "nombre": None, "contacto": None, "quiere_contacto": 0,
+     "fuente": "Mostrador"},
+]
+
+
+@resenas_bp.route("/resenas/aviso-ejemplo/<int:nid>")
+def aviso_ejemplo(nid):
+    """El mail tal cual le llega al comercio, con sus quejas abiertas (o dos de
+    ejemplo si no tiene), para mostrárselo antes de prender el aviso."""
+    try:
+        n = rs.negocio(_db(), nid)
+    except rs.NoSePuede:
+        return _no_existe()
+    ahora = rs.ahora_uy()
+    a = {"nombre": request.args.get("para") or "Marcela"}
+    link = f"{_base()}/comercio/(tu-link-personal)?desde=mail"
+    conn = rs._con(_db())
+    try:
+        if request.args.get("tipo") == "resumen":
+            mail = ra.armar_mail_resumen(n, a, ra.resumen_de_ayer(conn, nid, ahora), link)
+        else:
+            quejas = [dict(f) for f in conn.execute(
+                "SELECT o.id, o.puntaje, o.comentario, o.nombre, o.contacto, o.quiere_contacto, o.creado_en, "
+                "f.nombre fuente FROM rs_opiniones o LEFT JOIN rs_fuentes f ON f.id = o.fuente_id "
+                "WHERE o.negocio_id = ? AND o.estado = 'abierta' ORDER BY o.creado_en DESC LIMIT 3", (nid,))]
+            quejas = quejas or [{**o, "creado_en": rs._txt(ahora - timedelta(minutes=20 * (i + 1)))}
+                                for i, o in enumerate(_OPINIONES_EJEMPLO)]
+            mail = ra.armar_mail_quejas(n, a, quejas, link)
+    finally:
+        conn.close()
+    resp = Response(mail["html"], mimetype="text/html")
+    resp.headers["Content-Security-Policy"] = ("default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; "
+                                               "frame-ancestors 'self'")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 def _fuente_de(n: dict):
@@ -300,7 +361,7 @@ font-weight:700;font-family:inherit;font-size:1.02rem;cursor:pointer;text-decora
 .btn.google b{color:#1a73e8}
 .btn+.btn{margin-top:10px}
 label.l{display:block;font-size:.85rem;color:#475569;margin:12px 0 4px}
-input[type=text],textarea{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px;font-family:inherit;
+input[type=text],input[type=email],textarea{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px;font-family:inherit;
 font-size:1rem;background:#fff;color:#0f172a}
 textarea{min-height:96px;resize:vertical}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:.88rem;color:#334155;margin-top:10px}
@@ -364,6 +425,13 @@ font:inherit;font-size:.88rem;cursor:pointer;text-decoration:none}
 .b2.prim{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
 .cierre{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .cierre input[type=text]{flex:1 1 240px}
+.campo{display:block;font-size:.85rem;color:#475569;margin:12px 0}
+.campo input{margin-top:4px}
+.modos{border:0;padding:0;margin:0 0 14px}
+.modos legend{font-size:.85rem;color:#475569;margin-bottom:6px;padding:0}
+.modo{display:flex;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;
+margin-bottom:6px;cursor:pointer}
+.modo input{accent-color:var(--acc);width:18px;height:18px;margin:0}
 details.res summary{cursor:pointer;color:#334155;font-size:.88rem;margin-top:8px}
 .barras{display:flex;gap:6px;align-items:flex-end;height:120px;margin-top:10px}
 .barra{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
@@ -567,13 +635,14 @@ def opina_google(slug, codigo):
 # Lo que ve el dueño con su link privado. Sin JavaScript, igual que la página
 # donde opinan sus clientes: cada acción es un formulario que vuelve con 303.
 
-VISTAS_COMERCIO = (("bandeja", "Para atender"), ("todas", "Todas"), ("resueltas", "Resueltas"), ("qr", "QR y carteles"))
+VISTAS_COMERCIO = (("bandeja", "Para atender"), ("todas", "Todas"), ("resueltas", "Resueltas"), ("qr", "QR y carteles"),
+                   ("avisos", "Avisos"))
 DIAS_COMERCIO = (7, 30, 90, 365)
 _ACTUAL = " aria-current='page'"
 
 
 def _acceso_de(token: str):
-    a = rs.por_token(_db(), token)
+    a = rs.por_token(_db(), token, current_app.secret_key)
     return (a, a["negocio"]) if a else (None, None)
 
 
@@ -700,6 +769,41 @@ def _qr_comercio(n: dict, token: str) -> str:
             "la bolsa), pedíselo a Scalerics.</p><div class='qrs'>" + "".join(tarjetas) + "</div>")
 
 
+def _avisos_comercio(a: dict, token: str) -> str:
+    e = html.escape
+    p = ra.preferencias(_db(), a["id"])
+    modos = "".join(
+        f"<label class='modo'><input type='radio' name='aviso' value='{k}'{' checked' if p['aviso'] == k else ''}>"
+        f"<span>{e(t)}</span></label>" for k, t in ra.MODOS.items())
+    ult = ""
+    if p["ultimo"]:
+        u = p["ultimo"]
+        ult = (f"<p class='sub'>Último mail: {e(u['creado_en'][8:10])}/{e(u['creado_en'][5:7])} "
+               f"{e(u['creado_en'][11:16])}" + (" (no salió)" if u["estado"] != "enviado" else "")
+               + "</p>")
+    return ("<div class='card'><h2 class='m0'>Enterate de las quejas en el momento</h2>"
+            "<p class='sub'>Cuando alguien puntúa de 1 a 3 o pide que lo llamen, te llega un mail con lo que "
+            f"escribió y un botón a este panel. Si entran varias juntas, van en un mail. De {ra.SILENCIO_DESDE} a "
+            f"{ra.SILENCIO_HASTA} no te escribimos: lo de la noche te llega a las {ra.SILENCIO_HASTA}.</p>"
+            f"<form method='post' action='/comercio/{e(token)}/avisos'>"
+            "<label class='campo'>Tu mail<input type='email' name='email' maxlength='160' autocomplete='email' "
+            f"placeholder='tunombre@gmail.com' value='{e(p['email'])}'></label>"
+            f"<fieldset class='modos'><legend>Cómo querés enterarte</legend>{modos}</fieldset>"
+            "<button class='b2 prim' type='submit'>Guardar</button></form>" + ult + "</div>")
+
+
+@resenas_bp.route("/comercio/<token>/avisos", methods=["POST"])
+def comercio_avisos(token):
+    a, n = _acceso_de(token)
+    if not a:
+        return _no_existe()
+    try:
+        ra.guardar_preferencias(_db(), a["id"], request.form.get("email"), request.form.get("aviso"), nid=n["id"])
+    except rs.NoSePuede as err:
+        return redirect(f"/comercio/{token}?v=avisos&" + urlencode({"error": str(err)}), 303)
+    return redirect(f"/comercio/{token}?v=avisos&ok=1", 303)
+
+
 @resenas_bp.route("/comercio/<token>")
 def comercio_panel(token):
     a, n = _acceso_de(token)
@@ -745,6 +849,8 @@ def comercio_panel(token):
         for k, t in VISTAS_COMERCIO) + "</nav>")
     if vista == "qr":
         partes.append(_qr_comercio(n, token))
+    elif vista == "avisos":
+        partes.append(_avisos_comercio(a, token))
     else:
         ops = rs.opiniones(_db(), n["id"], vista, limite=100)
         partes.append(_opiniones_comercio(n, ops, token, vista))

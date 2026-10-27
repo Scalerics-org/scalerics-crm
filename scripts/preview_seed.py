@@ -149,9 +149,16 @@ def sembrar_resenas(db: str) -> None:
     # El panel del dueño, con un link fijo para la PR. El token real sale al azar
     # y no se guarda; acá se guarda el hash de uno conocido.
     conn = sqlite3.connect(db)
-    conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en, visto_en) "
-                 "VALUES (?,?,?,?,?,?)", (nid, "Marcela (dueña)", rs._hash_token(TOKEN_COMERCIO), "Vista previa",
-                                         rs._txt(ahora - timedelta(days=20)), rs._txt(ahora - timedelta(days=3))))
+    # Con avisos de quejas prendidos y un par ya mandados, para ver el historial.
+    # La vista previa no tiene hilo de avisos ni RESEND_API_KEY: no sale nada.
+    aid = conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en, visto_en, "
+                       "email, aviso, aviso_desde) VALUES (?,?,?,?,?,?,?,?,?)",
+                       (nid, "Marcela (dueña)", rs._hash_token(TOKEN_COMERCIO), "Vista previa",
+                        rs._txt(ahora - timedelta(days=20)), rs._txt(ahora - timedelta(days=3)),
+                        "marcela@ejemplo.com", "al_momento", rs._txt(ahora - timedelta(days=20)))).lastrowid
+    for dias, cant in ((6, 1), (2, 2)):
+        conn.execute("INSERT INTO rs_avisos (acceso_id, tipo, cantidad, estado, creado_en) VALUES (?,?,?,?,?)",
+                     (aid, "quejas", cant, "enviado", rs._txt((ahora - timedelta(days=dias)).replace(hour=13, minute=40))))
     conn.execute("INSERT INTO rs_accesos (negocio_id, nombre, token_hash, creado_por, creado_en, revocado_en) "
                  "VALUES (?,?,?,?,?,?)", (nid, "Encargado anterior", rs._hash_token("vista-previa-revocado-" + "x" * 10),
                                          "Vista previa", rs._txt(ahora - timedelta(days=50)),
