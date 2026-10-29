@@ -9,6 +9,7 @@ directo de GitHub (se redirige al link temporal), así que no pasa por Fly.
 
 import os
 import re
+import time
 
 import requests
 from flask import Blueprint, current_app, jsonify, redirect, request, session
@@ -20,6 +21,10 @@ reels_bp = Blueprint("reels", __name__)
 REELS_URL = os.environ.get("REELS_PANEL_URL", "https://reels.scalerics.com")
 ESTADOS = ("por_revisar", "en_cola", "descartado")
 _SLUG = re.compile(r"^[a-z0-9-]{1,80}$")
+# El link temporal de cada video, por 2 minutos: volver a una página o repintar la cola
+# no le vuelve a preguntar al panel (con 4 hilos en Fly, muchas consultas juntas trancan el CRM).
+_VIDEO_TTL = 120
+_videos: dict[str, tuple[float, str]] = {}
 
 
 def _db() -> str:
@@ -74,6 +79,9 @@ def api_video(slug):
     """Redirige al link temporal de GitHub: el mp4 no pasa por este servidor."""
     if not _SLUG.match(slug):
         return jsonify({"ok": False, "error": "Reel inválido"}), 400
+    guardado = _videos.get(slug)
+    if guardado and guardado[0] > time.monotonic():
+        return _al_video(guardado[1])
     try:
         r = requests.get(f"{REELS_URL}/api/video", params={"slug": slug}, headers=_headers(),
                          timeout=20, allow_redirects=False)
@@ -82,6 +90,13 @@ def api_video(slug):
     destino = r.headers.get("Location", "")
     if r.status_code not in (301, 302, 307) or not destino.startswith("https://"):
         return jsonify({"ok": False, "error": "No se encontró el video"}), 404
+    if len(_videos) > 500:
+        _videos.clear()
+    _videos[slug] = (time.monotonic() + _VIDEO_TTL, destino)
+    return _al_video(destino)
+
+
+def _al_video(destino: str):
     resp = redirect(destino, 302)
     resp.headers["Cache-Control"] = "no-store"
     return resp

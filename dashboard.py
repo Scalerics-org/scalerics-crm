@@ -3907,7 +3907,25 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .rl-filtro{appearance:none;border:1px solid var(--borde);background:transparent;color:var(--texto-tenue);border-radius:999px;padding:6px 14px;font:inherit;font-size:.8rem;font-weight:500;cursor:pointer}
 .rl-filtro[aria-selected="true"]{background:var(--relleno);border-color:var(--borde-fuerte);color:var(--texto-fuerte)}
 .rl-filtro b{font-variant-numeric:tabular-nums;margin-left:6px;font-weight:600}
-.rl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.rl-cuerpo-panel{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.rl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px}
+.rl-paginas{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:20px}
+.rl-paginas span{font-size:.8rem;color:var(--texto-tenue);font-variant-numeric:tabular-nums}
+.rl-hoy:empty{display:none}
+.rl-hoy{position:sticky;top:16px;background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.rl-hoy h2{font-size:.95rem;font-weight:600;color:var(--texto-fuerte);margin:0}
+.rl-hoy-sub{font-size:.72rem;color:var(--texto-tenue);margin-top:2px}
+.rl-dia h3{font-size:.8rem;font-weight:600;color:var(--texto-fuerte);margin:0 0 6px;display:flex;justify-content:space-between;gap:8px}
+.rl-dia h3 b{font-weight:500;color:var(--texto-tenue);font-variant-numeric:tabular-nums}
+.rl-dia.hoy h3{color:var(--azul-claro)}
+.rl-dia ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.rl-dia button{appearance:none;width:100%;display:flex;gap:10px;align-items:baseline;text-align:left;border:0;background:transparent;border-radius:8px;padding:5px 6px;font:inherit;cursor:pointer;color:var(--texto)}
+.rl-dia button:hover{background:var(--hover)}
+.rl-dia time{font-size:.78rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--texto-fuerte);flex:0 0 40px}
+.rl-dia button span{font-size:.78rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rl-dia-nada{font-size:.78rem;color:var(--texto-tenue)}
+.rl-card.marcado{outline:2px solid var(--azul);outline-offset:2px}
+@media (max-width:900px){.rl-cuerpo-panel{grid-template-columns:minmax(0,1fr)}.rl-hoy{position:static;order:-1}}
 .rl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .rl-card video{width:100%;aspect-ratio:9/16;background:#000;display:block;object-fit:cover}
 .rl-cuerpo{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
@@ -6554,9 +6572,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="rl-hfila" data-red="tiktok"><span class="rl-hred">TikTok</span><div class="rl-horas"></div></div>
       <div class="rl-hayuda" id="rl-hayuda" role="status" aria-live="polite">Hora de Uruguay. Sale uno por horario y por red.</div>
     </section>
-    <div class="rl-filtros" id="rl-filtros" role="tablist" aria-label="Estado"></div>
-    <div class="cr-nota" id="rl-nota" role="status" aria-live="polite"></div>
-    <div class="rl-grilla" id="rl-grilla"></div>
+    <div class="rl-cuerpo-panel">
+      <div>
+        <div class="rl-filtros" id="rl-filtros" role="tablist" aria-label="Estado"></div>
+        <div class="cr-nota" id="rl-nota" role="status" aria-live="polite"></div>
+        <div class="rl-grilla" id="rl-grilla"></div>
+        <nav class="rl-paginas" id="rl-paginas" aria-label="Páginas"></nav>
+      </div>
+      <aside class="rl-hoy" id="rl-hoy" aria-label="Qué sale hoy"></aside>
+    </div>
   </div>
   <!-- ======= FIN REELS PANEL ======= -->
 
@@ -17808,6 +17832,10 @@ const RL_FILTROS = [
 let rlDatos = [];
 let rlFiltro = 'por_revisar';
 let rlObs = null;
+// De a pocos por página: cada video pide su link al panel de reels y con muchos a la vez se tranca.
+const RL_POR_PAGINA = 6;
+let rlPagina = 0;
+let rlMarcar = null;
 let rlHoras = {instagram: [12, 18, 21], tiktok: [12, 18, 21]};
 
 function rlHoraTxt(h) { return String(h).padStart(2, '0') + ':00'; }
@@ -17848,6 +17876,7 @@ async function rlCargarHorarios() {
     rlHoras = {instagram: d.instagram || [], tiktok: d.tiktok || []};
   } catch (e) { /* quedan los de siempre; la cola igual se ve */ }
   rlPintarHorarios();
+  if (rlDatos.length) rlPintar(); // si los reels llegaron antes, recalcula cuándo sale cada uno
 }
 
 async function rlGuardarHoras(red, horas) {
@@ -17913,6 +17942,7 @@ function rlPintar() {
   const horarios = rlProximosHorarios(cola.length);
   const sale = {};
   cola.forEach((r, i) => { sale[r.slug] = horarios[i]; });
+  rlPintarHoy(cola, sale);
 
   const pend = rlDatos.filter(r => r.estado === 'por_revisar').length;
   const badge = document.getElementById('rl-badge');
@@ -17922,23 +17952,43 @@ function rlPintar() {
   fil.innerHTML = RL_FILTROS.map(([id, txt, f]) =>
     '<button type="button" class="rl-filtro" role="tab" data-rl="' + id + '" aria-selected="' + (id === rlFiltro) + '">'
     + esc(txt) + '<b>' + rlDatos.filter(f).length + '</b></button>').join('');
-  fil.querySelectorAll('[data-rl]').forEach(b => { b.onclick = () => { rlFiltro = b.dataset.rl; rlPintar(); }; });
+  fil.querySelectorAll('[data-rl]').forEach(b => { b.onclick = () => { rlFiltro = b.dataset.rl; rlPagina = 0; rlPintar(); }; });
 
   const lista = rlFiltro === 'en_cola' ? enCola : rlDatos.filter(RL_FILTROS.find(x => x[0] === rlFiltro)[2]);
   const g = document.getElementById('rl-grilla');
+  const pag = document.getElementById('rl-paginas');
   if (rlObs) rlObs.disconnect();
+  pag.innerHTML = '';
   if (!lista.length) {
     g.innerHTML = '<div class="rl-vacio">' + (rlFiltro === 'por_revisar'
       ? 'No hay nada para revisar. La rutina hace reels nuevos de madrugada.' : 'No hay reels en este estado.') + '</div>';
     return;
   }
-  // El video se pide recién cuando la tarjeta está por verse.
+  const paginas = Math.ceil(lista.length / RL_POR_PAGINA);
+  rlPagina = Math.max(0, Math.min(rlPagina, paginas - 1));
+  if (paginas > 1) {
+    pag.innerHTML = '<button type="button" class="ag-b" data-paso="-1">← Anterior</button>'
+      + '<span>Página ' + (rlPagina + 1) + ' de ' + paginas + ' · ' + lista.length + ' reels</span>'
+      + '<button type="button" class="ag-b" data-paso="1">Siguiente →</button>';
+    pag.querySelectorAll('[data-paso]').forEach(b => {
+      const destino = rlPagina + Number(b.dataset.paso);
+      b.disabled = destino < 0 || destino >= paginas;
+      b.onclick = () => {
+        rlPagina = destino;
+        rlPintar();
+        const arriba = document.getElementById('rl-filtros');
+        if (arriba.getBoundingClientRect().top < 0) arriba.scrollIntoView({block: 'start'});
+      };
+    });
+  }
+  // Solo existen los videos de esta página, y cada uno se pide cuando su tarjeta está por verse.
   rlObs = new IntersectionObserver(es => es.forEach(e => {
     if (e.isIntersecting) { e.target.src = e.target.dataset.src; rlObs.unobserve(e.target); }
-  }), {rootMargin: '400px'});
+  }), {rootMargin: '200px'});
 
   g.innerHTML = '';
-  for (const r of lista) {
+  let marcada = null;
+  for (const r of lista.slice(rlPagina * RL_POR_PAGINA, (rlPagina + 1) * RL_POR_PAGINA)) {
     const [txt, cls] = RL_ESTADOS[r.estado] || RL_ESTADOS.por_revisar;
     let cuando = '';
     if (r.estado === 'en_cola') {
@@ -17988,9 +18038,66 @@ function rlPintar() {
       b.onclick = () => rlCambiar(r, estado, b);
       pie.appendChild(b);
     }
+    if (r.slug === rlMarcar) { c.classList.add('marcado'); marcada = c; }
     g.appendChild(c);
     rlObs.observe(c.querySelector('video'));
   }
+  rlMarcar = null;
+  if (marcada) marcada.scrollIntoView({block: 'center', behavior: 'smooth'});
+}
+
+// Al costado: qué sale hoy en Instagram y los próximos días, con lo mismo que dice "Sale ..." en cada tarjeta.
+function rlPintarHoy(cola, sale) {
+  const caja = document.getElementById('rl-hoy');
+  const z = {timeZone: 'America/Montevideo'};
+  const diaDe = f => f.toLocaleDateString('es-UY', z);
+  const hoy = diaDe(new Date());
+  const manana = diaDe(new Date(Date.now() + 864e5));
+  const dias = [];
+  for (const r of cola) {
+    const f = sale[r.slug];
+    if (!f) continue;
+    let d = dias.find(x => x.clave === diaDe(f));
+    if (!d) {
+      if (dias.length === 3) break;
+      d = {clave: diaDe(f), fecha: f, reels: []};
+      dias.push(d);
+    }
+    d.reels.push(r);
+  }
+  const nombre = f => f.toLocaleDateString('es-UY', {...z, weekday: 'long', day: 'numeric'});
+  const hora = f => f.toLocaleTimeString('es-UY', {...z, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+  let html = '<div><h2>Qué sale hoy</h2><div class="rl-hoy-sub">En Instagram, hora de Uruguay</div></div>';
+  if (!dias.length || dias[0].clave !== hoy) {
+    const porque = !rlHoras.instagram.length ? 'Instagram no tiene horarios: agregá uno arriba.'
+      : !cola.length ? 'La cola está vacía: lo que aprobás entra acá.'
+      : 'Los horarios de hoy ya pasaron.';
+    html += '<section class="rl-dia hoy"><h3>Hoy ' + esc(nombre(new Date())) + '<b>no sale ninguno</b></h3>'
+      + '<div class="rl-dia-nada">' + esc(porque) + '</div></section>';
+  }
+  for (const d of dias) {
+    const n = d.reels.length;
+    const titulo = d.clave === hoy ? 'Hoy ' + nombre(d.fecha)
+      : d.clave === manana ? 'Mañana ' + nombre(d.fecha)
+      : nombre(d.fecha).replace(/^./, x => x.toUpperCase());
+    html += '<section class="rl-dia' + (d.clave === hoy ? ' hoy' : '') + '"><h3>' + esc(titulo)
+      + '<b>' + (n === 1 ? 'sale 1' : 'salen ' + n) + '</b></h3><ol>'
+      + d.reels.map(r => '<li><button type="button" data-slug="' + esc(r.slug) + '"><time>' + esc(hora(sale[r.slug]))
+        + '</time><span>' + esc(String(r.gancho || r.slug).replace(/`/g, '')) + '</span></button></li>').join('')
+      + '</ol></section>';
+  }
+  caja.innerHTML = html;
+  caja.querySelectorAll('[data-slug]').forEach(b => { b.onclick = () => rlIrA(b.dataset.slug); });
+}
+
+// Lleva a la tarjeta de ese reel en la cola, en la página que le toca.
+function rlIrA(slug) {
+  const i = rlOrdenCola().findIndex(r => r.slug === slug);
+  if (i < 0) return;
+  rlFiltro = 'en_cola';
+  rlPagina = Math.floor(i / RL_POR_PAGINA);
+  rlMarcar = slug;
+  rlPintar();
 }
 
 function rlOrdenCola() {
@@ -18004,6 +18111,7 @@ async function rlMover(cola, i, paso) {
   [nueva[i], nueva[i + paso]] = [nueva[i + paso], nueva[i]];
   const antes = nueva.map(r => r.revisado ? r.revisado.orden : null);
   nueva.forEach((r, k) => { r.revisado = {...(r.revisado || {}), orden: k}; });
+  rlPagina = Math.floor((i + paso) / RL_POR_PAGINA); // si cruza de página, la pantalla lo sigue
   rlPintar();
   try {
     await ofPedir('/api/reels/orden', 'PUT', {orden: nueva.map(r => r.slug)});
