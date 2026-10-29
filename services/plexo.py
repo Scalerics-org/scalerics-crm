@@ -306,6 +306,17 @@ def es_automatico(db: str, recurrente_id: int) -> bool:
     return bool(s and s.get("token") and s["estado"] in ("activa", "rechazada"))
 
 
+def espera_tarjeta(db: str, recurrente_id: int) -> bool:
+    """Si al cliente ya se le mandó el link y todavía no cargó la tarjeta.
+    Finanzas tampoco anota ese mes: si lo anotara, al guardar la tarjeta el
+    mes ya figura cobrado y Plexo no lo cobra (29/10, el primer cobro real)."""
+    try:
+        s = suscripcion(db, recurrente_id)
+    except sqlite3.Error:
+        return False
+    return bool(s and not s.get("token") and s["estado"] == "esperando_tarjeta")
+
+
 def _guardar(db: str, recurrente_id: int, **campos) -> None:
     campos["actualizado_en"] = _ahora()
     c = _conn(db)
@@ -454,6 +465,20 @@ def _registrar_en_finanzas(db: str, fijo: dict, d: dict, ajustes: dict, fecha: s
     from database import CobroDuplicado, crear_cobro_tarjeta, get_business
     from services.cobro_tarjeta import armar_cobro
     negocio = get_business(db, fijo["client_id"]) if fijo.get("client_id") else None
+    # Un ingreso del mes que se borró en Finanzas no se borra: queda anulado
+    # con su (recurrente_id, periodo) para que la materialización no lo
+    # regenere. Si queda así, el ingreso de este cobro choca con el índice
+    # único y no se anota: el cliente pagó y Finanzas no lo muestra. Se suelta
+    # acá y no en crear_cobro_tarjeta, que también usa la materialización: ahí
+    # el anulado tiene que seguir frenando.
+    c = _conn(db)
+    try:
+        c.execute("UPDATE finanzas_movimientos SET recurrente_id = NULL "
+                  "WHERE recurrente_id = ? AND periodo = ? AND anulado = 1",
+                  (fijo["id"], fecha[:7]))
+        c.commit()
+    finally:
+        c.close()
     cobro, ingreso, comision, plexo = armar_cobro(
         d, fecha=fecha, concepto=fijo["concepto"], categoria=fijo["categoria"],
         client_id=fijo.get("client_id"), cliente=(negocio or {}).get("name"),
@@ -482,7 +507,11 @@ def _intentos(db: str, recurrente_id: int, periodo: str) -> list[dict]:
 def _mes_anotado(db: str, recurrente_id: int, periodo: str) -> bool:
     c = _conn(db)
     try:
-        return c.execute("SELECT 1 FROM finanzas_movimientos WHERE recurrente_id = ? AND periodo = ? LIMIT 1",
+        # Los anulados no cuentan: son los que se borraron en Finanzas para
+        # que la tarjeta cobre el mes (29/10: el primer cobro real quedó
+        # trabado en "ya anotado" por uno así).
+        return c.execute("SELECT 1 FROM finanzas_movimientos WHERE recurrente_id = ? AND periodo = ? "
+                         "AND anulado = 0 LIMIT 1",
                          (recurrente_id, periodo)).fetchone() is not None
     finally:
         c.close()
