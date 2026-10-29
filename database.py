@@ -2243,6 +2243,8 @@ def init_db(db_path: str) -> None:
         """)
         conn.commit()
         _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
+        # Reels (29/10): revisar los reels antes de la cola de publicación.
+        _grant_panel_to_existing_roles(conn, "reels", si_tiene=("marketing",))
 
         # Scalerics Fidelidad (23/9): el Outbound pasa a ser del socio que vende
         # el sistema de puntos. Sus tablas son propias (services/fidelidad.py);

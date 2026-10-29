@@ -38,6 +38,7 @@ from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.sombra import sombra_bp
+from routes.reels import reels_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -1871,6 +1872,7 @@ const GB_PALABRAS = {
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
   credenciales: 'contraseñas claves passwords',
   agentes: 'agentes claude propuestas ideas ia',
+  reels: 'reels videos tiktok instagram cola publicar aprobar',
 };
 const _gb = {items: [], sel: 0, t: null, pedido: 0};
 
@@ -3374,6 +3376,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
 #nav-sombra .nav-icon{stroke:#a8a29e}
+#nav-reels .nav-icon{stroke:#f472b6}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -3408,6 +3411,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
 #nav-sombra.active .nav-icon{stroke:#e2e8f0}
+#nav-reels.active .nav-icon{stroke:#fbcfe8}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -3440,6 +3444,7 @@ body.light #nav-fid_mails .nav-icon{stroke:#4338ca}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
 body.light #nav-sombra .nav-icon{stroke:#57534e}
+body.light #nav-reels .nav-icon{stroke:#db2777}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -3897,6 +3902,40 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .ag-b:disabled{opacity:.5;cursor:default}
 .ag-b.prim{background:var(--azul);border-color:var(--azul);color:#fff}
 .ag-b.peligro{background:transparent;border-color:transparent;color:var(--rojo-texto)}
+/* ── Reels ── */
+.rl-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.rl-filtro{appearance:none;border:1px solid var(--borde);background:transparent;color:var(--texto-tenue);border-radius:999px;padding:6px 14px;font:inherit;font-size:.8rem;font-weight:500;cursor:pointer}
+.rl-filtro[aria-selected="true"]{background:var(--relleno);border-color:var(--borde-fuerte);color:var(--texto-fuerte)}
+.rl-filtro b{font-variant-numeric:tabular-nums;margin-left:6px;font-weight:600}
+.rl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.rl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.rl-card video{width:100%;aspect-ratio:9/16;background:#000;display:block;object-fit:cover}
+.rl-cuerpo{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
+.rl-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rl-chip{font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 9px;border:1px solid var(--borde);color:var(--texto-tenue)}
+.rl-chip.revisar{background:var(--ambar-tinte);border-color:var(--ambar-borde);color:var(--ambar)}
+.rl-chip.cola{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-claro)}
+.rl-chip.pub{background:var(--verde-tinte);border-color:var(--verde);color:var(--verde-texto)}
+.rl-chip.desc{background:var(--rojo-tinte);border-color:var(--rojo-borde);color:var(--rojo-texto)}
+.rl-red{font-size:.7rem;color:var(--texto-debil)}
+.rl-red.si{color:var(--verde-texto)}
+.rl-gancho{font-size:.84rem;line-height:1.4;color:var(--texto);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.rl-sale{font-size:.75rem;color:var(--texto-tenue)}
+.rl-acciones{display:flex;gap:8px;margin-top:auto}
+.rl-acciones .ag-b{flex:1}
+.rl-acciones .ag-b.rl-mover{flex:0 0 36px;padding:7px 0}
+.rl-pos{font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--texto-fuerte);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:6px;min-width:22px;text-align:center;padding:1px 6px}
+.rl-vacio{color:var(--texto-tenue);font-size:.85rem;padding:24px 0}
+.rl-horarios{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px}
+.rl-hfila{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rl-hred{font-size:.8rem;font-weight:600;color:var(--texto-fuerte);width:76px}
+.rl-horas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rl-hora{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--borde-fuerte);background:var(--relleno);border-radius:999px;padding:2px 4px 2px 10px;font-size:.8rem;font-variant-numeric:tabular-nums;color:var(--texto)}
+.rl-hora button{appearance:none;border:0;background:transparent;color:var(--texto-tenue);cursor:pointer;font:inherit;font-size:.9rem;line-height:1;width:22px;height:22px;border-radius:50%}
+.rl-hora button:hover{background:var(--hover);color:var(--texto-fuerte)}
+.rl-hmas{appearance:none;border:1px solid var(--borde);background:transparent;color:var(--texto);border-radius:999px;padding:3px 8px;font:inherit;font-size:.8rem}
+.rl-hayuda{font-size:.72rem;color:var(--texto-tenue)}
+.rl-hayuda.error{color:var(--rojo-texto)}
 .ag-b svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px}
 @media (hover:hover) and (pointer:fine){.ag-b:hover{background:var(--hover)}.ag-b.prim:hover{background:var(--azul-claro)}.ag-b.peligro:hover{background:var(--rojo-tinte)}}
 .ag-bandeja{display:grid;grid-template-columns:minmax(260px,340px) 1fr;height:calc(100vh - 285px);min-height:440px;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
@@ -5110,6 +5149,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
   <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
+  <div class="nav-item" id="nav-reels" onclick="showPanel('reels')"><i data-lucide="clapperboard" class="nav-icon"></i> Reels <span id="rl-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
   <div class="nav-item" id="nav-sombra" onclick="showPanel('sombra')"><i data-lucide="eye" class="nav-icon"></i> Recomendaciones de pauta</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
@@ -6499,6 +6539,27 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN AGENTES PANEL ======= -->
 
+  <!-- ======= REELS PANEL ======= -->
+  <!-- Revisar los reels de la rutina antes de la cola (12, 18 y 21, IG y TikTok).
+       Todo vive en reels.scalerics.com: ver routes/reels.py. -->
+  <div id="reels-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Reels</h1>
+        <div class="page-date">Lo que aprobás entra a la cola y sale solo en los horarios de cada red, de a uno y en el orden de la cola (lo nuevo que aprobás va al final).</div>
+      </div>
+    </div>
+    <section class="rl-horarios" aria-label="Horarios de publicación">
+      <div class="rl-hfila" data-red="instagram"><span class="rl-hred">Instagram</span><div class="rl-horas"></div></div>
+      <div class="rl-hfila" data-red="tiktok"><span class="rl-hred">TikTok</span><div class="rl-horas"></div></div>
+      <div class="rl-hayuda" id="rl-hayuda" role="status" aria-live="polite">Hora de Uruguay. Sale uno por horario y por red.</div>
+    </section>
+    <div class="rl-filtros" id="rl-filtros" role="tablist" aria-label="Estado"></div>
+    <div class="cr-nota" id="rl-nota" role="status" aria-live="polite"></div>
+    <div class="rl-grilla" id="rl-grilla"></div>
+  </div>
+  <!-- ======= FIN REELS PANEL ======= -->
+
   <!-- ======= CREDENCIALES PANEL ======= -->
   <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
        admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
@@ -7720,6 +7781,7 @@ function showPanel(name) {
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
   if (name === 'sombra') soCargar();
+  if (name === 'reels') { rlCargarHorarios(); rlCargar(); }
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
   if (name === 'agentes') { agCargarBrujula(); agCargar(); }
@@ -13049,7 +13111,7 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','reels','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
@@ -13143,7 +13205,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reels'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -17725,6 +17787,252 @@ async function ofPedir(url, metodo, cuerpo) {
   try { d = await r.json(); } catch (e) { d = {}; }
   if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo completar. Probá de nuevo.');
   return d;
+}
+
+// ========== Reels ==========
+// Revisión antes de la cola. Los datos y los videos vienen de reels.scalerics.com
+// a través de /api/reels (routes/reels.py); el mp4 se baja directo de GitHub.
+const RL_ESTADOS = {
+  por_revisar: ['Por revisar', 'revisar'],
+  en_cola: ['En cola', 'cola'],
+  publicado: ['Publicado en ambas', 'pub'],
+  publicado_parcial: ['Publicado en una', 'pub'],
+  descartado: ['Descartado', 'desc'],
+};
+const RL_FILTROS = [
+  ['por_revisar', 'Por revisar', r => r.estado === 'por_revisar'],
+  ['en_cola', 'En cola', r => r.estado === 'en_cola'],
+  ['publicado', 'Publicados', r => r.estado === 'publicado' || r.estado === 'publicado_parcial'],
+  ['descartado', 'Descartados', r => r.estado === 'descartado'],
+];
+let rlDatos = [];
+let rlFiltro = 'por_revisar';
+let rlObs = null;
+let rlHoras = {instagram: [12, 18, 21], tiktok: [12, 18, 21]};
+
+function rlHoraTxt(h) { return String(h).padStart(2, '0') + ':00'; }
+
+function rlPintarHorarios() {
+  document.querySelectorAll('.rl-hfila').forEach(fila => {
+    const red = fila.dataset.red;
+    const caja = fila.querySelector('.rl-horas');
+    caja.innerHTML = '';
+    for (const h of rlHoras[red]) {
+      const chip = document.createElement('span');
+      chip.className = 'rl-hora';
+      chip.textContent = rlHoraTxt(h);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.setAttribute('aria-label', 'Sacar las ' + rlHoraTxt(h) + ' de ' + red);
+      x.onclick = () => rlGuardarHoras(red, rlHoras[red].filter(v => v !== h));
+      chip.appendChild(x);
+      caja.appendChild(chip);
+    }
+    const libres = [...Array(24).keys()].filter(h => !rlHoras[red].includes(h));
+    if (libres.length && rlHoras[red].length < 12) {
+      const sel = document.createElement('select');
+      sel.className = 'rl-hmas';
+      sel.setAttribute('aria-label', 'Agregar un horario en ' + red);
+      sel.innerHTML = '<option value="">+ Agregar hora</option>'
+        + libres.map(h => '<option value="' + h + '">' + rlHoraTxt(h) + '</option>').join('');
+      sel.onchange = () => { if (sel.value !== '') rlGuardarHoras(red, rlHoras[red].concat(Number(sel.value))); };
+      caja.appendChild(sel);
+    }
+  });
+}
+
+async function rlCargarHorarios() {
+  try {
+    const d = await ofPedir('/api/reels/horarios');
+    rlHoras = {instagram: d.instagram || [], tiktok: d.tiktok || []};
+  } catch (e) { /* quedan los de siempre; la cola igual se ve */ }
+  rlPintarHorarios();
+}
+
+async function rlGuardarHoras(red, horas) {
+  const ayuda = document.getElementById('rl-hayuda');
+  const nuevas = {...rlHoras, [red]: horas.slice().sort((a, b) => a - b)};
+  try {
+    const d = await ofPedir('/api/reels/horarios', 'PUT', nuevas);
+    rlHoras = {instagram: d.instagram, tiktok: d.tiktok};
+    ayuda.className = 'rl-hayuda';
+    ayuda.textContent = 'Guardado. Hora de Uruguay. Sale uno por horario y por red.';
+  } catch (e) {
+    ayuda.className = 'rl-hayuda error';
+    ayuda.textContent = e.message;
+  }
+  rlPintarHorarios();
+  rlPintar();
+}
+
+// Los próximos horarios de Instagram en Montevideo (UTC-3), que es la red que hoy marca el ritmo.
+function rlProximosHorarios(n) {
+  const fuera = [];
+  const ahora = Date.now();
+  const base = new Date(ahora - 3 * 3600e3); // el reloj de Montevideo leído como UTC
+  if (!rlHoras.instagram.length) return fuera;
+  for (let d = 0; fuera.length < n && d < 60; d++) {
+    for (const h of rlHoras.instagram) {
+      const t = Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + d, h + 3);
+      if (t > ahora && fuera.length < n) fuera.push(new Date(t));
+    }
+  }
+  return fuera;
+}
+
+function rlHorario(f) {
+  const z = {timeZone: 'America/Montevideo'};
+  const diaDe = x => x.toLocaleDateString('es-UY', z);
+  const dia = diaDe(f) === diaDe(new Date()) ? 'hoy'
+    : diaDe(f) === diaDe(new Date(Date.now() + 864e5)) ? 'mañana'
+    : 'el ' + f.toLocaleDateString('es-UY', {...z, weekday: 'long', day: 'numeric'});
+  return dia + ' a las ' + f.toLocaleTimeString('es-UY', {...z, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+}
+
+async function rlCargar() {
+  const g = document.getElementById('rl-grilla');
+  const nota = document.getElementById('rl-nota');
+  nota.textContent = '';
+  if (!rlDatos.length) g.innerHTML = '<div class="rl-vacio">Cargando reels…</div>';
+  try {
+    rlDatos = (await ofPedir('/api/reels')).reels || [];
+  } catch (e) {
+    g.innerHTML = '';
+    nota.textContent = e.message;
+    return;
+  }
+  rlPintar();
+}
+
+function rlPintar() {
+  // Cola: en el orden que se le dio (si no, el primero que se aprobó). Los que
+  // ya están en Instagram esperan a TikTok y no ocupan horario de Instagram.
+  const enCola = rlOrdenCola();
+  const cola = enCola.filter(r => !r.enInstagram);
+  const horarios = rlProximosHorarios(cola.length);
+  const sale = {};
+  cola.forEach((r, i) => { sale[r.slug] = horarios[i]; });
+
+  const pend = rlDatos.filter(r => r.estado === 'por_revisar').length;
+  const badge = document.getElementById('rl-badge');
+  if (badge) { badge.textContent = pend; badge.style.display = pend ? '' : 'none'; }
+
+  const fil = document.getElementById('rl-filtros');
+  fil.innerHTML = RL_FILTROS.map(([id, txt, f]) =>
+    '<button type="button" class="rl-filtro" role="tab" data-rl="' + id + '" aria-selected="' + (id === rlFiltro) + '">'
+    + esc(txt) + '<b>' + rlDatos.filter(f).length + '</b></button>').join('');
+  fil.querySelectorAll('[data-rl]').forEach(b => { b.onclick = () => { rlFiltro = b.dataset.rl; rlPintar(); }; });
+
+  const lista = rlFiltro === 'en_cola' ? enCola : rlDatos.filter(RL_FILTROS.find(x => x[0] === rlFiltro)[2]);
+  const g = document.getElementById('rl-grilla');
+  if (rlObs) rlObs.disconnect();
+  if (!lista.length) {
+    g.innerHTML = '<div class="rl-vacio">' + (rlFiltro === 'por_revisar'
+      ? 'No hay nada para revisar. La rutina hace reels nuevos de madrugada.' : 'No hay reels en este estado.') + '</div>';
+    return;
+  }
+  // El video se pide recién cuando la tarjeta está por verse.
+  rlObs = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.src = e.target.dataset.src; rlObs.unobserve(e.target); }
+  }), {rootMargin: '400px'});
+
+  g.innerHTML = '';
+  for (const r of lista) {
+    const [txt, cls] = RL_ESTADOS[r.estado] || RL_ESTADOS.por_revisar;
+    let cuando = '';
+    if (r.estado === 'en_cola') {
+      cuando = r.enInstagram ? 'Ya está en Instagram: sale en TikTok cuando TikTok apruebe la app'
+        : sale[r.slug] ? 'Sale ' + rlHorario(sale[r.slug]) + ' en Instagram'
+        : 'Instagram no tiene horarios: agregá uno arriba';
+    }
+    const c = document.createElement('article');
+    c.className = 'rl-card';
+    c.innerHTML = '<video preload="metadata" controls playsinline data-src="/api/reels/' + encodeURIComponent(r.slug) + '/video#t=1.5"></video>'
+      + '<div class="rl-cuerpo"><div class="rl-meta"><span class="rl-chip ' + cls + '">' + esc(txt) + '</span>'
+      + '<span class="rl-red' + (r.enInstagram ? ' si' : '') + '">IG ' + (r.enInstagram ? '✓' : '·') + '</span>'
+      + '<span class="rl-red' + (r.enTikTok ? ' si' : '') + '">TikTok ' + (r.enTikTok ? '✓' : '·') + '</span>'
+      + '<span class="rl-red">' + esc(r.fecha || '') + '</span></div>'
+      + '<div class="rl-gancho"></div>'
+      + (cuando ? '<div class="rl-sale">' + esc(cuando) + '</div>' : '')
+      + '<div class="rl-acciones"></div></div>';
+    const gancho = c.querySelector('.rl-gancho');
+    gancho.textContent = String(r.gancho || '').replace(/`/g, '');
+    gancho.title = r.descripcion || '';
+    const acciones = {
+      por_revisar: [['en_cola', 'Aprobar', 'prim'], ['descartado', 'Descartar', 'peligro']],
+      publicado_parcial: [['en_cola', 'A la cola', 'prim'], ['descartado', 'Descartar', 'peligro']],
+      en_cola: [['por_revisar', 'Sacar de la cola', ''], ['descartado', 'Descartar', 'peligro']],
+      descartado: [['por_revisar', 'Recuperar', '']],
+    }[r.estado] || [];
+    const pie = c.querySelector('.rl-acciones');
+    if (rlFiltro === 'en_cola') {
+      const i = enCola.indexOf(r);
+      c.querySelector('.rl-meta').insertAdjacentHTML('afterbegin', '<span class="rl-pos">' + (i + 1) + '</span>');
+      for (const [paso, flecha, txt] of [[-1, '↑', 'Subir en la cola'], [1, '↓', 'Bajar en la cola']]) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ag-b rl-mover';
+        b.textContent = flecha;
+        b.setAttribute('aria-label', txt);
+        b.disabled = !enCola[i + paso];
+        b.onclick = () => rlMover(enCola, i, paso);
+        pie.appendChild(b);
+      }
+    }
+    for (const [estado, etiqueta, clase] of acciones) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ag-b ' + clase;
+      b.textContent = etiqueta;
+      b.onclick = () => rlCambiar(r, estado, b);
+      pie.appendChild(b);
+    }
+    g.appendChild(c);
+    rlObs.observe(c.querySelector('video'));
+  }
+}
+
+function rlOrdenCola() {
+  const lugar = r => (r.revisado && Number.isFinite(r.revisado.orden)) ? r.revisado.orden : Infinity;
+  return rlDatos.filter(r => r.estado === 'en_cola')
+    .sort((a, b) => (lugar(a) - lugar(b)) || String((a.revisado || {}).fecha || '').localeCompare(String((b.revisado || {}).fecha || '')));
+}
+
+async function rlMover(cola, i, paso) {
+  const nueva = cola.slice();
+  [nueva[i], nueva[i + paso]] = [nueva[i + paso], nueva[i]];
+  const antes = nueva.map(r => r.revisado ? r.revisado.orden : null);
+  nueva.forEach((r, k) => { r.revisado = {...(r.revisado || {}), orden: k}; });
+  rlPintar();
+  try {
+    await ofPedir('/api/reels/orden', 'PUT', {orden: nueva.map(r => r.slug)});
+  } catch (e) {
+    nueva.forEach((r, k) => { r.revisado.orden = antes[k]; });
+    rlPintar();
+    document.getElementById('rl-nota').textContent = e.message;
+  }
+}
+
+async function rlCambiar(r, estado, boton) {
+  boton.disabled = true;
+  document.getElementById('rl-nota').textContent = '';
+  try {
+    await ofPedir('/api/reels/' + encodeURIComponent(r.slug) + '/estado', 'POST', {estado: estado});
+  } catch (e) {
+    boton.disabled = false;
+    document.getElementById('rl-nota').textContent = e.message;
+    return;
+  }
+  r.estado = estado !== 'por_revisar' ? estado : (r.enInstagram || r.enTikTok) ? 'publicado_parcial' : 'por_revisar';
+  if (estado === 'en_cola') {
+    // Va al final de la cola, igual que lo anota el servidor.
+    const ultimos = rlDatos.filter(x => x !== r && x.revisado && Number.isFinite(x.revisado.orden)).map(x => x.revisado.orden);
+    r.revisado = {fecha: new Date().toISOString(), orden: ultimos.length ? Math.max(...ultimos) + 1 : 0};
+  } else {
+    r.revisado = estado === 'por_revisar' ? null : {fecha: new Date().toISOString()};
+  }
+  rlPintar();
 }
 
 function ofFecha(s) {
@@ -23441,7 +23749,7 @@ def create_app(db_path: str) -> Flask:
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
-                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, seguimiento_bp):
+                oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, seguimiento_bp, reels_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -24495,8 +24803,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reels'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',reels:'Reels'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
