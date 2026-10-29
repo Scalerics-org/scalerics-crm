@@ -3910,6 +3910,9 @@ textarea.fid-in{resize:vertical;min-height:54px}
 .rl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
 .rl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .rl-card video{width:100%;aspect-ratio:9/16;background:#000;display:block;object-fit:cover}
+/* En pantalla completa, el video entero (sin recortar) y centrado */
+.rl-card video:fullscreen{object-fit:contain;aspect-ratio:auto;width:100%;height:100%}
+.rl-card video:-webkit-full-screen{object-fit:contain;aspect-ratio:auto;width:100%;height:100%}
 .rl-cuerpo{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
 .rl-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .rl-chip{font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 9px;border:1px solid var(--borde);color:var(--texto-tenue)}
