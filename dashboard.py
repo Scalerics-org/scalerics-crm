@@ -3928,6 +3928,9 @@ textarea.fid-in{resize:vertical;min-height:54px}
 @media (max-width:900px){.rl-cuerpo-panel{grid-template-columns:minmax(0,1fr)}.rl-hoy{position:static;order:-1}}
 .rl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .rl-card video{width:100%;aspect-ratio:9/16;background:#000;display:block;object-fit:cover}
+/* En pantalla completa, el video entero (sin recortar) y centrado */
+.rl-card video:fullscreen{object-fit:contain;aspect-ratio:auto;width:100%;height:100%}
+.rl-card video:-webkit-full-screen{object-fit:contain;aspect-ratio:auto;width:100%;height:100%}
 .rl-cuerpo{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
 .rl-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .rl-chip{font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 9px;border:1px solid var(--borde);color:var(--texto-tenue)}
@@ -17836,6 +17839,8 @@ let rlObs = null;
 const RL_POR_PAGINA = 6;
 let rlPagina = 0;
 let rlMarcar = null;
+// Un <video> por reel que se reusa entre repintadas: así aprobar o mover no vuelve a bajar todos.
+const rlVideos = new Map();
 let rlHoras = {instagram: [12, 18, 21], tiktok: [12, 18, 21]};
 
 function rlHoraTxt(h) { return String(h).padStart(2, '0') + ':00'; }
@@ -17998,7 +18003,7 @@ function rlPintar() {
     }
     const c = document.createElement('article');
     c.className = 'rl-card';
-    c.innerHTML = '<video preload="metadata" controls playsinline data-src="/api/reels/' + encodeURIComponent(r.slug) + '/video#t=1.5"></video>'
+    c.innerHTML = ''
       + '<div class="rl-cuerpo"><div class="rl-meta"><span class="rl-chip ' + cls + '">' + esc(txt) + '</span>'
       + '<span class="rl-red' + (r.enInstagram ? ' si' : '') + '">IG ' + (r.enInstagram ? '✓' : '·') + '</span>'
       + '<span class="rl-red' + (r.enTikTok ? ' si' : '') + '">TikTok ' + (r.enTikTok ? '✓' : '·') + '</span>'
@@ -18039,8 +18044,18 @@ function rlPintar() {
       pie.appendChild(b);
     }
     if (r.slug === rlMarcar) { c.classList.add('marcado'); marcada = c; }
+    let v = rlVideos.get(r.slug);
+    if (!v) {
+      v = document.createElement('video');
+      v.preload = 'metadata';
+      v.controls = true;
+      v.playsInline = true;
+      v.dataset.src = '/api/reels/' + encodeURIComponent(r.slug) + '/video#t=1.5';
+      rlVideos.set(r.slug, v);
+    }
+    c.prepend(v);
     g.appendChild(c);
-    rlObs.observe(c.querySelector('video'));
+    if (!v.getAttribute('src')) rlObs.observe(v);
   }
   rlMarcar = null;
   if (marcada) marcada.scrollIntoView({block: 'center', behavior: 'smooth'});
