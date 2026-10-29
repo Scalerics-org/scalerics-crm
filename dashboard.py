@@ -17808,6 +17808,8 @@ const RL_FILTROS = [
 let rlDatos = [];
 let rlFiltro = 'por_revisar';
 let rlObs = null;
+// Un <video> por reel que se reusa entre repintadas: así aprobar o mover no vuelve a bajar todos.
+const rlVideos = new Map();
 let rlHoras = {instagram: [12, 18, 21], tiktok: [12, 18, 21]};
 
 function rlHoraTxt(h) { return String(h).padStart(2, '0') + ':00'; }
@@ -17948,7 +17950,7 @@ function rlPintar() {
     }
     const c = document.createElement('article');
     c.className = 'rl-card';
-    c.innerHTML = '<video preload="metadata" controls playsinline data-src="/api/reels/' + encodeURIComponent(r.slug) + '/video#t=1.5"></video>'
+    c.innerHTML = ''
       + '<div class="rl-cuerpo"><div class="rl-meta"><span class="rl-chip ' + cls + '">' + esc(txt) + '</span>'
       + '<span class="rl-red' + (r.enInstagram ? ' si' : '') + '">IG ' + (r.enInstagram ? '✓' : '·') + '</span>'
       + '<span class="rl-red' + (r.enTikTok ? ' si' : '') + '">TikTok ' + (r.enTikTok ? '✓' : '·') + '</span>'
@@ -17988,8 +17990,18 @@ function rlPintar() {
       b.onclick = () => rlCambiar(r, estado, b);
       pie.appendChild(b);
     }
+    let v = rlVideos.get(r.slug);
+    if (!v) {
+      v = document.createElement('video');
+      v.preload = 'metadata';
+      v.controls = true;
+      v.playsInline = true;
+      v.dataset.src = '/api/reels/' + encodeURIComponent(r.slug) + '/video#t=1.5';
+      rlVideos.set(r.slug, v);
+    }
+    c.prepend(v);
     g.appendChild(c);
-    rlObs.observe(c.querySelector('video'));
+    if (!v.getAttribute('src')) rlObs.observe(v);
   }
 }
 
