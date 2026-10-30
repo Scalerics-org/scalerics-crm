@@ -98,11 +98,32 @@ def test_video_redirige_a_github_sin_bajarlo(db, monkeypatch):
         assert allow_redirects is False
         return _Resp(302, headers={"Location": "https://raw.githubusercontent.com/x.mp4?token=abc"})
 
+    monkeypatch.setattr(rl, "_videos", {})
     monkeypatch.setattr(rl.requests, "get", falso_get)
     c = _cliente(db, "mkt@scalerics.com", ["reels"])
     r = c.get("/api/reels/el-juicio/video")
     assert r.status_code == 302
     assert r.headers["Location"].startswith("https://raw.githubusercontent.com/")
+
+
+def test_video_guarda_el_link_un_rato(db, monkeypatch):
+    pedidos = []
+
+    def falso_get(url, params=None, headers=None, timeout=None, allow_redirects=True, **kw):
+        pedidos.append(params["slug"])
+        return _Resp(302, headers={"Location": "https://raw.githubusercontent.com/" + params["slug"] + ".mp4"})
+
+    monkeypatch.setattr(rl, "_videos", {})
+    monkeypatch.setattr(rl.requests, "get", falso_get)
+    c = _cliente(db, "mkt@scalerics.com", ["reels"])
+    for _ in range(3):
+        assert c.get("/api/reels/uno/video").headers["Location"].endswith("/uno.mp4")
+    assert c.get("/api/reels/dos/video").headers["Location"].endswith("/dos.mp4")
+    assert pedidos == ["uno", "dos"]
+
+    monkeypatch.setattr(rl.time, "monotonic", lambda: 10**9)  # pasaron los 2 minutos
+    c.get("/api/reels/uno/video")
+    assert pedidos == ["uno", "dos", "uno"]
 
 
 def test_panel_caido_da_502(db, monkeypatch):
