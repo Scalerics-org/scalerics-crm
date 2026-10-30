@@ -302,8 +302,7 @@ def test_el_menu_tiene_recursos_humanos_con_organigrama_y_ausencias():
                      ("flujos", "workflow", "Flujos"), ("horarios", "clock-4", "Horarios")]
     operacion = _entre(menu, '<div class="nav-section-label">OPERACIÓN</div>',
                        '<div class="nav-section-label">RECURSOS HUMANOS</div>')
-    assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "tasks", "daily", "daily_admin",
-                                                        "activity"]
+    assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "tasks", "activity"]
 
 
 def test_esta_registrado_en_todos_lados():

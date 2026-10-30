@@ -633,7 +633,7 @@ def meta_crear_lead_manual():
 
     Cuerpo: `name` (obligatorio), `phone` o `email` (al menos uno), `origen`
     (clave de ORIGENES_MANUALES), y opcionales `negocio`, `city`, `busca`,
-    `presupuesto`, `fecha` ('AAAA-MM-DD', dia en que llego) y `nota`.
+    `presupuesto`, `fecha` ('AAAA-MM-DD', dia en que llego), `nota` y `pais`.
 
     Si ya hay un lead de Meta con ese telefono o mail, 409 con su id: no se
     duplica. Si el telefono es de una ficha de otra cohorte (un negocio de
@@ -717,7 +717,10 @@ def meta_crear_lead_manual():
         # en el mes en que llego.
         registrar_envio_meta(db, biz_id, f"manual-{biz_id}-{scraped_at}", scraped_at,
                              form_data=json.dumps(fields, ensure_ascii=False))
-    update_business(db, biz_id, origen_manual=origen)
+    # El país del panel desde el que se cargó (services/paises.py); sin uno
+    # válido sale del teléfono, como el resto.
+    from services.paises import valido
+    update_business(db, biz_id, origen_manual=origen, pais=valido(data.get("pais")))
 
     log_activity(db, quien, "lead_created", "lead", biz_id, name,
                  f"Cargado a mano en Meta Ads · llegó por {etiqueta}"

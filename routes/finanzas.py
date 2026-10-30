@@ -16,6 +16,7 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_edicion, require_panel
+from services.paises import por_pais
 from database import (actualizar_dato_balance, borrar_dato_balance,
                       crear_dato_balance, get_dato_balance,
                       listar_datos_balance)
@@ -38,6 +39,8 @@ from services.cobro_tarjeta import (MODOS, TARJETAS, armar_cobro, desglosar,
                                     validar_ajustes)
 
 finanzas_bp = Blueprint("finanzas", __name__)
+# Uruguay, Argentina o Chile, según las banderitas del panel.
+por_pais(finanzas_bp)
 
 
 def _db() -> str:
@@ -110,7 +113,7 @@ def _validar_comunes(data: dict):
         # con ValueError, y sin este catch escapaba como 500.
         return None, "tipo_cambio inválido" if isinstance(e, TypeError) else str(e)
 
-    tipo_cambio = float(tipo_cambio) if moneda == "UYU" else None
+    tipo_cambio = float(tipo_cambio) if moneda != "USD" else None
     return (tipo, categoria, moneda, monto, tipo_cambio, monto_usd), None
 
 
@@ -732,7 +735,7 @@ def api_balance():
     Materializa antes, igual que el resumen: un fijo del mes ya tiene que
     estar contado. Lo cubre el candado del blueprint (Ruling R20).
     """
-    from services.daily import MONTEVIDEO, hoy_montevideo
+    from services.hora_mvd import MONTEVIDEO, hoy_montevideo
 
     tipo = request.args.get("tipo") or ""
     if tipo not in BALANCE_TIPOS:
@@ -768,7 +771,7 @@ def api_balance_general():
     Montevideo. Es GET: el Contador (Finanzas en solo lectura) lo genera
     igual. Materializa los fijos antes, como el resto.
     """
-    from services.daily import MONTEVIDEO, hoy_montevideo
+    from services.hora_mvd import MONTEVIDEO, hoy_montevideo
 
     tipo = request.args.get("tipo") or ""
     if tipo not in BALANCE_TIPOS:

@@ -49,7 +49,7 @@ def api_buscar():
     try:
         tablas = {f[0] for f in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
-        if "businesses" in tablas and puede("clientes", "seg_leads"):
+        if "businesses" in tablas and puede("clientes"):
             cols = _columnas(c, "businesses")
             extra = [x for x in ("email", "city", "contact_name") if x in cols]
             filtro = "WHERE archivado_en IS NULL" if "archivado_en" in cols else ""

@@ -22,7 +22,7 @@ from werkzeug.security import generate_password_hash
 
 import dashboard
 from database import create_user, crear_movimiento, crear_recurrente, init_db
-from services.daily import hoy_montevideo
+from services.hora_mvd import hoy_montevideo
 from services.finanzas import (balance, calcular_balance, es_en_blanco,
                                fecha_valida, materializar_recurrentes,
                                periodo_balance)
@@ -320,8 +320,8 @@ def test_la_ruta_devuelve_el_balance_de_este_anio(app, cli):
 
 
 def test_la_ruta_usa_el_dia_de_montevideo(app, cli, monkeypatch):
-    import services.daily
-    monkeypatch.setattr(services.daily, "hoy_montevideo", lambda: date(2026, 12, 31))
+    import services.hora_mvd
+    monkeypatch.setattr(services.hora_mvd, "hoy_montevideo", lambda: date(2026, 12, 31))
     d = cli.get("/api/finanzas/balance?tipo=blanco").get_json()
     assert (d["desde"], d["hasta"]) == ("2026-01-01", "2026-12-31")
 
