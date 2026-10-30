@@ -37,16 +37,13 @@ from routes.seguimiento import seguimiento_bp
 from routes.oficina_bot import oficina_bot_bp
 from routes.wa_juan import wa_juan_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
-from routes.sombra import sombra_bp
 from routes.reels import reels_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
-from routes.seg_leads import seg_leads_bp
 from routes.fidelidad import fidelidad_bp
 from routes.buscar import buscar_bp
 from routes.plexo import PUBLICAS as PLEXO_PUBLICAS, plexo_bp
-from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
@@ -1645,7 +1642,7 @@ function abrirEsencial(id) {
 
 function _finEseMoneda() {
   document.getElementById('fin-ese-tc-row').style.display =
-    document.getElementById('fin-ese-moneda').value === 'UYU' ? '' : 'none';
+    document.getElementById('fin-ese-moneda').value !== 'USD' ? '' : 'none';
 }
 
 function cerrarEsencial() { document.getElementById('fin-ese-modal').classList.remove('open'); }
@@ -1687,8 +1684,8 @@ async function borrarEsencial(id) {
 let _finVentas = [];
 
 function _finMontoVenta(v) {
-  return v.moneda === 'UYU'
-    ? 'UYU ' + Math.round(v.monto).toLocaleString('es-UY') + ' <span style="color:var(--texto-debil)">(' + _finUsd(v.monto_usd) + ')</span>'
+  return v.moneda !== 'USD'
+    ? esc(v.moneda) + ' ' + Math.round(v.monto).toLocaleString('es-UY') + ' <span style="color:var(--texto-debil)">(' + _finUsd(v.monto_usd) + ')</span>'
     : _finUsd(v.monto_usd);
 }
 
@@ -1766,7 +1763,7 @@ function _finVentaClienteCambio() {
 
 function _finVentaMoneda() {
   document.getElementById('fin-venta-tc-row').style.display =
-    document.getElementById('fin-venta-moneda').value === 'UYU' ? '' : 'none';
+    document.getElementById('fin-venta-moneda').value !== 'USD' ? '' : 'none';
 }
 
 // abrirVenta(id) edita una venta a mano; abrirVenta(null, i) corrige el monto
@@ -1861,12 +1858,12 @@ const GB_PALABRAS = {
   cal: 'agenda reuniones turnos', meta: 'facebook instagram anuncios leads formularios campañas',
   marketing: 'embudo dossier radiografia', email_mkt: 'mails correos campañas newsletter',
   linkedin: 'posts publicaciones', instagram: 'posts publicaciones historias',
-  sombra: 'pauta anuncios inversion', finanzas: 'plata gastos ingresos caja cobros facturas plexo tarjeta',
+  finanzas: 'plata gastos ingresos caja cobros facturas plexo tarjeta',
   simulador: 'proyeccion', inteligencia_fin: 'numeros resultados',
-  seg_leads: 'llamadas seguimiento leads', wa: 'whatsapp chats mensajes bot',
+  wa: 'whatsapp chats mensajes bot',
   notion_clients: 'presupuesto presupuestos notion esperando confirmacion clientes', demos: 'presentaciones',
   plantillas: 'mensajes textos', clientes: 'clientes cuentas', projects: 'proyectos desarrollo',
-  tasks: 'pendientes to do', daily: 'diario standup', activity: 'historial log',
+  tasks: 'pendientes to do', activity: 'historial log',
   equipo: 'organigrama equipo personas', ausencias: 'vacaciones licencias', flujos: 'procesos',
   horarios: 'horas', cola: 'outbound fidelidad restaurantes peluquerias comercios llamar captacion pipeline agenda visitas',
   metrics: 'inteligencia comercial metricas fidelidad ventas', fid_mails: 'mails restaurantes fidelidad frio',
@@ -3367,15 +3364,11 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-oficina .nav-icon{stroke:#c084fc}
 #nav-agentes .nav-icon{stroke:#22d3ee}
 #nav-flujos .nav-icon{stroke:#5eead4}
-#nav-seg_leads .nav-icon{stroke:#fb7185}
-#nav-daily .nav-icon{stroke:#38bdf8}
-#nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
 #nav-fid_mails .nav-icon{stroke:#a5b4fc}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
-#nav-sombra .nav-icon{stroke:#a8a29e}
 #nav-reels .nav-icon{stroke:#f472b6}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
@@ -3391,8 +3384,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
 #nav-inteligencia_fin.active .nav-icon{stroke:#bbf7d0}
-#nav-daily.active .nav-icon{stroke:#7dd3fc}
-#nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
 #nav-demos.active .nav-icon{stroke:#67e8f9}
 #nav-sdr.active .nav-icon{stroke:#fca5a5}
@@ -3404,13 +3395,11 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-oficina.active .nav-icon{stroke:#e9d5ff}
 #nav-agentes.active .nav-icon{stroke:#a5f3fc}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
-#nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 #nav-fid_mails.active .nav-icon{stroke:#c7d2fe}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
-#nav-sombra.active .nav-icon{stroke:#e2e8f0}
 #nav-reels.active .nav-icon{stroke:#fbcfe8}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
@@ -3424,8 +3413,6 @@ body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
 body.light #nav-inteligencia_fin .nav-icon{stroke:#15803d}
-body.light #nav-daily .nav-icon{stroke:#0284c7}
-body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
 body.light #nav-demos .nav-icon{stroke:#0e7490}
 body.light #nav-sdr .nav-icon{stroke:#b91c1c}
@@ -3437,13 +3424,11 @@ body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-oficina .nav-icon{stroke:#7c3aed}
 body.light #nav-agentes .nav-icon{stroke:#0e7490}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
-body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 body.light #nav-fid_mails .nav-icon{stroke:#4338ca}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
-body.light #nav-sombra .nav-icon{stroke:#57534e}
 body.light #nav-reels .nav-icon{stroke:#db2777}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
@@ -4466,8 +4451,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem;white-space:nowrap}
 .hr-tabla th.hr-col-dia{border-radius:6px}
 .hr-tabla th.hr-col-dia:nth-child(even){background:var(--relleno);color:var(--texto-tenue)}
-/* El color de cada persona es el de Daily: hr-color-N usa el mismo token que
-   dy-color-N (hay un test que los compara) con el tinte de su familia. */
+/* Un color por persona: hr-color-N, con el tinte de su familia. */
 .hr-color-0{--hr-c:var(--azul-claro);--hr-t:var(--azul-tinte)}
 .hr-color-1{--hr-c:var(--verde-texto);--hr-t:var(--verde-tinte)}
 .hr-color-2{--hr-c:var(--ambar);--hr-t:var(--ambar-tinte)}
@@ -4569,125 +4553,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .pl-aviso-visible{opacity:1;transform:translate(-50%,0)}
 .pl-fuera{position:fixed;left:-9999px;top:0;opacity:0}
 @media(max-width:768px){ .pl-grilla{grid-template-columns:1fr} .pl-acciones-der{margin-left:0} .pl-aviso{bottom:84px} .pl-modal{padding:20px} .pl-modal .modal-row{grid-template-columns:1fr} }
-/* ── Daily Programador ────────────────────────────────────────────────────────
-   Daily Programador y Daily Admin: la misma pantalla. Solo tokens, sin reglas
-   propias de tema claro. El día usa las tarjetas, contadores y grupos de
-   Seguimiento de leads (clases sl-): acá va solo lo propio. El menú por
-   persona con su ícono y su color, lo que Seguimiento no tiene (hechas
-   colapsadas, estado vacío) y los recordatorios que se repiten. */
-.dy-nav-personas{display:flex;flex-direction:column}
-.dy-nav-sub{display:flex;align-items:center;gap:8px;padding:7px 20px 7px 42px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
-.dy-nav-sub:hover{color:var(--texto);background:var(--hover)}
-.dy-nav-sub.dy-activa{color:var(--texto-fuerte);border-left-color:var(--azul);background:var(--azul-tinte)}
-.dy-nav-icono{width:15px;height:15px;stroke-width:2;flex-shrink:0}
-.dy-nav-icono.dy-color-0{stroke:var(--azul-claro)}
-.dy-nav-icono.dy-color-1{stroke:var(--verde-texto)}
-.dy-nav-icono.dy-color-2{stroke:var(--ambar)}
-.dy-nav-icono.dy-color-3{stroke:var(--texto-tenue)}
-.dy-borde-0{border-left:3px solid var(--azul-claro)}
-.dy-borde-1{border-left:3px solid var(--verde-texto)}
-.dy-borde-2{border-left:3px solid var(--ambar)}
-.dy-borde-3{border-left:3px solid var(--texto-tenue)}
-.dy-personas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.dy-persona{display:inline-flex;align-items:center;gap:6px;min-height:36px;background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:6px 14px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
-.dy-persona[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
-.dy-dia{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.dy-fecha{font-size:1rem;font-weight:700;color:var(--texto-fuerte);min-width:0}
-.dy-fecha-hoy{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);border-radius:99px;padding:2px 8px;margin-left:8px;vertical-align:middle}
-.dy-agregar{display:flex;gap:8px;margin-bottom:18px}
-.dy-in{flex:1 1 auto;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;min-width:0}
-.dy-in:focus{outline:none;border-color:var(--azul)}
-.dy-in::placeholder{color:var(--texto-debil)}
-.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0 10px}
-.dy-error:empty{display:none}
-.dy-tarjeta-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);min-width:0;overflow-wrap:anywhere}
-.dy-etiqueta{display:inline-block;font-size:.66rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-tenue);margin-top:8px}
-.dy-hechas summary{cursor:pointer}
-.dy-hechas summary::marker{color:var(--texto-debil)}
-.dy-tachado{font-size:.84rem;color:var(--texto-debil);text-decoration:line-through;overflow-wrap:anywhere}
-.dy-linea-botones{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex-shrink:0}
-.dy-vacio-grande{display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px 16px;margin-bottom:22px;font-size:.88rem;color:var(--texto-tenue)}
-.dy-recurrentes{margin-top:8px}
-.dy-recurrentes-cab{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-.dy-recurrentes-cab .fin-card-title{margin-bottom:0}
-.dy-lista{display:flex;flex-direction:column;gap:6px}
-.dy-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 2px}
-.dy-dias{display:flex;flex-wrap:wrap;gap:6px}
-.modal .dy-dias{margin:0 0 12px}
-.dy-dia-chip{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;color:var(--texto-tenue);background:var(--relleno);border:1px solid var(--borde);border-radius:99px;padding:5px 10px;cursor:pointer}
-.dy-dia-chip input{accent-color:var(--azul);margin:0}
-.dy-aviso-modal{font-size:.74rem;color:var(--texto-debil);margin:0 0 10px;line-height:1.4}
-.dy-rec{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--superficie-honda)}
-.dy-rec-cuerpo{flex:1;min-width:0}
-.dy-rec-texto{font-size:.84rem;color:var(--texto);overflow-wrap:anywhere}
-.dy-rec-cuando{font-size:.7rem;color:var(--texto-debil);margin-top:2px}
-.dy-pausado .dy-rec-texto{color:var(--texto-debil)}
-.dy-badge{font-size:.64rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-debil);white-space:nowrap}
-.dy-panel .dy-oculto,.modal .dy-oculto{display:none}
-@media(max-width:600px){
-  .dy-panel .sl-btn,.dy-panel .btn-primary,.dy-panel .btn-ghost,.dy-persona,.dy-nav-sub{min-height:40px}
-  .dy-panel .sl-acciones .sl-btn{flex:1 1 auto}
-  .dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}
-  .dy-rec{flex-wrap:wrap}
-  .dy-rec-cuerpo{flex-basis:100%}
-}
-/* ── Seguimiento de leads ─────────────────────────────────────────────────────
-   La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
-   vencido y el verde de Hecho son los de la familia de estados, que llegan a
-   4,5 en los dos temas. */
-.sl-cabecera{gap:12px;flex-wrap:wrap}
-.sl-contadores{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:22px}
-.sl-contador{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;cursor:pointer;font-family:inherit;text-align:left;color:var(--texto)}
-.sl-contador:hover{border-color:var(--borde-fuerte)}
-.sl-contador:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
-.sl-contador-num{font-size:1.3rem;font-weight:800;line-height:1.1;color:var(--texto-fuerte)}
-.sl-contador-rot{font-size:.72rem;color:var(--texto-tenue)}
-.sl-contador-vencidos{background:var(--rojo-tinte);border-color:var(--rojo-borde)}
-.sl-contador-vencidos .sl-contador-num{color:var(--rojo-texto)}
-.sl-contador-vencidos .sl-contador-rot{color:var(--rojo-texto)}
-.sl-grupo{margin-bottom:22px;scroll-margin-top:16px}
-.sl-grupo-titulo{font-size:.72rem;font-weight:700;letter-spacing:.8px;color:var(--rotulo);margin:0 0 10px}
-.sl-grupo-titulo-vencidos{color:var(--rojo-texto)}
-.sl-tarjeta{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:10px}
-.sl-vencida{border-left:3px solid var(--rojo)}
-.sl-tarjeta-cab{display:flex;justify-content:space-between;align-items:baseline;gap:4px 12px;flex-wrap:wrap}
-.sl-quien{font-size:.88rem;color:var(--texto-tenue);min-width:0;overflow-wrap:anywhere}
-.sl-nombre{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--texto-fuerte);cursor:pointer;text-align:left}
-.sl-nombre:hover{text-decoration:underline}
-.sl-cuando{font-size:.78rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
-.sl-cuando-vencido{color:var(--rojo-texto)}
-.sl-contexto{font-size:.82rem;color:var(--texto);margin-top:6px;line-height:1.45;overflow-wrap:anywhere}
-.sl-ultima{color:var(--texto-tenue)}
-.sl-nota{font-size:.74rem;color:var(--texto-debil);margin-top:3px;overflow-wrap:anywhere}
-.sl-acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-.sl-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
-.sl-btn:hover{border-color:var(--borde-fuerte)}
-.sl-btn:disabled{opacity:.45;cursor:not-allowed}
-.sl-btn-hecho{background:var(--verde-tinte);color:var(--verde-texto)}
-.sl-linea{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:6px}
-.sl-linea-txt{min-width:0}
-.sl-linea-motivo{font-size:.76rem;color:var(--texto-debil);margin-top:2px;overflow-wrap:anywhere}
-.sl-linea-fecha{font-size:.76rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
-.sl-vacio{font-size:.82rem;color:var(--texto-debil);padding:6px 0}
-.sl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
-.sl-error:empty{display:none}
-.sl-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4;margin-bottom:12px}
-.sl-aviso:empty{display:none}
-.sl-elegido{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--relleno);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.85rem;color:var(--texto-fuerte)}
-.sl-elegido[hidden]{display:none}
-.sl-buscador[hidden]{display:none}
-.sl-bloque[hidden]{display:none}
-.sl-link{background:none;border:none;color:var(--azul-claro);font:inherit;font-size:.76rem;cursor:pointer;padding:0}
-.sl-rapidos{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
-.sl-check{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
-.sl-check input{accent-color:var(--azul);width:16px;height:16px}
-.sl-ficha-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.sl-ficha-pendiente{background:var(--relleno);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--texto);line-height:1.45}
-.sl-ficha-llamado{padding:7px 0;border-bottom:1px solid var(--borde);font-size:.8rem;color:var(--texto);overflow-wrap:anywhere}
-.sl-ficha-fecha{font-size:.72rem;color:var(--texto-debil);margin-right:8px;white-space:nowrap}
-@media(max-width:600px){
-  .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
 /* ── Email marketing ─────────────────────────────────────────────────────────
    Lo que sale por Resend. Solo tokens, sin reglas de tema claro: los chips usan
    la familia de estados (tintes azul/verde/rojo/ambar), que ya tiene su par. */
@@ -4772,14 +4637,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .em-mail-datos{grid-template-columns:1fr}
   .em-mail-datos dd{margin-bottom:4px}
 }
-/* ── Modo sombra ── */
-.so-oculto{display:none!important}
-.so-nota{font-size:.8rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.5}
-.so-marcador{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
-.so-tile{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px}
-.so-tile b{display:block;font-size:1.5rem;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
-.so-tile span{font-size:.74rem;color:var(--texto-debil)}
-.so-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+/* ── País (services/paises.py) ──────────────────────────────────────────────
+   Las banderitas arriba de Meta Ads, Inteligencia marketing y Finanzas. Las
+   banderas son SVG: en Windows los emoji de bandera se ven como letras. */
+.pais-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pais-sel{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--borde);border-radius:999px;background:var(--superficie-honda)}
+.pais-sel:empty{display:none}
+.pais-btn{display:inline-flex;align-items:center;gap:6px;border:none;background:none;color:var(--texto-debil);font:inherit;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer}
+.pais-btn:hover{color:var(--texto-fuerte)}
+.pais-btn[aria-pressed="true"]{background:var(--relleno);color:var(--texto-fuerte)}
+.pais-btn:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
+.pais-btn svg{width:18px;height:12px;border-radius:2px;box-shadow:0 0 0 1px var(--borde);flex:none}
+@media(max-width:600px){ .pais-nombre{display:none} .pais-btn{padding:6px 9px} }
+/* ── Tarjetas so-* (nacieron en Recomendaciones de pauta, que se sacó el 29/10;
+   las siguen usando los comentarios de Instagram) ── */
 .so-lista{display:grid;gap:10px}
 .so-item{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;display:grid;gap:6px}
 .so-cab{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -4788,11 +4659,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .so-evidencia{font-size:.82rem;color:var(--texto);line-height:1.5}
 .so-resultado{font-size:.78rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
 .so-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap;background:var(--relleno);color:var(--texto-debil)}
-.so-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
 .so-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
 .so-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.so-msg{font-size:.78rem;color:var(--texto-debil)}
-.so-msg:empty{display:none}
 /* ── Instagram ── */
 .ig-oculto{display:none!important}
 .ig-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
@@ -5171,13 +5039,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
   <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
   <div class="nav-item" id="nav-reels" onclick="showPanel('reels')"><i data-lucide="clapperboard" class="nav-icon"></i> Reels <span id="rl-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
-  <div class="nav-item" id="nav-sombra" onclick="showPanel('sombra')"><i data-lucide="eye" class="nav-icon"></i> Recomendaciones de pauta</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
   <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Métricas financieras</div>
   <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
@@ -5186,10 +5052,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
-  <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
-  <div class="dy-nav-personas" id="dy-nav-personas"></div>
-  <div class="nav-item" id="nav-daily_admin" onclick="showPanel('daily_admin')"><i data-lucide="clipboard-check" class="nav-icon"></i> Daily Admin</div>
-  <div class="dy-nav-personas" id="dya-nav-personas"></div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-section-label">RECURSOS HUMANOS</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
@@ -5300,7 +5162,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h1>Meta Ads</h1>
         <div class="page-date">Leads de formularios de Facebook e Instagram</div>
       </div>
-      <button class="btn-primary" onclick="mmAbrirAlta()">+ Agregar lead</button>
+      <div class="pais-cab">
+        <div class="pais-sel"></div>
+        <button class="btn-primary" onclick="mmAbrirAlta()">+ Agregar lead</button>
+      </div>
     </div>
     <div class="modal-overlay" id="meta-alta-modal" onclick="if(event.target===this)mmCerrarAlta()">
       <div class="modal">
@@ -5609,6 +5474,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="finanzas-panel" class="panel">
     <div class="fin-aviso-sl" id="fin-solo-lectura" style="display:none">Modo solo lectura: podés ver y generar balances</div>
     <div class="fin-toolbar">
+      <div class="pais-sel"></div>
       <div class="fin-nav-mes" id="fin-nav-mes">
         <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
         <span id="fin-mes-label"></span>
@@ -6130,8 +5996,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h1>Inteligencia marketing</h1>
         <div class="page-date" id="mk-fecha"></div>
       </div>
-      <button class="export-btn" onclick="loadMarketing()">
-        <span aria-hidden="true">&#8635;</span> Actualizar</button>
+      <div class="pais-cab">
+        <div class="pais-sel"></div>
+        <button class="export-btn" onclick="loadMarketing()">
+          <span aria-hidden="true">&#8635;</span> Actualizar</button>
+      </div>
     </div>
 
     <div class="sc-filtros">
@@ -6462,53 +6331,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN INSTAGRAM PANEL ======= -->
 
-  <!-- ======= MODO SOMBRA PANEL ======= -->
-  <!-- Recomendaciones de pauta (id interno: sombra). Marketing ve las
-       recomendaciones; la evaluacion y el marcador, solo administradores.
-       Ver services/sombra_meta.py. -->
-  <div id="sombra-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Recomendaciones de pauta</h1>
-        <div class="page-date">Qué conviene cambiar en los anuncios, con los números de la semana</div>
-      </div>
-      <div>
-        <button type="button" class="export-btn so-oculto" id="so-btn-calcular" onclick="soCalcular()">Calcular ahora</button>
-      </div>
-    </div>
-    <div class="so-nota"><b>No se toca nada en Meta.</b> Los lunes se arman las recomendaciones con los números de los últimos 7 días.<span id="so-nota-admin" class="so-oculto"> El lunes siguiente se compara con lo que se hizo y con cómo le fue a cada anuncio (esto lo ven solo los administradores). Con pocos leads por semana, mirá la tendencia después de 4 a 6 semanas.</span></div>
-    <div class="so-nota" id="so-tope-caja">
-      <label for="so-tope"><b>Tope de costo por lead (USD).</b></label>
-      <input type="number" id="so-tope" min="1" max="500" step="0.5" placeholder="Sin tope: se usa el promedio de la cuenta" style="width:260px;max-width:100%;margin:0 8px">
-      <button type="button" class="export-btn" onclick="soGuardarTope()">Guardar</button>
-      <span class="so-msg" id="so-tope-msg" role="status"></span>
-      <div>Los anuncios se comparan contra este número. Lo pueden cambiar Juan o el de marketing cuando haga falta. Vacío y Guardar vuelve al promedio.</div>
-    </div>
-    <div class="so-nota" id="es-caja">
-      <b>Estrategia del mes (PDF).</b> El de marketing o Juan suben el PDF de cada mes. El agente lo lee y arma un resumen de la línea de color y las piezas.
-      <div style="margin-top:8px">
-        <input type="month" id="es-mes" style="margin-right:8px">
-        <input type="file" id="es-archivo" accept="application/pdf" style="max-width:260px">
-        <button type="button" class="export-btn" onclick="esSubir()">Subir</button>
-        <span class="so-msg" id="es-msg" role="status"></span>
-      </div>
-      <div id="es-lista" style="margin-top:8px"></div>
-    </div>
-    <div class="so-marcador so-oculto" id="so-marcador"></div>
-    <div class="so-barra">
-      <div class="li-nav-semana">
-        <button type="button" class="cal-nav-btn" onclick="soSemana(-1)" aria-label="Semana anterior">&larr;</button>
-        <span id="so-semana-label" aria-live="polite"></span>
-        <button type="button" class="cal-nav-btn" onclick="soSemana(1)" aria-label="Semana siguiente">&rarr;</button>
-        <button type="button" class="cal-today-btn" onclick="soSemanaHoy()">Esta semana</button>
-      </div>
-      <span class="so-msg" id="so-msg" role="status"></span>
-    </div>
-    <div id="so-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
-    <div id="so-lista" class="so-lista"></div>
-  </div>
-  <!-- ======= FIN MODO SOMBRA PANEL ======= -->
-
   <!-- ======= OFICINA PANEL ======= -->
   <!-- Recordatorios wpp (services/oficina.py): el agente que lee el WhatsApp
        Business de Juan. Solo admin, igual que Contraseñas: no se reparte por rol. -->
@@ -6665,13 +6487,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN METRICAS FINANCIERAS PANEL ======= -->
 
-  <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
-  <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
-       datos por persona: el JS arma el contenido de cada una (dyArmarPanel)
-       con sus propios ids (dy- y dya-). La persona es estado del JS. -->
-  <div id="daily-panel" class="panel dy-panel"></div>
-  <div id="daily_admin-panel" class="panel dy-panel"></div>
-
   <!-- ======= RECURSOS HUMANOS PANELES ======= -->
   <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
        para que los permisos guardados sigan valiendo. -->
@@ -6797,19 +6612,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN PLANTILLAS PANEL ======= -->
 
-  <!-- ======= SEG LEADS PANEL ======= -->
-  <div id="seg_leads-panel" class="panel">
-    <div class="page-header sl-cabecera">
-      <div>
-        <h1>Seguimiento de leads</h1>
-        <div class="page-date" id="sl-resumen">Cargando...</div>
-      </div>
-      <button class="btn-primary" type="button" onclick="slAbrirNuevo()">Nuevo recordatorio</button>
-    </div>
-    <div class="sl-contadores" id="sl-contadores" aria-label="Llamados por grupo"></div>
-    <div id="sl-lista"></div>
-  </div>
-  <!-- ======= FIN SEG LEADS PANEL ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -7170,7 +6972,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div><label class="modal-label" for="fin-ese-monto">Monto</label>
         <input type="number" id="fin-ese-monto" class="modal-input" min="0" step="any" inputmode="decimal"></div>
       <div><label class="modal-label" for="fin-ese-moneda">Moneda</label>
-        <select id="fin-ese-moneda" class="modal-input" onchange="_finEseMoneda()"><option>USD</option><option>UYU</option></select></div>
+        <select id="fin-ese-moneda" class="modal-input" onchange="_finEseMoneda()"><option>USD</option><option class="pais-moneda">UYU</option></select></div>
     </div>
     <div id="fin-ese-tc-row" style="display:none"><label class="modal-label" for="fin-ese-tc">Tipo de cambio</label>
       <input type="number" id="fin-ese-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
@@ -7204,7 +7006,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div><label class="modal-label" for="fin-venta-monto">Monto total vendido</label>
         <input type="number" id="fin-venta-monto" class="modal-input" min="0" step="any" inputmode="decimal"></div>
       <div><label class="modal-label" for="fin-venta-moneda">Moneda</label>
-        <select id="fin-venta-moneda" class="modal-input" onchange="_finVentaMoneda()"><option>USD</option><option>UYU</option></select></div>
+        <select id="fin-venta-moneda" class="modal-input" onchange="_finVentaMoneda()"><option>USD</option><option class="pais-moneda">UYU</option></select></div>
     </div>
     <div id="fin-venta-tc-row" style="display:none"><label class="modal-label" for="fin-venta-tc">Tipo de cambio</label>
       <input type="number" id="fin-venta-tc" class="modal-input" min="0" step="any" inputmode="decimal" placeholder="40"></div>
@@ -7247,7 +7049,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva();_finPreviewPendiente()">
       <select id="fin-mov-moneda" onchange="_finRecalcularUsd();_finPreviewIva()">
         <option value="USD">USD</option>
-        <option value="UYU">UYU</option>
+        <option value="UYU" class="pais-moneda">UYU</option>
       </select>
     </div>
 
@@ -7362,7 +7164,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input" oninput="_finFijoPreviewIva()">
       <select id="fin-fijo-moneda" onchange="_finFijoTc()">
         <option value="USD">USD</option>
-        <option value="UYU">UYU</option>
+        <option value="UYU" class="pais-moneda">UYU</option>
       </select>
     </div>
 
@@ -7529,76 +7331,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN HORARIOS MODALES ======= -->
 
-<!-- ======= DAILY MODALES ======= -->
-<!-- Los usan los dos Daily: dyModalSeccion dice de cuál es el modal abierto. -->
-<div class="modal-overlay" id="dy-modal-actividad" onclick="if(event.target===this)dyCerrarModal()">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-act-titulo">
-    <h3 id="dy-act-titulo">Nueva actividad</h3>
-    <p id="dy-act-contexto"></p>
-    <label class="modal-label" for="dy-act-texto">Qué hay que hacer</label>
-    <input type="text" id="dy-act-texto" maxlength="200" placeholder="Ej: terminar la landing de Tito">
-    <div class="modal-row">
-      <div>
-        <label class="modal-label" for="dy-act-fecha">Día</label>
-        <input type="date" id="dy-act-fecha">
-      </div>
-      <div>
-        <label class="modal-label" for="dy-act-hora">Hora (opcional)</label>
-        <input type="time" id="dy-act-hora">
-      </div>
-    </div>
-    <label class="modal-label" for="dy-act-nota">Nota (opcional)</label>
-    <input type="text" id="dy-act-nota" maxlength="300" placeholder="Ej: pedirle el logo antes">
-    <div class="dy-error" id="dy-act-error" role="alert"></div>
-    <div class="modal-btns">
-      <button class="btn-ghost dy-oculto" type="button" id="dy-act-borrar" onclick="dyBorrarDesdeModal()">Borrar</button>
-      <button class="btn-ghost" type="button" onclick="dyCerrarModal()">Cancelar</button>
-      <button class="btn-primary" type="button" onclick="dyGuardarActividad()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="dy-modal-recordatorio" onclick="if(event.target===this)dyCerrarRecordatorio()">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-recm-titulo">
-    <h3 id="dy-recm-titulo">Nuevo recordatorio</h3>
-    <p id="dy-recm-contexto"></p>
-    <label class="modal-label" for="dy-recm-texto">Qué hay que recordar</label>
-    <input type="text" id="dy-recm-texto" maxlength="200" placeholder="Ej: revisar mails de clientes">
-    <div class="modal-row">
-      <div>
-        <label class="modal-label" for="dy-recm-frecuencia">Cada cuánto</label>
-        <select id="dy-recm-frecuencia" onchange="dyPintarDiasForm()">
-          <option value="diario">Todos los días</option>
-          <option value="habiles">Días hábiles (lunes a viernes)</option>
-          <option value="dias">Días elegidos de la semana</option>
-        </select>
-      </div>
-      <div>
-        <label class="modal-label" for="dy-recm-hora">Hora (opcional)</label>
-        <input type="time" id="dy-recm-hora">
-      </div>
-    </div>
-    <div class="dy-dias dy-oculto" id="dy-recm-dias">
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-0"> Lun</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-1"> Mar</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-2"> Mié</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-3"> Jue</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-4"> Vie</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-5"> Sáb</label>
-      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-6"> Dom</label>
-    </div>
-    <label class="modal-label" for="dy-recm-nota">Nota (opcional)</label>
-    <input type="text" id="dy-recm-nota" maxlength="300" placeholder="Ej: los urgentes primero">
-    <div class="dy-aviso-modal dy-oculto" id="dy-recm-aviso">Cambia cómo se repite de acá en adelante. Lo que ya marcaste como hecho en otros días queda como estaba.</div>
-    <div class="dy-error" id="dy-recm-error" role="alert"></div>
-    <div class="modal-btns">
-      <button class="btn-ghost" type="button" onclick="dyCerrarRecordatorio()">Cancelar</button>
-      <button class="btn-primary" type="button" onclick="dyGuardarRecordatorio()">Guardar</button>
-    </div>
-  </div>
-</div>
-<!-- ======= FIN DAILY MODALES ======= -->
-
 <!-- ======= PLANTILLAS MODALES ======= -->
 <div class="pl-aviso" id="pl-aviso" role="status" aria-live="polite"></div>
 
@@ -7682,81 +7414,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN PLANTILLAS MODALES ======= -->
 
-<!-- ======= SEG LEADS MODALES ======= -->
-<div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
-    <h3 id="sl-nuevo-titulo">Nuevo recordatorio</h3>
-    <p>A quién llamás, cuándo y por qué. Si el lead ya tenía un recordatorio abierto, ese se cierra.</p>
-    <label class="modal-label" for="sl-nuevo-buscar">Lead</label>
-    <div class="sl-buscador" id="sl-nuevo-buscador">
-      <input type="text" id="sl-nuevo-buscar" placeholder="Buscar por nombre" autocomplete="off" oninput="slBuscarTecla(this.value)">
-      <div class="nc-vinculo-resultados" id="sl-nuevo-resultados"></div>
-    </div>
-    <div class="sl-elegido" id="sl-nuevo-elegido" hidden>
-      <span id="sl-nuevo-lead"></span>
-      <button class="sl-link" type="button" onclick="slCambiarLead()">Cambiar</button>
-    </div>
-    <div class="sl-aviso" id="sl-nuevo-aviso" role="status"></div>
-    <div class="modal-row">
-      <div>
-        <label class="modal-label" for="sl-nuevo-fecha">Fecha</label>
-        <input type="date" id="sl-nuevo-fecha">
-      </div>
-      <div>
-        <label class="modal-label" for="sl-nuevo-hora">Hora (opcional)</label>
-        <input type="time" id="sl-nuevo-hora">
-      </div>
-    </div>
-    <label class="modal-label" for="sl-nuevo-motivo">Motivo</label>
-    <input type="text" id="sl-nuevo-motivo" maxlength="200" placeholder="Qué tenés que hacer o preguntar">
-    <label class="modal-label" for="sl-nuevo-nota">Nota (opcional)</label>
-    <input type="text" id="sl-nuevo-nota" maxlength="300" placeholder="Ej: llamar después de las 18">
-    <div class="sl-error" id="sl-nuevo-error" role="alert"></div>
-    <div class="modal-btns">
-      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-nuevo')">Cancelar</button>
-      <button class="btn-primary" type="button" onclick="slGuardarNuevo()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="sl-modal-hecho" onclick="if(event.target===this)slCerrarModal('sl-modal-hecho')">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-hecho-titulo">
-    <h3 id="sl-hecho-titulo">Marcar hecho</h3>
-    <p id="sl-hecho-contexto"></p>
-    <label class="modal-label" for="sl-hecho-resultado">Qué pasó en la llamada</label>
-    <textarea id="sl-hecho-resultado" maxlength="2000" placeholder="Ej: no atendió; quedó en mandar el logo"></textarea>
-    <div class="modal-label">Cuándo volvés a llamar</div>
-    <div class="sl-bloque" id="sl-hecho-proximo">
-      <div class="sl-rapidos">
-        <button class="sl-btn" type="button" onclick="slHechoRapido('manana')">Mañana</button>
-        <button class="sl-btn" type="button" onclick="slHechoRapido('semana')">En una semana</button>
-        <button class="sl-btn" type="button" onclick="slHechoRapido('mes')">En un mes</button>
-      </div>
-      <div class="modal-row">
-        <div>
-          <label class="modal-label" for="sl-hecho-fecha">Fecha</label>
-          <input type="date" id="sl-hecho-fecha">
-        </div>
-        <div>
-          <label class="modal-label" for="sl-hecho-hora">Hora (opcional)</label>
-          <input type="time" id="sl-hecho-hora">
-        </div>
-      </div>
-      <label class="modal-label" for="sl-hecho-motivo">Motivo</label>
-      <input type="text" id="sl-hecho-motivo" maxlength="200">
-      <label class="modal-label" for="sl-hecho-nota">Nota (opcional)</label>
-      <input type="text" id="sl-hecho-nota" maxlength="300">
-    </div>
-    <label class="sl-check"><input type="checkbox" id="sl-hecho-sin-volver" onchange="slSinVolver()"> No hace falta volver a llamar</label>
-    <div class="sl-error" id="sl-hecho-error" role="alert"></div>
-    <div class="modal-btns">
-      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-hecho')">Cancelar</button>
-      <button class="btn-primary" type="button" onclick="slGuardarHecho()">Guardar</button>
-    </div>
-  </div>
-</div>
-<!-- ======= FIN SEG LEADS MODALES ======= -->
-
 <script>
 window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
@@ -7768,6 +7425,68 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-backdrop').classList.remove('open');
 }
+
+// ========== País ==========
+// Meta Ads, Inteligencia marketing y Finanzas se miran de a un país (Juan,
+// 29/10: se empieza a pautar en Argentina y Chile). El país va en la cookie
+// crm_pais, que leen las rutas de Marketing y Finanzas (services/paises.py);
+// Meta Ads filtra aca con el pais que trae cada lead. El resto del CRM es uno.
+const PAISES = {
+  UY: {nombre: 'Uruguay', moneda: 'UYU', bandera: '<svg viewBox="0 0 18 12" aria-hidden="true"><rect width="18" height="12" fill="#fff"/><rect y="1.33" width="18" height="1.33" fill="#0038a8"/><rect y="4" width="18" height="1.33" fill="#0038a8"/><rect y="6.67" width="18" height="1.33" fill="#0038a8"/><rect y="9.33" width="18" height="1.33" fill="#0038a8"/><rect width="6.67" height="6.67" fill="#fff"/><circle cx="3.33" cy="3.33" r="1.9" fill="#fcd116"/></svg>'},
+  AR: {nombre: 'Argentina', moneda: 'ARS', bandera: '<svg viewBox="0 0 18 12" aria-hidden="true"><rect width="18" height="12" fill="#74acdf"/><rect y="4" width="18" height="4" fill="#fff"/><circle cx="9" cy="6" r="1.4" fill="#f6b40e"/></svg>'},
+  CL: {nombre: 'Chile', moneda: 'CLP', bandera: '<svg viewBox="0 0 18 12" aria-hidden="true"><rect width="18" height="12" fill="#fff"/><rect y="6" width="18" height="6" fill="#d52b1e"/><rect width="6" height="6" fill="#0039a6"/><polygon points="3,1.5 3.45,2.6 4.6,2.6 3.7,3.3 4.05,4.4 3,3.75 1.95,4.4 2.3,3.3 1.4,2.6 2.55,2.6" fill="#fff"/></svg>'},
+};
+// Vistas de Finanzas que son solo de Uruguay (DGI, Plexo, aportes de los socios).
+const PAIS_SOLO_UY = ['iva', 'tarjeta', 'cobros', 'aportes'];
+let paisActual = 'UY';
+try {
+  const m = document.cookie.match(/(?:^|; )crm_pais=(UY|AR|CL)(?:;|$)/);
+  if (m) paisActual = m[1];
+} catch (e) {}
+function _paisGuardar() {
+  try { document.cookie = 'crm_pais=' + paisActual + '; path=/; max-age=31536000; SameSite=Lax'; } catch (e) {}
+}
+_paisGuardar();   // antes de cualquier fetch: sin cookie el servidor no filtra
+
+function paisDelLead(l) { return (l && l.pais) || 'UY'; }
+
+function paisPintar() {
+  const html = Object.keys(PAISES).map(p =>
+    '<button type="button" class="pais-btn" data-pais="' + p + '" aria-pressed="' + (p === paisActual) + '"'
+    + ' onclick="paisElegir(this.dataset.pais)" title="' + PAISES[p].nombre + '">'
+    + PAISES[p].bandera + '<span class="pais-nombre">' + PAISES[p].nombre + '</span></button>').join('');
+  document.querySelectorAll('.pais-sel').forEach(el => {
+    el.setAttribute('role', 'group');
+    el.setAttribute('aria-label', 'País');
+    el.innerHTML = html;
+  });
+  // La moneda local de los formularios de Finanzas es la del país.
+  document.querySelectorAll('option.pais-moneda').forEach(o => {
+    o.value = PAISES[paisActual].moneda;
+    o.textContent = PAISES[paisActual].moneda;
+  });
+  PAIS_SOLO_UY.forEach(v => {
+    const tab = document.getElementById('fin-tab-' + v);
+    if (tab) tab.style.display = paisActual === 'UY' ? '' : 'none';
+  });
+}
+
+function paisElegir(p) {
+  if (!PAISES[p] || p === paisActual) return;
+  paisActual = p;
+  _paisGuardar();
+  paisPintar();
+  _metaLeads = _metaTodos.filter(l => paisDelLead(l) === paisActual);
+  if (activePanel === 'meta') renderMetaTable();
+  if (activePanel === 'marketing') loadMarketing();
+  if (activePanel === 'finanzas') {
+    finVista(paisActual !== 'UY' && PAIS_SOLO_UY.includes(_finVistaActual) ? 'movimientos' : _finVistaActual);
+    loadFinanzas();
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paisPintar);
+else paisPintar();
+// ========== FIN País ==========
 
 // ========== Panel switching ==========
 let activePanel = 'cal';
@@ -7789,8 +7508,6 @@ function showPanel(name) {
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
-  if (name === 'daily') loadDaily('programador');
-  if (name === 'daily_admin') loadDaily('admin');
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
@@ -7800,14 +7517,12 @@ function showPanel(name) {
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'flujos') eqCargarFlujos();
   if (name === 'horarios') hrCargar();
-  if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
   if (name === 'email_mkt') loadEmailMkt();
   if (name === 'fid_mails') fmCargar();
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
-  if (name === 'sombra') soCargar();
   if (name === 'reels') { rlCargarHorarios(); rlCargar(); }
   if (name === 'credenciales') crCargar();
   if (name === 'oficina') ofCargar();
@@ -7903,7 +7618,8 @@ function _reloadActiveCallPanel() {
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
 let _metaEstado = '';
-let _metaLeads = [];
+let _metaLeads = [];   // los del país elegido (paisActual)
+let _metaTodos = [];   // los de los tres países
 let _metaSortDesc = true;
 let _metaKnownIds = new Set();
 let _metaPollTimer = null;
@@ -7924,7 +7640,8 @@ function _startMetaPoll() {
         const badge = document.getElementById('meta-badge');
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
-        _metaLeads = leads;
+        _metaTodos = leads;
+        _metaLeads = leads.filter(l => paisDelLead(l) === paisActual);
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -8205,8 +7922,9 @@ async function loadMetaPanel() {
   try {
     const r = await fetch('/api/leads?crm_group=meta');
     const data = await r.json();
-    _metaLeads = Array.isArray(data) ? data : (data.items || []);
-    _metaLeads.forEach(l => _metaKnownIds.add(l.id));
+    _metaTodos = Array.isArray(data) ? data : (data.items || []);
+    _metaLeads = _metaTodos.filter(l => paisDelLead(l) === paisActual);
+    _metaTodos.forEach(l => _metaKnownIds.add(l.id));
     mmActivarDeslizar();
     renderMetaTable();
     _startMetaPoll();
@@ -8344,6 +8062,7 @@ async function mmCrearLead() {
   if (!cuerpo.name) { error.textContent = 'Falta el nombre.'; return; }
   if (!cuerpo.phone && !cuerpo.email) { error.textContent = 'Poné un teléfono o un mail para poder contactarlo.'; return; }
   if (!cuerpo.origen) { error.textContent = 'Elegí por dónde llegó.'; return; }
+  cuerpo.pais = paisActual;   // el lead queda en el país que se está mirando
   error.textContent = '';
   boton.disabled = true;
   let d = {};
@@ -12063,7 +11782,6 @@ function _notionClientCardHtml(c, arrastrable) {
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncProgramadorHtml(c)}
     ${_ncVinculoHtml(c)}
-    ${slBotonNotionHtml(c)}
   </div>`;
 }
 
@@ -13138,20 +12856,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','reels','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','reels','finanzas','simulador','inteligencia_fin','wa','notion_clients','plantillas','clientes','projects','tasks','activity','equipo','ausencias','flujos','horarios','cola','metrics','fid_mails'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye',fid_mails:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',plantillas:'message-square-text',email_mkt:'mail',linkedin:'linkedin',instagram:'image',fid_mails:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.',fid_mails:'Mails'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',plantillas:'Plantillas',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',fid_mails:'Mails'
 };
 let _mobileNavOverflow = [];
 
@@ -13232,7 +12950,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reels'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','plantillas','email_mkt','linkedin','instagram','agentes','reels'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -13290,9 +13008,6 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     _ocultarGruposVacios();
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
-    // Las opciones por persona debajo de "Daily Programador" salen de la base.
-    if (allowedPanels.includes('daily')) dyCargarPersonas('programador');
-    if (allowedPanels.includes('daily_admin')) dyCargarPersonas('admin');
   } catch(e) {}
 })();
 
@@ -13361,7 +13076,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -13370,9 +13085,6 @@ async function _cpLoadAll() {
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/calls').then(r => r.json()),
-    // Seguimiento de leads: el recordatorio abierto y el historial de llamados.
-    // Sin el panel da 403 y la seccion no se muestra.
-    fetch('/api/seg-leads/lead/' + _cpClientId).then(r => r.ok ? r.json() : null),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -13382,7 +13094,6 @@ async function _cpLoadAll() {
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
   _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
-  _cpData.seg       = segRes.status === 'fulfilled' ? segRes.value : null;
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -13608,7 +13319,7 @@ function _cpRenderCalls() {
       </div>
     </div>`).join('')}
   </div>` : '<div style="padding:12px 0;font-size:.82rem;color:var(--texto-debil)">Sin llamadas registradas</div>';
-  return slFichaHtml(_cpData.seg) + `<div class="cp-section">
+  return `<div class="cp-section">
     <div class="cp-section-title">Registrar llamada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="call-outcome" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
@@ -14521,7 +14232,7 @@ function finSetParcial(valor) {
 function _finMontoUsd() {
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
   if (!monto || monto <= 0) return 0;
-  if (document.getElementById('fin-mov-moneda').value !== 'UYU') return monto;
+  if (document.getElementById('fin-mov-moneda').value === 'USD') return monto;
   const tc = parseFloat(document.getElementById('fin-mov-tc').value);
   return tc > 0 ? monto / tc : 0;
 }
@@ -15513,7 +15224,7 @@ function _finNombreMes(periodo) {
 
 function _finRecalcularUsd() {
   // El número congelado se ve ANTES de congelarlo, no después.
-  const esPesos = document.getElementById('fin-mov-moneda').value === 'UYU';
+  const esPesos = document.getElementById('fin-mov-moneda').value !== 'USD';
   document.getElementById('fin-tc-row').style.display = esPesos ? '' : 'none';
   if (!esPesos) return;
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
@@ -15599,7 +15310,7 @@ async function guardarMovimiento() {
     categoria: document.getElementById('fin-mov-categoria').value,
     monto: parseFloat(document.getElementById('fin-mov-monto').value),
     moneda,
-    tipo_cambio: moneda === 'UYU'
+    tipo_cambio: moneda !== 'USD'
       ? parseFloat(document.getElementById('fin-mov-tc').value) : null,
     client_id: document.getElementById('fin-mov-cliente').value || null,
     budget_id: document.getElementById('fin-mov-budget').value || null,
@@ -15646,8 +15357,8 @@ async function loadMovimientos(desde, hasta) {
     // El original en pesos va en su propia linea, abajo del monto en dolares:
     // al lado (pedido de Juan, 22/9) el rojo/verde se corria de columna segun
     // si habia texto gris o no, porque el bloque entero es text-align:right.
-    const original = m.moneda === 'UYU'
-      ? `<div class="fin-kpi-var">$ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio}</div>`
+    const original = m.moneda !== 'USD'
+      ? `<div class="fin-kpi-var">${m.moneda === 'UYU' ? '$' : esc(m.moneda)} ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio}</div>`
       : '';
     const hechoTxt = esIngreso ? 'Ya se cobró' : 'Ya se pagó';
     return `
@@ -15756,7 +15467,7 @@ async function borrarMovimientoUI(id, esDeUnFijo) {
 let _finFijoTipo = 'egreso';
 
 function _finFijoTc() {
-  const esPesos = document.getElementById('fin-fijo-moneda').value === 'UYU';
+  const esPesos = document.getElementById('fin-fijo-moneda').value !== 'USD';
   document.getElementById('fin-fijo-tc-row').style.display = esPesos ? '' : 'none';
   _finFijoPreviewIva();
 }
@@ -15782,7 +15493,7 @@ function _finFijoPreviewIva() {
   const monto = parseFloat(document.getElementById('fin-fijo-monto').value);
   if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto de cada mes.'; return; }
   let usd = monto;
-  if (document.getElementById('fin-fijo-moneda').value === 'UYU') {
+  if (document.getElementById('fin-fijo-moneda').value !== 'USD') {
     const tc = parseFloat(document.getElementById('fin-fijo-tc').value);
     if (!tc || tc <= 0) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
     usd = monto / tc;
@@ -15894,7 +15605,7 @@ async function guardarFijo() {
     categoria: document.getElementById('fin-fijo-categoria').value,
     monto: parseFloat(document.getElementById('fin-fijo-monto').value),
     moneda,
-    tipo_cambio: moneda === 'UYU'
+    tipo_cambio: moneda !== 'USD'
       ? parseFloat(document.getElementById('fin-fijo-tc').value) : null,
     dia_del_mes: parseInt(document.getElementById('fin-fijo-dia').value, 10),
     desde: document.getElementById('fin-fijo-desde').value,
@@ -16067,7 +15778,7 @@ async function loadFijos() {
   }
 
   cuerpo.innerHTML = encabezado + fijos.map(f => {
-    const enUsd = f.moneda === 'UYU'
+    const enUsd = f.moneda !== 'USD'
       ? `<div class="fin-kpi-var">${f.monto_usd == null ? '—' : _finUsd(f.monto_usd)}</div>` : '';
     return `
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
@@ -16648,413 +16359,6 @@ async function plBorrar(id) {
 /*PLEXO_JS*/
 /*BUSCAR_JS*/
 /*ESENCIALES_JS*/
-// ========== Seguimiento de leads ==========
-// La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
-// semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
-// y wa.me los arma el servidor con la fecha de Montevideo; aca solo se pinta.
-// Todo lleva el prefijo sl (o SL_), porque en JS gana la ultima declaracion
-// con el mismo nombre. Sin barras invertidas: esto vive en un string de Python.
-let slDatos = null;
-let slHoy = '';
-let slHechoId = null;
-let slNuevoLeadId = null;
-let slBusquedaTimer = null;
-
-const SL_GRUPOS = [
-  {clave: 'vencidos', rotulo: 'Vencidos', completa: true},
-  {clave: 'hoy', rotulo: 'Hoy', completa: true},
-  {clave: 'semana', rotulo: 'Esta semana', completa: false},
-  {clave: 'despues', rotulo: 'Más adelante', completa: false},
-];
-
-async function loadSegLeads() {
-  const lista = document.getElementById('sl-lista');
-  try {
-    const r = await fetch('/api/seg-leads');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    slDatos = await r.json();
-  } catch (e) {
-    slDatos = null;
-    document.getElementById('sl-resumen').textContent = '';
-    document.getElementById('sl-contadores').innerHTML = '';
-    lista.innerHTML = '<div class="sl-vacio">No se pudo cargar el seguimiento (' + esc(e.message) + ').</div>';
-    return;
-  }
-  slHoy = slDatos.hoy || slHoy;
-  slPintar(slDatos);
-}
-
-function slPintar(d) {
-  const c = d.contadores || {};
-  document.getElementById('sl-resumen').textContent = slResumen(d.pendientes || 0, c.vencidos || 0);
-  document.getElementById('sl-contadores').innerHTML = slContadoresHtml(c);
-  document.getElementById('sl-lista').innerHTML = slListaHtml(d);
-}
-
-function slPlural(n, uno, varios) {
-  return n + ' ' + (n === 1 ? uno : varios);
-}
-
-function slResumen(pendientes, vencidos) {
-  return slPlural(pendientes, 'llamado pendiente', 'llamados pendientes') + ' · '
-    + slPlural(vencidos, 'vencido', 'vencidos');
-}
-
-// Cuatro tarjetas chicas: la de vencidos en rojo claro. Tocarlas lleva al grupo.
-function slContadoresHtml(c) {
-  return SL_GRUPOS.map(g => {
-    const clase = 'sl-contador' + (g.clave === 'vencidos' ? ' sl-contador-vencidos' : '');
-    return '<button type="button" class="' + clase + '" data-grupo="' + g.clave
-      + '" onclick="slIrAGrupo(this.dataset.grupo)">'
-      + '<span class="sl-contador-num">' + Number(c[g.clave] || 0) + '</span>'
-      + '<span class="sl-contador-rot">' + esc(g.rotulo) + '</span></button>';
-  }).join('');
-}
-
-function slIrAGrupo(clave) {
-  const el = document.getElementById('sl-grupo-' + clave);
-  if (el && el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
-}
-
-// Un grupo vacio no se muestra. Vencidos y hoy van con tarjeta completa; esta
-// semana y mas adelante, en una linea: todavia no hay que hacer nada con ellos.
-function slListaHtml(d) {
-  const grupos = d.grupos || {};
-  const html = SL_GRUPOS.map(g => {
-    const items = grupos[g.clave] || [];
-    if (!items.length) return '';
-    const titulo = g.clave === 'hoy' ? 'Hoy · ' + (d.hoy_texto || '') : g.rotulo;
-    const claseTitulo = 'sl-grupo-titulo' + (g.clave === 'vencidos' ? ' sl-grupo-titulo-vencidos' : '');
-    return '<section class="sl-grupo" id="sl-grupo-' + g.clave + '">'
-      + '<h2 class="' + claseTitulo + '">' + esc(titulo.toUpperCase()) + '</h2>'
-      + items.map(it => (g.completa ? slTarjetaHtml(it) : slLineaHtml(it))).join('')
-      + '</section>';
-  }).join('');
-  return html || '<div class="sl-vacio">No hay llamados pendientes. Lo que se ve acá es lo que tenés que hacer.</div>';
-}
-
-function slQuienHtml(it) {
-  const empresa = it.empresa ? '<span class="sl-empresa"> · ' + esc(it.empresa) + '</span>' : '';
-  return '<div class="sl-quien"><button type="button" class="sl-nombre" data-lead="' + Number(it.lead_id)
-    + '" onclick="openClientPanel(Number(this.dataset.lead))">' + esc(it.nombre || 'Sin nombre')
-    + '</button>' + empresa + '</div>';
-}
-
-// Sin telefono cargado, Llamar y WhatsApp quedan deshabilitados.
-function slContactoHtml(it) {
-  if (!it.tel || !it.wa) {
-    const apagado = ' disabled title="El lead no tiene teléfono cargado"';
-    return '<button type="button" class="sl-btn"' + apagado + '>Llamar</button>'
-      + '<button type="button" class="sl-btn"' + apagado + '>WhatsApp</button>';
-  }
-  return '<a class="sl-btn" href="tel:' + esc(it.tel) + '">Llamar</a>'
-    + '<a class="sl-btn" href="https://wa.me/' + esc(it.wa) + '" target="_blank" rel="noopener">WhatsApp</a>';
-}
-
-function slTarjetaHtml(it) {
-  const id = Number(it.id);
-  const vencida = it.grupo === 'vencidos';
-  const ultima = it.ultimo_resultado
-    ? '<span class="sl-ultima">Última vez: ' + esc(it.ultimo_resultado) + '.</span> ' : '';
-  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
-  const posponer = cuanto => '<button type="button" class="sl-btn" data-id="' + id + '" data-cuanto="' + cuanto
-    + '" onclick="slPosponer(Number(this.dataset.id), this.dataset.cuanto)">+1 ' + cuanto + '</button>';
-  return '<article class="sl-tarjeta' + (vencida ? ' sl-vencida' : '') + '" data-sl-id="' + id + '">'
-    + '<div class="sl-tarjeta-cab">' + slQuienHtml(it)
-    + '<div class="sl-cuando' + (vencida ? ' sl-cuando-vencido' : '') + '">' + esc(it.vence_texto || '') + '</div></div>'
-    + '<div class="sl-contexto">' + ultima + esc(it.motivo || '') + '</div>'
-    + nota
-    + '<div class="sl-acciones">' + slContactoHtml(it) + posponer('semana') + posponer('mes')
-    + '<button type="button" class="sl-btn sl-btn-hecho" data-id="' + id
-    + '" onclick="slAbrirHecho(Number(this.dataset.id))">Hecho</button></div>'
-    + '</article>';
-}
-
-function slLineaHtml(it) {
-  return '<div class="sl-linea" data-sl-id="' + Number(it.id) + '"><div class="sl-linea-txt">' + slQuienHtml(it)
-    + '<div class="sl-linea-motivo">' + esc(it.motivo || '') + '</div></div>'
-    + '<div class="sl-linea-fecha">' + esc(it.vence_texto || it.fecha_texto || '') + '</div></div>';
-}
-
-function slItem(id) {
-  const grupos = (slDatos && slDatos.grupos) || {};
-  for (const g of SL_GRUPOS) {
-    const it = (grupos[g.clave] || []).find(x => Number(x.id) === Number(id));
-    if (it) return it;
-  }
-  return null;
-}
-
-async function slPedir(url, datos) {
-  let d = {};
-  try {
-    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify(datos)});
-    try { d = await r.json(); } catch (e) { d = {}; }
-    d = d || {};
-    if (!r.ok) d.ok = false;
-  } catch (e) {
-    d = {ok: false, error: 'no hubo respuesta del CRM'};
-  }
-  return d;
-}
-
-async function slRefrescar() {
-  await loadSegLeads();
-  // Si la ficha del lead esta abierta, su seccion de seguimiento tambien cambia.
-  if (typeof _cpClientId !== 'undefined' && _cpClientId) {
-    try {
-      const r = await fetch('/api/seg-leads/lead/' + Number(_cpClientId));
-      _cpData.seg = r.ok ? await r.json() : null;
-      if (_cpTab === 'calls') _cpSwitchTab('calls');
-    } catch (e) {}
-  }
-}
-
-// Posponer es un clic: corre la fecha y vuelve a pintar, sin formulario.
-async function slPosponer(id, cuanto) {
-  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(id) + '/posponer', {cuanto: cuanto});
-  if (!d.ok) {
-    alert('No se pudo posponer: ' + (d.error || 'error desconocido'));
-    return;
-  }
-  await slRefrescar();
-}
-
-function slCerrarModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-// ── fechas del formulario ──
-function slFecha(iso) {
-  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
-  const p = iso.split('-').map(Number);
-  if (!p.every(Number.isInteger)) return null;
-  const d = new Date(p[0], p[1] - 1, p[2]);
-  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
-}
-
-function slDos(n) {
-  return (n < 10 ? '0' : '') + n;
-}
-
-function slIso(d) {
-  return d.getFullYear() + '-' + slDos(d.getMonth() + 1) + '-' + slDos(d.getDate());
-}
-
-function slSumar(iso, cuanto) {
-  const d = slFecha(iso);
-  if (!d) return '';
-  if (cuanto === 'manana') d.setDate(d.getDate() + 1);
-  else if (cuanto === 'semana') d.setDate(d.getDate() + 7);
-  else if (cuanto === 'mes') {
-    const dia = d.getDate();
-    d.setDate(1);
-    d.setMonth(d.getMonth() + 1);
-    d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
-  } else return '';
-  return slIso(d);
-}
-
-// ── Hecho: siempre pide que paso y la proxima fecha, o que no hace falta ──
-function slAbrirHecho(id) {
-  const it = slItem(id);
-  if (!it) return;
-  slHechoId = Number(id);
-  document.getElementById('sl-hecho-contexto').textContent = (it.nombre || '') + ' · ' + (it.motivo || '');
-  document.getElementById('sl-hecho-resultado').value = '';
-  document.getElementById('sl-hecho-fecha').value = '';
-  document.getElementById('sl-hecho-hora').value = '';
-  document.getElementById('sl-hecho-motivo').value = it.motivo || '';
-  document.getElementById('sl-hecho-nota').value = it.nota || '';
-  document.getElementById('sl-hecho-sin-volver').checked = false;
-  document.getElementById('sl-hecho-error').textContent = '';
-  slSinVolver();
-  document.getElementById('sl-modal-hecho').classList.add('open');
-}
-
-function slSinVolver() {
-  const sin = !!document.getElementById('sl-hecho-sin-volver').checked;
-  document.getElementById('sl-hecho-proximo').hidden = sin;
-  if (sin) document.getElementById('sl-hecho-fecha').value = '';
-}
-
-function slHechoRapido(cuanto) {
-  document.getElementById('sl-hecho-sin-volver').checked = false;
-  slSinVolver();
-  document.getElementById('sl-hecho-fecha').value = slSumar(slHoy || slIso(new Date()), cuanto);
-}
-
-async function slGuardarHecho() {
-  const error = document.getElementById('sl-hecho-error');
-  error.textContent = '';
-  const resultado = String(document.getElementById('sl-hecho-resultado').value || '').trim();
-  const sinVolver = !!document.getElementById('sl-hecho-sin-volver').checked;
-  const fecha = document.getElementById('sl-hecho-fecha').value;
-  if (!resultado) {
-    error.textContent = 'Contá qué pasó en la llamada.';
-    return;
-  }
-  if (!sinVolver && !fecha) {
-    error.textContent = 'Elegí cuándo volvés a llamar, o marcá que no hace falta volver a llamar.';
-    return;
-  }
-  const datos = sinVolver
-    ? {resultado: resultado, sin_volver: true}
-    : {resultado: resultado, sin_volver: false, proxima_fecha: fecha,
-       proxima_hora: document.getElementById('sl-hecho-hora').value,
-       proximo_motivo: document.getElementById('sl-hecho-motivo').value,
-       proxima_nota: document.getElementById('sl-hecho-nota').value};
-  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(slHechoId) + '/hecho', datos);
-  if (!d.ok) {
-    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
-    return;
-  }
-  slCerrarModal('sl-modal-hecho');
-  slHechoId = null;
-  await slRefrescar();
-}
-
-// ── Nuevo recordatorio: desde esta pantalla, la ficha o Proceso de venta ──
-function slAbrirNuevo(leadId, nombre, buscar) {
-  slNuevoLeadId = null;
-  ['sl-nuevo-hora', 'sl-nuevo-motivo', 'sl-nuevo-nota'].forEach(i => { document.getElementById(i).value = ''; });
-  document.getElementById('sl-nuevo-fecha').value = slHoy || slIso(new Date());
-  document.getElementById('sl-nuevo-error').textContent = '';
-  document.getElementById('sl-nuevo-aviso').textContent = '';
-  document.getElementById('sl-modal-nuevo').classList.add('open');
-  if (leadId) slElegirLead(leadId, nombre);
-  else slCambiarLead(buscar || '');
-}
-
-function slCambiarLead(texto) {
-  slNuevoLeadId = null;
-  document.getElementById('sl-nuevo-elegido').hidden = true;
-  document.getElementById('sl-nuevo-buscador').hidden = false;
-  document.getElementById('sl-nuevo-aviso').textContent = '';
-  const input = document.getElementById('sl-nuevo-buscar');
-  input.value = typeof texto === 'string' ? texto : '';
-  slBuscarLead(input.value);
-  if (input.focus) input.focus();
-}
-
-function slBuscarTecla(v) {
-  clearTimeout(slBusquedaTimer);
-  slBusquedaTimer = setTimeout(() => slBuscarLead(v), 250);
-}
-
-async function slBuscarLead(texto) {
-  const lista = document.getElementById('sl-nuevo-resultados');
-  const q = (texto || '').trim();
-  if (q.length < 2) {
-    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
-    return;
-  }
-  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
-  let items = [];
-  try {
-    // Con page la busqueda va en SQL con LIMIT (igual que _ncBuscarPersona).
-    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
-    if (!r.ok) throw new Error(r.status);
-    items = ((await r.json()) || {}).items || [];
-  } catch (e) {
-    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
-    return;
-  }
-  lista.innerHTML = items.length
-    ? items.slice(0, 20).map(p => '<button type="button" class="nc-vinculo-opcion" data-lead="' + Number(p.id)
-        + '" data-nombre="' + esc(p.name || '') + '" onclick="slElegirLead(Number(this.dataset.lead), this.dataset.nombre)">'
-        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
-        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone || 'sin teléfono'].filter(Boolean).join(' · ')) + '</span>'
-        + '</button>').join('')
-    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
-}
-
-async function slElegirLead(id, nombre) {
-  const elegido = Number(id);
-  slNuevoLeadId = elegido;
-  document.getElementById('sl-nuevo-lead').textContent = nombre || 'Lead del CRM';
-  document.getElementById('sl-nuevo-buscador').hidden = true;
-  document.getElementById('sl-nuevo-elegido').hidden = false;
-  const aviso = document.getElementById('sl-nuevo-aviso');
-  aviso.textContent = '';
-  try {
-    const r = await fetch('/api/seg-leads/lead/' + elegido);
-    if (!r.ok) return;
-    const d = await r.json();
-    if (d && d.pendiente && slNuevoLeadId === elegido) {
-      aviso.textContent = 'Ya tiene un recordatorio abierto (' + d.pendiente.fecha_texto + ': '
-        + d.pendiente.motivo + '). Al guardar este, ese se cierra solo.';
-    }
-  } catch (e) {}
-}
-
-async function slGuardarNuevo() {
-  const error = document.getElementById('sl-nuevo-error');
-  error.textContent = '';
-  const fecha = document.getElementById('sl-nuevo-fecha').value;
-  const motivo = String(document.getElementById('sl-nuevo-motivo').value || '').trim();
-  if (!slNuevoLeadId) {
-    error.textContent = 'Elegí a qué lead vas a llamar.';
-    return;
-  }
-  if (!fecha) {
-    error.textContent = 'Elegí la fecha del llamado.';
-    return;
-  }
-  if (!motivo) {
-    error.textContent = 'Escribí el motivo: qué tenés que hacer o preguntar.';
-    return;
-  }
-  const d = await slPedir('/api/seg-leads/recordatorios', {
-    lead_id: slNuevoLeadId, fecha: fecha, hora: document.getElementById('sl-nuevo-hora').value,
-    motivo: motivo, nota: document.getElementById('sl-nuevo-nota').value});
-  if (!d.ok) {
-    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
-    return;
-  }
-  slCerrarModal('sl-modal-nuevo');
-  slNuevoLeadId = null;
-  await slRefrescar();
-}
-
-// El boton en la ficha de Proceso de venta. La ficha de Notion llega a su lead
-// por business_id; si todavia no esta conectada, el buscador se abre con el
-// nombre de la ficha.
-function slBotonNotionHtml(c) {
-  const datos = c.business_id
-    ? ' data-lead="' + Number(c.business_id) + '" data-nombre="' + esc(c.business_name || c.name || '') + '"'
-    : ' data-buscar="' + esc(c.name || '') + '"';
-  return '<button type="button" class="nc-vinculo" draggable="false"' + datos
-    + ' onclick="event.stopPropagation();slAbrirDesdeNotion(this)">Recordatorio de llamado</button>';
-}
-
-function slAbrirDesdeNotion(boton) {
-  const ds = boton.dataset || {};
-  if (ds.lead) slAbrirNuevo(Number(ds.lead), ds.nombre);
-  else slAbrirNuevo(null, '', ds.buscar || '');
-}
-
-// La ficha del lead (pestaña Llamadas): el recordatorio abierto y el historial
-// de llamados. El historial se ve aca y no en la pantalla de seguimiento.
-function slFichaHtml(seg) {
-  if (!seg || !seg.lead) return '';
-  const p = seg.pendiente;
-  const pendiente = p
-    ? '<div class="sl-ficha-pendiente' + (p.grupo === 'vencidos' ? ' sl-vencida' : '') + '"><b>'
-      + esc(p.fecha_texto || '') + (p.hora ? ' · ' + esc(p.hora) : '') + '</b> · ' + esc(p.motivo || '')
-      + (p.nota ? '<div class="sl-nota">' + esc(p.nota) + '</div>' : '') + '</div>'
-    : '<div class="sl-vacio">Sin recordatorio pendiente.</div>';
-  const llamados = (seg.llamados || []).map(l => '<div class="sl-ficha-llamado"><span class="sl-ficha-fecha">'
-    + esc(l.fecha_texto || '') + '</span>' + esc(l.resultado || '') + '</div>').join('')
-    || '<div class="sl-vacio">Todavía no hay llamados cerrados.</div>';
-  return '<div class="cp-section"><div class="cp-section-title sl-ficha-cab"><span>Próximo llamado</span>'
-    + '<button type="button" class="cp-btn cp-btn-ghost" data-lead="' + Number(seg.lead.id) + '" data-nombre="'
-    + esc(seg.lead.nombre || '') + '" onclick="slAbrirNuevo(Number(this.dataset.lead), this.dataset.nombre)">Nuevo recordatorio</button></div>'
-    + pendiente + '</div>'
-    + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
-}
-// ========== FIN Seguimiento de leads ==========
 // ========== Horarios ==========
 // Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
 // sus tramos por dia, las horas de cada dia y el total. En la compu es una
@@ -17085,13 +16389,14 @@ async function hrCargar() {
   if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
 }
 
-// El color de cada persona es el de Daily: su lugar en la lista de Daily
-// Programador (orden_daily, lo manda el servidor) sobre los mismos DY_COLORES
-// que usa dyColor. Quien no esta en Daily toma uno estable por su id.
+// El color de cada persona sale de su lugar entre los programadores
+// (orden_daily, lo manda el servidor) sobre los HR_COLORES del CSS
+// (hr-color-N). Quien no esta en esa lista toma uno estable por su id.
+const HR_COLORES = 4;
 function hrColor(p) {
   const orden = p ? p.orden_daily : null;
   const base = (orden === null || orden === undefined) ? (Number(p && p.id) || 0) : Number(orden);
-  return ((base % DY_COLORES) + DY_COLORES) % DY_COLORES;
+  return ((base % HR_COLORES) + HR_COLORES) % HR_COLORES;
 }
 
 // Los tramos de un dia como pastillas, y sus horas. Sin tramos: en la grilla
@@ -19028,155 +18333,6 @@ async function igArmar() {
 }
 // ========== FIN Instagram ==========
 
-// ========== Modo sombra ==========
-// Sin barras invertidas en este bloque: vive dentro de un string de Python.
-let soDatos = null;
-let soSemanaSel = '';
-let soPedido = 0;
-const SO_TIPOS = {pausar: 'so-chip-rojo', bajar: 'so-chip-rojo', escalar: 'so-chip-verde', renovar: 'so-chip-azul', confirmar: ''};
-const SO_VEREDICTOS = {
-  coincidencia: ['Coincidieron', 'so-chip-verde'],
-  agente: ['Tenía razón la recomendación', 'so-chip-azul'],
-  marketing: ['Tenía razón el de marketing', 'so-chip-rojo'],
-  sin_definir: ['Sin definir', '']
-};
-
-function soSemana(delta) {
-  if (!soDatos) return;
-  const p = soDatos.semana.split('-');
-  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 7 * delta);
-  soSemanaSel = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  soCargar();
-}
-
-function soSemanaHoy() { soSemanaSel = ''; soCargar(); }
-
-async function soCargar() {
-  const estado = document.getElementById('so-estado');
-  if (!estado) return;
-  const pedido = ++soPedido;
-  let d;
-  try {
-    const r = await fetch('/api/sombra/semana' + (soSemanaSel ? '?semana=' + encodeURIComponent(soSemanaSel) : ''));
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    d = await r.json();
-    if (!d || !Array.isArray(d.recomendaciones)) throw new Error('respuesta incompleta');
-  } catch (e) {
-    if (pedido !== soPedido) return;
-    estado.textContent = 'No se pudieron cargar las recomendaciones. Probá de nuevo en un rato.';
-    liClase('so-estado', false, 'so-oculto');
-    return;
-  }
-  if (pedido !== soPedido) return;
-  soDatos = d;
-  soPintar();
-}
-
-function soPintar() {
-  const d = soDatos;
-  document.getElementById('so-semana-label').textContent = 'Semana del ' + igFechaLarga(d.semana);
-  liClase('so-nota-admin', !d.es_admin, 'so-oculto');
-  esCargar();
-  const topeInput = document.getElementById('so-tope');
-  if (topeInput && document.activeElement !== topeInput) topeInput.value = d.tope_cpl == null ? '' : d.tope_cpl;
-  liClase('so-marcador', !d.es_admin, 'so-oculto');
-  const m = d.marcador || {};
-  const tiles = [['coincidencia', 'Coincidieron'], ['agente', 'Tenía razón la recomendación'],
-    ['marketing', 'Tenía razón el de marketing'], ['sin_definir', 'Sin definir']];
-  document.getElementById('so-marcador').innerHTML = tiles.map(t =>
-    '<div class="so-tile"><b>' + Number(m[t[0]] || 0) + '</b><span>' + t[1] + '</span></div>').join('');
-  const hay = d.recomendaciones.length > 0;
-  const estado = document.getElementById('so-estado');
-  estado.textContent = hay ? '' : (d.semana === d.semana_actual
-    ? 'Todavía no hay recomendaciones esta semana. Se arman solas los lunes a las 9.'
-    : 'No hubo recomendaciones esa semana.');
-  liClase('so-estado', hay, 'so-oculto');
-  liClase('so-btn-calcular', !(d.puede_calcular && d.semana === d.semana_actual), 'so-oculto');
-  document.getElementById('so-lista').innerHTML = d.recomendaciones.map(soItem).join('');
-}
-
-function soItem(r) {
-  const v = SO_VEREDICTOS[r.veredicto];
-  const resultado = !soDatos.es_admin ? '' : r.veredicto
-    ? '<div class="so-resultado"><span class="so-chip ' + v[1] + '">' + liEsc(v[0]) + '</span> ' + liEsc(r.detalle || '') + '</div>'
-    : '<div class="so-resultado">Se evalúa el lunes siguiente, con lo que pase esta semana.</div>';
-  const campana = r.campana_nombre && r.campana_nombre !== r.objeto_nombre
-    ? '<div class="so-campana">Campaña: ' + liEsc(r.campana_nombre) + '</div>' : '';
-  return '<article class="so-item"><div class="so-cab"><span class="so-chip ' + (SO_TIPOS[r.tipo] || '') + '">' +
-    liEsc(r.tipo_texto) + '</span><span class="so-nombre">' + liEsc(r.objeto_nombre || '') + '</span></div>' +
-    campana + '<div class="so-evidencia">' + liEsc(r.evidencia) + '</div>' + resultado + '</article>';
-}
-
-async function soCalcular() {
-  const btn = document.getElementById('so-btn-calcular');
-  const msg = document.getElementById('so-msg');
-  btn.disabled = true;
-  msg.textContent = 'Leyendo la pauta en Meta…';
-  try {
-    const r = await fetch('/api/sombra/calcular', {method: 'POST'});
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || (d.estado === 'sin_credenciales' ? 'Falta el acceso a Meta.' : 'No se pudo calcular.'));
-    msg.textContent = 'Listo: ' + d.recomendaciones + ' recomendaciones.';
-    await soCargar();
-  } catch (e) {
-    msg.textContent = e.message;
-  } finally {
-    btn.disabled = false;
-  }
-}
-async function esCargar() {
-  const lista = document.getElementById('es-lista');
-  if (!lista) return;
-  try {
-    const r = await fetch('/api/sombra/estrategias');
-    const d = await r.json();
-    if (!r.ok || !d.ok) throw new Error('x');
-    lista.innerHTML = d.estrategias.length ? d.estrategias.map(function (e) {
-      const plan = e.plan ? 'El agente ya la leyó.' : 'Falta que el agente la lea.';
-      return '<div>' + liEsc(e.mes) + ' · <a href="/api/sombra/estrategias/' + e.id + '/pdf" target="_blank" rel="noopener">' +
-        liEsc(e.nombre_archivo) + '</a> · subido por ' + liEsc(e.subido_por || '') + ' · ' + plan + '</div>';
-    }).join('') : 'Todavía no hay PDF subidos.';
-  } catch (e) {
-    lista.textContent = 'No se pudo cargar la lista.';
-  }
-}
-
-async function esSubir() {
-  const msg = document.getElementById('es-msg');
-  const archivo = document.getElementById('es-archivo').files[0];
-  const mes = document.getElementById('es-mes').value;
-  if (!archivo || !mes) { msg.textContent = 'Elegí el mes y el PDF.'; return; }
-  const f = new FormData();
-  f.append('archivo', archivo);
-  f.append('mes', mes);
-  msg.textContent = 'Subiendo…';
-  try {
-    const r = await fetch('/api/sombra/estrategias', {method: 'POST', body: f});
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo subir.');
-    msg.textContent = 'Subido. El agente lo lee en las próximas horas.';
-    document.getElementById('es-archivo').value = '';
-    esCargar();
-  } catch (e) {
-    msg.textContent = e.message;
-  }
-}
-
-async function soGuardarTope() {
-  const msg = document.getElementById('so-tope-msg');
-  msg.textContent = 'Guardando…';
-  try {
-    const r = await fetch('/api/sombra/tope', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({valor: document.getElementById('so-tope').value})});
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo guardar.');
-    msg.textContent = d.tope_cpl == null ? 'Sin tope: se usa el promedio.' : 'Guardado. Rige desde el próximo lunes.';
-  } catch (e) {
-    msg.textContent = e.message;
-  }
-}
-// ========== FIN Modo sombra ==========
-
 // ========== Email marketing de Captacion (Fidelidad) ==========
 // Juan, 30/9: los mails automaticos a restaurantes y nada mas. Los datos salen
 // de /api/fidelidad/mails-auto/panel (services/fid_mails_auto.panel).
@@ -19656,687 +18812,6 @@ function emCerrarMail() {
   if (modal) modal.classList.remove('open');
   const iframe = document.getElementById('em-mail-iframe');
   if (iframe) iframe.srcdoc = '';
-}
-
-// ========== Daily Programador ==========
-// Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
-// recordatorios que se repiten, por persona del equipo. Son la misma pantalla
-// y la misma API; cambia la seccion ('programador' o 'admin'), que dice el
-// panel (daily / daily_admin), quien aparece (marca programador / admin_daily)
-// y los ids del DOM (dy- / dya-). Todo boton lleva data-seccion.
-// El dia se pinta como Seguimiento de leads: contadores, grupos y tarjetas con
-// las clases sl-. El dia de hoy lo decide el servidor en hora de Montevideo;
-// aca solo se suman dias a una fecha AAAA-MM-DD en UTC.
-// No es Tareas: Tareas es el tablero del equipo (cliente, responsable,
-// prioridad, fecha limite, Notion); esto es la lista personal de cada dia.
-
-const DY_SECCIONES = {
-  programador: {panel: 'daily', pre: 'dy', titulo: 'Daily Programador',
-                sinPersonas: 'No hay nadie marcado como programador en Recursos Humanos.'},
-  admin: {panel: 'daily_admin', pre: 'dya', titulo: 'Daily Admin',
-          sinPersonas: 'No hay nadie marcado para Daily Admin en Recursos Humanos.'}
-};
-const DY_DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-const DY_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
-                  'septiembre', 'octubre', 'noviembre', 'diciembre'];
-// Cuantos colores de persona hay en el CSS (dy-color-N y dy-borde-N).
-const DY_COLORES = 4;
-const DY_GRUPOS = [
-  {clave: 'ayer', rotulo: 'Pendiente de ayer'},
-  {clave: 'hoy', rotulo: 'Hoy'},
-  {clave: 'recordatorios', rotulo: 'Recordatorios'},
-  {clave: 'hechas', rotulo: 'Hechas'}
-];
-// El estado de cada Daily, por separado.
-const DY_EST = {programador: dyEstadoNuevo(), admin: dyEstadoNuevo()};
-
-let dyModalSeccion = 'programador';  // de que Daily es el modal abierto
-let dyActividadId = null;            // la actividad del modal; null es una nueva
-let dyRecordatorioId = null;         // el recordatorio del modal; null es uno nuevo
-
-function dyEstadoNuevo() {
-  // fecha: el dia que se esta mirando. hoy: hoy en Montevideo, segun el
-  // servidor. pedido: descarta respuestas viejas si se cambia rapido de dia.
-  return {personas: [], personaId: null, fecha: null, hoy: null, datos: null,
-          hechasAbiertas: false, pedido: 0};
-}
-
-function dySeccion(s) {
-  return DY_SECCIONES[s] ? s : 'programador';
-}
-
-function dyId(s, nombre) {
-  return DY_SECCIONES[dySeccion(s)].pre + '-' + nombre;
-}
-
-function dyAttr(s) {
-  return ' data-seccion="' + dySeccion(s) + '"';
-}
-
-function dyFechaMas(fecha, dias) {
-  const p = String(fecha).split('-').map(Number);
-  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
-}
-
-function dyFechaLarga(fecha) {
-  const p = String(fecha).split('-').map(Number);
-  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
-  return DY_DIAS_LARGOS[d.getUTCDay()] + ' ' + p[2] + ' de ' + DY_MESES[p[1] - 1];
-}
-
-function dyFechaCorta(fecha) {
-  const p = String(fecha).split('-');
-  return p[2] + '/' + p[1];
-}
-
-function dyTexto(id, texto) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = texto;
-}
-
-function dyHtml(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = html;
-}
-
-function dyIconos(id) {
-  const el = document.getElementById(id);
-  if (window.lucide && el) lucide.createIcons({nodes: [el]});
-}
-
-function dyBuscar(lista, id) {
-  return (Array.isArray(lista) ? lista : []).find(x => Number(x.id) === Number(id)) || null;
-}
-
-function dyPlural(n, uno, varios) {
-  return n + ' ' + (n === 1 ? uno : varios);
-}
-
-// El apodo si tiene ("Juanchi"), si no el primer nombre. Lo arma el servidor.
-function dyNombre(p) {
-  return (p && (p.mostrar || p.primer_nombre)) || '';
-}
-
-function dyEsHoy(s) {
-  const e = DY_EST[s];
-  return !!e.fecha && e.fecha === e.hoy;
-}
-
-// El color de cada persona sale de su lugar en la lista, que va en orden de
-// alta: sumar a alguien al final no le cambia el color a nadie.
-function dyColor(s, id) {
-  const i = DY_EST[s].personas.findIndex(p => Number(p.id) === Number(id));
-  return (i < 0 ? 0 : i) % DY_COLORES;
-}
-
-function dyIconoPersona(s, id) {
-  return '<i data-lucide="user-round" class="dy-nav-icono dy-color-' + dyColor(s, id) + '" aria-hidden="true"></i>';
-}
-
-// El contenido del panel, una sola vez: los dos Daily tienen el mismo.
-function dyArmarPanel(s) {
-  const conf = DY_SECCIONES[s];
-  const panel = document.getElementById(conf.panel + '-panel');
-  if (!panel || (panel.dataset && panel.dataset.dyArmado === '1')) return;
-  const id = nombre => ' id="' + dyId(s, nombre) + '"';
-  const a = dyAttr(s);
-  panel.innerHTML = '<div class="page-header sl-cabecera"><div><h1' + id('titulo') + '>' + esc(conf.titulo) + '</h1>'
-    + '<div class="page-date"' + id('resumen') + '>Cargando...</div></div>'
-    + '<button class="btn-primary" type="button"' + a + ' onclick="dyAbrirActividad(this.dataset.seccion)">Nueva actividad</button></div>'
-    + '<div class="dy-personas"' + id('personas') + ' role="group" aria-label="De quién es el día"></div>'
-    + '<div class="dy-dia">'
-    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, -1)"'
-    + ' title="Día anterior" aria-label="Día anterior"><i data-lucide="chevron-left" class="nav-icon"></i></button>'
-    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, 1)"'
-    + ' title="Día siguiente" aria-label="Día siguiente"><i data-lucide="chevron-right" class="nav-icon"></i></button>'
-    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyIrHoy(this.dataset.seccion)">Hoy</button>'
-    + '<div class="dy-fecha"' + id('fecha') + ' role="status"></div></div>'
-    + '<div class="dy-error"' + id('error') + ' role="alert"></div>'
-    + '<div class="sl-contadores"' + id('contadores') + ' aria-label="Lo del día por grupo"></div>'
-    + '<div class="dy-agregar"><input type="text"' + id('nueva') + ' class="dy-in" maxlength="200"'
-    + ' placeholder="Actividad rápida para este día y Enter" aria-label="Actividad rápida"' + a
-    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAgregar(this.dataset.seccion)">'
-    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAgregar(this.dataset.seccion)">Agregar</button></div>'
-    + '<div' + id('lista') + '></div>'
-    + '<section class="fin-card dy-recurrentes"' + id('recurrentes') + '><div class="dy-recurrentes-cab">'
-    + '<div class="fin-card-title">Recordatorios que se repiten</div>'
-    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAbrirRecordatorio(this.dataset.seccion)">Nuevo recordatorio</button></div>'
-    + '<div class="dy-error"' + id('rec-error') + ' role="alert"></div>'
-    + '<div class="dy-lista"' + id('recordatorios') + '></div></section>';
-  if (panel.dataset) panel.dataset.dyArmado = '1';
-}
-
-async function dyCargarPersonas(s) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  try {
-    const r = await fetch('/api/daily/personas?seccion=' + s);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json();
-    e.personas = Array.isArray(j.personas) ? j.personas : [];
-  } catch (err) {
-    e.personas = [];
-  }
-  if (!dyBuscar(e.personas, e.personaId)) e.personaId = e.personas.length ? e.personas[0].id : null;
-  dyPintarPersonas(s);
-  return e.personas;
-}
-
-function dyPintarPersonas(s) {
-  const e = DY_EST[s];
-  const enPanel = activePanel === DY_SECCIONES[s].panel;
-  const a = dyAttr(s);
-  dyHtml(dyId(s, 'nav-personas'), e.personas.map(p => {
-    const id = Number(p.id);
-    return '<div class="dy-nav-sub' + (enPanel && id === e.personaId ? ' dy-activa' : '') + '" id="'
-      + dyId(s, 'nav-persona-' + id) + '" role="button" tabindex="0"' + a + ' data-persona="' + id + '"'
-      + ' onclick="dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))"'
-      + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
-      + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></div>';
-  }).join(''));
-  dyHtml(dyId(s, 'personas'), e.personas.length
-    ? e.personas.map(p => {
-        const id = Number(p.id);
-        return '<button class="dy-persona" type="button" aria-pressed="' + (id === e.personaId ? 'true' : 'false') + '"'
-          + a + ' data-persona="' + id + '" onclick="dyElegirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
-          + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></button>';
-      }).join('')
-    : '<div class="dy-vacio">' + esc(DY_SECCIONES[s].sinPersonas) + '</div>');
-  dyIconos(dyId(s, 'nav-personas'));
-  dyIconos(dyId(s, 'personas'));
-}
-
-// Desde el menu: abre el panel de ese Daily en el dia de esa persona.
-function dyAbrirPersona(s, id) {
-  s = dySeccion(s);
-  DY_EST[s].personaId = id;
-  showPanel(DY_SECCIONES[s].panel);   // showPanel llama a loadDaily
-}
-
-function dyElegirPersona(s, id) {
-  s = dySeccion(s);
-  if (id === DY_EST[s].personaId) return;
-  DY_EST[s].personaId = id;
-  dyCargarDia(s);
-}
-
-async function loadDaily(s) {
-  s = dySeccion(s);
-  dyArmarPanel(s);
-  if (!DY_EST[s].personas.length) await dyCargarPersonas(s);
-  await dyCargarDia(s);
-}
-
-function dyMoverDia(s, dias) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  if (!e.fecha) return;
-  e.fecha = dyFechaMas(e.fecha, dias);
-  dyCargarDia(s);
-}
-
-function dyIrHoy(s) {
-  s = dySeccion(s);
-  DY_EST[s].fecha = null;   // sin fecha, el servidor devuelve hoy en Montevideo
-  dyCargarDia(s);
-}
-
-async function dyCargarDia(s) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  dyPintarPersonas(s);
-  if (e.personaId === null) {
-    e.datos = null;
-    dyPintarDia(s);
-    return;
-  }
-  const pedido = ++e.pedido;
-  const url = '/api/daily?seccion=' + s + '&persona_id=' + e.personaId + (e.fecha ? '&fecha=' + e.fecha : '');
-  let error = '';
-  let datos = null;
-  try {
-    const r = await fetch(url);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
-    datos = j;
-  } catch (err) {
-    error = 'No se pudo leer el día: ' + err.message;
-  }
-  if (pedido !== e.pedido) return;
-  e.datos = datos;
-  if (datos) {
-    e.fecha = datos.fecha || e.fecha;
-    e.hoy = datos.hoy || e.hoy;
-  }
-  dyTexto(dyId(s, 'error'), error);
-  dyPintarDia(s);
-}
-
-// Lo del dia separado como lo muestra la pantalla.
-function dyGrupos(d) {
-  const lista = x => Array.isArray(x) ? x : [];
-  const actividades = lista(d.actividades);
-  const recordatorios = lista(d.recordatorios);
-  return {
-    ayer: lista(d.pendientes_ayer),
-    hoy: actividades.filter(a => !a.hecha),
-    recordatorios: recordatorios.filter(r => !r.hecha),
-    hechas: actividades.filter(a => a.hecha).map(a => Object.assign({tipo: 'actividad'}, a))
-      .concat(recordatorios.filter(r => r.hecha).map(r => Object.assign({tipo: 'recordatorio'}, r)))
-  };
-}
-
-function dyResumen(g) {
-  const partes = [dyPlural(g.hoy.length + g.recordatorios.length, 'pendiente', 'pendientes'),
-                  dyPlural(g.hechas.length, 'hecha', 'hechas')];
-  if (g.ayer.length) partes.push(g.ayer.length + ' de ayer');
-  return partes.join(' · ');
-}
-
-// Cuatro tarjetas chicas; la de ayer en rojo claro si hay algo. Tocarlas lleva al grupo.
-function dyContadoresHtml(s, g) {
-  return DY_GRUPOS.map(x => {
-    const n = g[x.clave].length;
-    const clase = 'sl-contador' + (x.clave === 'ayer' && n > 0 ? ' sl-contador-vencidos' : '');
-    return '<button type="button" class="' + clase + '" data-grupo="' + x.clave + '"' + dyAttr(s)
-      + ' onclick="dyIrAGrupo(this.dataset.seccion, this.dataset.grupo)">'
-      + '<span class="sl-contador-num">' + n + '</span>'
-      + '<span class="sl-contador-rot">' + esc(x.rotulo) + '</span></button>';
-  }).join('');
-}
-
-function dyIrAGrupo(s, clave) {
-  s = dySeccion(s);
-  const el = document.getElementById(dyId(s, 'grupo-' + clave));
-  if (!el) return;
-  if (clave === 'hechas') {
-    DY_EST[s].hechasAbiertas = true;
-    el.open = true;
-  }
-  if (el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
-}
-
-function dyTituloDia(s) {
-  const e = DY_EST[s];
-  if (!e.fecha) return '';
-  const largo = dyFechaLarga(e.fecha);
-  return dyEsHoy(s) ? 'Hoy · ' + largo : largo;
-}
-
-function dyBoton(s, texto, accion, id, extra) {
-  return '<button type="button" class="sl-btn' + (extra || '') + '"' + dyAttr(s) + ' data-id="' + Number(id)
-    + '" onclick="' + accion + '(this.dataset.seccion, Number(this.dataset.id))">' + texto + '</button>';
-}
-
-// Un grupo vacio no se muestra. Las hechas van al final, colapsadas.
-function dyListaHtml(s, g) {
-  const esHoy = dyEsHoy(s);
-  const grupo = (clave, titulo, items, tipo) => '<section class="sl-grupo" id="' + dyId(s, 'grupo-' + clave) + '">'
-    + '<h2 class="sl-grupo-titulo' + (clave === 'ayer' ? ' sl-grupo-titulo-vencidos' : '') + '">'
-    + esc(titulo.toUpperCase()) + '</h2>'
-    + items.map(it => dyTarjetaHtml(s, it, tipo)).join('') + '</section>';
-  let html = '';
-  if (g.ayer.length) html += grupo('ayer', 'Pendiente de ayer', g.ayer, 'ayer');
-  if (g.hoy.length) html += grupo('hoy', dyTituloDia(s), g.hoy, 'hoy');
-  if (g.recordatorios.length) {
-    html += grupo('recordatorios', esHoy ? 'Recordatorios de hoy' : 'Recordatorios del día', g.recordatorios, 'recordatorio');
-  }
-  if (!g.ayer.length && !g.hoy.length && !g.recordatorios.length) {
-    html += '<div class="dy-vacio-grande"><span>' + (esHoy ? 'Nada pendiente para hoy.' : 'Nada pendiente para este día.')
-      + '</span><button class="btn-primary" type="button"' + dyAttr(s)
-      + ' onclick="dyAbrirActividad(this.dataset.seccion)">Agregar actividad</button></div>';
-  }
-  if (g.hechas.length) {
-    html += '<details class="sl-grupo dy-hechas" id="' + dyId(s, 'grupo-hechas') + '"' + dyAttr(s)
-      + (DY_EST[s].hechasAbiertas ? ' open' : '')
-      + ' ontoggle="DY_EST[this.dataset.seccion].hechasAbiertas = this.open">'
-      + '<summary class="sl-grupo-titulo">HECHAS (' + g.hechas.length + ')</summary>'
-      + g.hechas.map(it => dyLineaHechaHtml(s, it)).join('') + '</details>';
-  }
-  return html;
-}
-
-// Tarjeta completa, como las de Seguimiento. Lo de ayer lleva el borde rojo de
-// los vencidos; los recordatorios, el color de la persona. Todo tiene Editar.
-function dyTarjetaHtml(s, it, tipo) {
-  const id = Number(it.id);
-  const ayer = tipo === 'ayer';
-  const rec = tipo === 'recordatorio';
-  const clase = 'sl-tarjeta dy-tarjeta' + (ayer ? ' sl-vencida' : '')
-    + (rec ? ' dy-borde-' + dyColor(s, DY_EST[s].personaId) : '');
-  const hora = it.hora
-    ? '<div class="sl-cuando' + (ayer ? ' sl-cuando-vencido' : '') + '">' + esc(it.hora) + '</div>' : '';
-  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
-  let etiqueta = '';
-  if (rec) etiqueta = '<span class="dy-etiqueta">' + esc(it.cuando || '') + '</span>';
-  else if (it.pasada_de) etiqueta = '<span class="dy-etiqueta">Pasada del ' + esc(dyFechaCorta(it.pasada_de)) + '</span>';
-  let acciones;
-  if (rec) {
-    acciones = dyBoton(s, 'Hecho', 'dyRecordatorioHecho', id, ' sl-btn-hecho')
-      + dyBoton(s, 'Editar', 'dyEditarRecordatorio', id);
-  } else if (ayer) {
-    acciones = dyBoton(s, dyEsHoy(s) ? 'Pasar a hoy' : 'Pasar a este día', 'dyPasar', id)
-      + dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho') + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
-  } else {
-    acciones = dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho')
-      + dyBoton(s, 'Pasar a mañana', 'dyPasarAManiana', id) + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
-  }
-  return '<article class="' + clase + '" data-dy-id="' + id + '" data-dy-tipo="' + tipo + '">'
-    + '<div class="sl-tarjeta-cab"><div class="dy-tarjeta-titulo">' + esc(it.texto) + '</div>' + hora + '</div>'
-    + nota + etiqueta + '<div class="sl-acciones">' + acciones + '</div></article>';
-}
-
-function dyLineaHechaHtml(s, it) {
-  const id = Number(it.id);
-  const rec = it.tipo === 'recordatorio';
-  return '<div class="sl-linea dy-linea-hecha" data-dy-id="' + id + '"><div class="sl-linea-txt">'
-    + '<div class="dy-tachado">' + esc(it.texto) + '</div>'
-    + (rec ? '<div class="sl-linea-motivo">' + esc(it.cuando || '') + '</div>' : '') + '</div>'
-    + '<div class="dy-linea-botones">'
-    + dyBoton(s, 'Editar', rec ? 'dyEditarRecordatorio' : 'dyAbrirActividad', id)
-    + dyBoton(s, 'Deshacer', rec ? 'dyDeshacerRecordatorio' : 'dyDeshacerActividad', id) + '</div></div>';
-}
-
-function dyPintarDia(s) {
-  const e = DY_EST[s];
-  const persona = dyBuscar(e.personas, e.personaId);
-  dyTexto(dyId(s, 'titulo'), persona ? 'Daily de ' + dyNombre(persona) : DY_SECCIONES[s].titulo);
-  dyHtml(dyId(s, 'fecha'), e.fecha
-    ? esc(dyFechaLarga(e.fecha)) + (dyEsHoy(s) ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
-  if (!e.datos) {
-    dyTexto(dyId(s, 'resumen'), e.personaId === null ? DY_SECCIONES[s].sinPersonas : '');
-    dyHtml(dyId(s, 'contadores'), '');
-    dyHtml(dyId(s, 'lista'), '');
-    dyPintarRecordatorios(s);
-    return;
-  }
-  const g = dyGrupos(e.datos);
-  dyTexto(dyId(s, 'resumen'), dyResumen(g));
-  dyHtml(dyId(s, 'contadores'), dyContadoresHtml(s, g));
-  dyHtml(dyId(s, 'lista'), dyListaHtml(s, g));
-  dyPintarRecordatorios(s);
-  dyIconos(DY_SECCIONES[s].panel + '-panel');
-}
-
-function dyPintarRecordatorios(s) {
-  const e = DY_EST[s];
-  const todos = e.datos && Array.isArray(e.datos.recordatorios_todos) ? e.datos.recordatorios_todos : [];
-  const boton = (accion, id, icono, rotulo, texto) =>
-    '<button class="btn-ghost btn-icono" type="button"' + dyAttr(s) + ' data-id="' + id + '" onclick="' + accion
-    + '(this.dataset.seccion, Number(this.dataset.id))" title="' + rotulo + '" aria-label="' + rotulo + ': ' + esc(texto)
-    + '"><i data-lucide="' + icono + '" class="nav-icon"></i></button>';
-  dyHtml(dyId(s, 'recordatorios'), todos.length
-    ? todos.map(r => {
-        const id = Number(r.id);
-        return '<div class="dy-rec' + (r.activo ? '' : ' dy-pausado') + '"><div class="dy-rec-cuerpo">'
-          + '<div class="dy-rec-texto">' + esc(r.texto) + '</div>'
-          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + (r.hora ? ' · ' + esc(r.hora) : '') + '</div></div>'
-          + (r.activo ? '' : '<span class="dy-badge">Pausado</span>')
-          + boton('dyEditarRecordatorio', id, 'pencil', 'Editar', r.texto)
-          + boton('dyPausarRecordatorio', id, r.activo ? 'pause' : 'play', r.activo ? 'Pausar' : 'Reanudar', r.texto)
-          + boton('dyBorrarRecordatorio', id, 'trash-2', 'Borrar', r.texto)
-          + '</div>';
-      }).join('')
-    : '<div class="dy-vacio">Sin recordatorios. Creá uno con "Nuevo recordatorio": aparece solo en los días que le tocan.</div>');
-}
-
-async function dyPedir(url, metodo, cuerpo) {
-  const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
-  if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
-  const r = await fetch(url, opciones);
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.ok === false) throw new Error(j.error || 'HTTP ' + r.status);
-  return j;
-}
-
-// Hace el pedido, recarga el dia y deja el error (si hubo) en el aviso del panel.
-async function dyAccion(s, nombreError, prefijo, hacer) {
-  s = dySeccion(s);
-  let error = '';
-  try {
-    await hacer();
-  } catch (err) {
-    error = prefijo + err.message;
-  }
-  await dyCargarDia(s);
-  if (error) dyTexto(dyId(s, nombreError), error);
-  return !error;
-}
-
-// ── botones de las tarjetas ──
-function dyActividadHecha(s, id) {
-  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: true}));
-}
-
-function dyDeshacerActividad(s, id) {
-  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
-    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: false}));
-}
-
-function dyRecordatorioHecho(s, id) {
-  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: true}));
-}
-
-function dyDeshacerRecordatorio(s, id) {
-  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
-    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: false}));
-}
-
-// Lo de ayer pasa al dia que se esta mirando.
-function dyPasar(s, id) {
-  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
-    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: DY_EST[dySeccion(s)].fecha}));
-}
-
-// "Mañana" es el dia siguiente al que se esta mirando.
-function dyPasarAManiana(s, id) {
-  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
-    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFechaMas(DY_EST[dySeccion(s)].fecha, 1)}));
-}
-
-// ── alta rapida con Enter ──
-async function dyAgregar(s) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  const input = document.getElementById(dyId(s, 'nueva'));
-  const texto = (input.value || '').trim();
-  if (!texto) {
-    dyTexto(dyId(s, 'error'), 'Escribí la actividad antes de agregarla.');
-    input.focus();
-    return;
-  }
-  if (e.personaId === null || !e.fecha) {
-    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
-    return;
-  }
-  const ok = await dyAccion(s, 'error', 'No se pudo agregar: ', () =>
-    dyPedir('/api/daily/actividades', 'POST', {seccion: s, persona_id: e.personaId, fecha: e.fecha, texto: texto}));
-  if (ok) input.value = '';
-  input.focus();
-}
-
-// ── modal de actividad: nueva o editar (texto, dia, hora y nota) ──
-function dyItemDelDia(s, id) {
-  const d = DY_EST[s].datos || {};
-  return dyBuscar(d.actividades, id) || dyBuscar(d.pendientes_ayer, id);
-}
-
-function dyAbrirActividad(s, id) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  if (e.personaId === null) {
-    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
-    return;
-  }
-  const a = (id === undefined || id === null) ? null : dyItemDelDia(s, id);
-  const persona = dyBuscar(e.personas, e.personaId);
-  dyModalSeccion = s;
-  dyActividadId = a ? Number(a.id) : null;
-  dyTexto('dy-act-titulo', a ? 'Editar actividad' : 'Nueva actividad');
-  dyTexto('dy-act-contexto', 'Daily de ' + dyNombre(persona));
-  document.getElementById('dy-act-texto').value = a ? a.texto : '';
-  document.getElementById('dy-act-fecha').value = a ? a.fecha : (e.fecha || e.hoy || '');
-  document.getElementById('dy-act-hora').value = a && a.hora ? a.hora : '';
-  document.getElementById('dy-act-nota').value = a && a.nota ? a.nota : '';
-  dyTexto('dy-act-error', '');
-  const borrar = document.getElementById('dy-act-borrar');
-  if (borrar) borrar.classList.toggle('dy-oculto', !a);
-  document.getElementById('dy-modal-actividad').classList.add('open');
-  const texto = document.getElementById('dy-act-texto');
-  if (texto.focus) texto.focus();
-}
-
-function dyCerrarModal() {
-  document.getElementById('dy-modal-actividad').classList.remove('open');
-  dyActividadId = null;
-}
-
-async function dyGuardarActividad() {
-  const s = dyModalSeccion;
-  const e = DY_EST[s];
-  const texto = String(document.getElementById('dy-act-texto').value || '').trim();
-  const fecha = document.getElementById('dy-act-fecha').value || e.fecha;
-  if (!texto) {
-    dyTexto('dy-act-error', 'Escribí qué hay que hacer.');
-    return;
-  }
-  if (!fecha) {
-    dyTexto('dy-act-error', 'Elegí el día.');
-    return;
-  }
-  const datos = {texto: texto, fecha: fecha, hora: document.getElementById('dy-act-hora').value || '',
-                 nota: document.getElementById('dy-act-nota').value || ''};
-  const editando = dyActividadId;
-  try {
-    if (editando !== null) await dyPedir('/api/daily/actividades/' + editando, 'PATCH', datos);
-    else await dyPedir('/api/daily/actividades', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
-  } catch (err) {
-    dyTexto('dy-act-error', 'No se guardó: ' + err.message);
-    return;
-  }
-  dyCerrarModal();
-  await dyCargarDia(s);
-}
-
-async function dyBorrarDesdeModal() {
-  const s = dyModalSeccion;
-  const id = dyActividadId;
-  if (id === null) return;
-  const a = dyItemDelDia(s, id);
-  if (!confirm('¿Borrar "' + (a ? a.texto : 'la actividad') + '"?')) return;
-  try {
-    await dyPedir('/api/daily/actividades/' + id, 'DELETE');
-  } catch (err) {
-    dyTexto('dy-act-error', 'No se pudo borrar: ' + err.message);
-    return;
-  }
-  dyCerrarModal();
-  await dyCargarDia(s);
-}
-
-// ── modal de recordatorio: nuevo o editar (texto, frecuencia, dias, hora y nota) ──
-// Editar no toca las marcas de hecho de los otros dias: viven aparte.
-function dyDiasElegidos() {
-  const dias = [];
-  for (let i = 0; i < 7; i++) {
-    const c = document.getElementById('dy-recm-dia-' + i);
-    if (c && c.checked) dias.push(i);
-  }
-  return dias;
-}
-
-function dyPintarDiasForm() {
-  const sel = document.getElementById('dy-recm-frecuencia');
-  const dias = document.getElementById('dy-recm-dias');
-  if (sel && dias) dias.classList.toggle('dy-oculto', sel.value !== 'dias');
-}
-
-function dyAbrirRecordatorio(s, id) {
-  s = dySeccion(s);
-  const e = DY_EST[s];
-  if (e.personaId === null) {
-    dyTexto(dyId(s, 'rec-error'), 'Elegí de quién es el recordatorio.');
-    return;
-  }
-  const r = (id === undefined || id === null) ? null : dyBuscar(e.datos && e.datos.recordatorios_todos, id);
-  const persona = dyBuscar(e.personas, e.personaId);
-  dyModalSeccion = s;
-  dyRecordatorioId = r ? Number(r.id) : null;
-  dyTexto('dy-recm-titulo', r ? 'Editar recordatorio' : 'Nuevo recordatorio');
-  dyTexto('dy-recm-contexto', 'Daily de ' + dyNombre(persona));
-  document.getElementById('dy-recm-texto').value = r ? r.texto : '';
-  document.getElementById('dy-recm-frecuencia').value = r ? r.frecuencia : 'diario';
-  document.getElementById('dy-recm-hora').value = r && r.hora ? r.hora : '';
-  document.getElementById('dy-recm-nota').value = r && r.nota ? r.nota : '';
-  const dias = r && Array.isArray(r.dias) ? r.dias : [];
-  for (let i = 0; i < 7; i++) {
-    const c = document.getElementById('dy-recm-dia-' + i);
-    if (c) c.checked = dias.indexOf(i) >= 0;
-  }
-  dyPintarDiasForm();
-  const aviso = document.getElementById('dy-recm-aviso');
-  if (aviso) aviso.classList.toggle('dy-oculto', !r);
-  dyTexto('dy-recm-error', '');
-  document.getElementById('dy-modal-recordatorio').classList.add('open');
-  const texto = document.getElementById('dy-recm-texto');
-  if (texto.focus) texto.focus();
-}
-
-function dyEditarRecordatorio(s, id) {
-  dyAbrirRecordatorio(s, id);
-}
-
-function dyCerrarRecordatorio() {
-  document.getElementById('dy-modal-recordatorio').classList.remove('open');
-  dyRecordatorioId = null;
-}
-
-async function dyGuardarRecordatorio() {
-  const s = dyModalSeccion;
-  const e = DY_EST[s];
-  const texto = String(document.getElementById('dy-recm-texto').value || '').trim();
-  const frecuencia = document.getElementById('dy-recm-frecuencia').value || 'diario';
-  const dias = frecuencia === 'dias' ? dyDiasElegidos() : [];
-  if (!texto) {
-    dyTexto('dy-recm-error', 'Escribí qué hay que recordar.');
-    return;
-  }
-  if (frecuencia === 'dias' && !dias.length) {
-    dyTexto('dy-recm-error', 'Elegí al menos un día de la semana.');
-    return;
-  }
-  const datos = {texto: texto, frecuencia: frecuencia, dias: dias,
-                 hora: document.getElementById('dy-recm-hora').value || '',
-                 nota: document.getElementById('dy-recm-nota').value || ''};
-  const editando = dyRecordatorioId;
-  try {
-    if (editando !== null) await dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos);
-    else await dyPedir('/api/daily/recordatorios', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
-  } catch (err) {
-    dyTexto('dy-recm-error', 'No se guardó: ' + err.message);
-    return;
-  }
-  dyCerrarRecordatorio();
-  await dyCargarDia(s);
-}
-
-function dyPausarRecordatorio(s, id) {
-  s = dySeccion(s);
-  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
-  if (!r) return null;
-  return dyAccion(s, 'rec-error', 'No se pudo ' + (r.activo ? 'pausar' : 'reanudar') + ': ', () =>
-    dyPedir('/api/daily/recordatorios/' + id, 'PUT', {activo: !r.activo}));
-}
-
-async function dyBorrarRecordatorio(s, id) {
-  s = dySeccion(s);
-  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
-  if (!r) return;
-  if (!confirm('¿Borrar el recordatorio "' + r.texto + '"? Deja de aparecer en todos los días. '
-      + 'Si solo querés frenarlo un tiempo, pausalo.')) return;
-  await dyAccion(s, 'rec-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
 }
 
 // ========== Equipo ==========
@@ -20946,7 +19421,7 @@ let eqPasoCobros = [];
 
 // Secciones a las que puede llevar un paso. En el formulario se ofrecen las
 // que estan en la pagina; una guardada que todavia no existe se conserva.
-const EQ_PANTALLAS = [['seg_leads', 'Seguimiento de leads'], ['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
+const EQ_PANTALLAS = [['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
   ['clientes', 'Clientes'], ['projects', 'Proyectos'], ['tasks', 'Tareas'], ['wa', 'WhatsApp'],
   ['cal', 'Calendario'], ['meta', 'Meta Ads'], ['marketing', 'Inteligencia marketing'],
   ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'],
@@ -23869,8 +22344,8 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
+                simulador_bp, equipo_bp, horarios_bp, flujos_bp, plantillas_bp,
+                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp,
                 credenciales_bp, fidelidad_bp, plexo_bp, buscar_bp, oauth_bp, mcp_bp,
                 oficina_bp, oficina_bot_bp, wa_juan_bp, agentes_bp, seguimiento_bp, reels_bp):
         app.register_blueprint(bp)
@@ -24926,8 +23401,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra','agentes','reels'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta',agentes:'Agentes',reels:'Reels'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','plantillas','email_mkt','linkedin','instagram','agentes','reels'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',agentes:'Agentes',reels:'Reels'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -25174,10 +23649,6 @@ loadBackups();
         # Instagram: publica solo lo aprobado. INSTAGRAM_AGENTE=off lo apaga.
         from services.instagram import start_instagram
         start_instagram(app)
-
-        # Modo sombra: recomendaciones de pauta los lunes, sin tocar Meta.
-        from services.sombra_meta import start_sombra_meta
-        start_sombra_meta(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.

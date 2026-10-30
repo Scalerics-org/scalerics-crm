@@ -20,7 +20,8 @@ from services.embudo import normalizar_estado as _normalizar_estado  # noqa: F40
 
 logger = logging.getLogger(__name__)
 
-MONEDAS = ("USD", "UYU")
+# La moneda local de cada país (services/paises.py) se carga con tipo de cambio.
+MONEDAS = ("USD", "UYU", "ARS", "CLP")
 
 # Lista fija a propósito, no texto libre: con texto libre alcanza con escribir
 # "Infra" una vez en lugar de "Infraestructura" para que el desglose por
@@ -103,7 +104,7 @@ def a_usd(monto: float, moneda: str, tipo_cambio: float | None) -> float:
     if moneda == "USD":
         return round(float(monto), 2)
     if not tipo_cambio or float(tipo_cambio) <= 0:
-        raise ValueError("un movimiento en UYU necesita un tipo de cambio > 0")
+        raise ValueError(f"un movimiento en {moneda} necesita un tipo de cambio > 0")
     return round(float(monto) / float(tipo_cambio), 2)
 
 
@@ -140,8 +141,18 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
     arranque a propósito: los jobs de boot de este repo ya provocaron una tanda
     de mails reales, y un hilo más es una cosa más que puede fallar sin que
     nadie mire.
+
+    Materializa los fijos de los tres países aunque la request sea de uno, y
+    cada movimiento sale con el país de su fijo (database.con_pais).
     """
-    from database import crear_movimiento, listar_recurrentes
+    from database import sin_pais
+
+    with sin_pais():
+        return _materializar(db_path, hoy)
+
+
+def _materializar(db_path: str, hoy: date | None) -> int:
+    from database import con_pais, crear_movimiento, listar_recurrentes
 
     hoy = hoy or date.today()
     mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
@@ -185,23 +196,24 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
         iva_usd = iva_sobre(monto_usd) if facturado else 0.0
         for periodo in meses_entre(fijo["desde"], fin):
             try:
-                crear_movimiento(
-                    db_path,
-                    tipo=fijo["tipo"],
-                    fecha=f"{periodo}-{dia:02d}",
-                    periodo=periodo,
-                    concepto=fijo["concepto"],
-                    categoria=fijo["categoria"],
-                    monto=fijo["monto"],
-                    moneda=fijo["moneda"],
-                    tipo_cambio=fijo["tipo_cambio"],
-                    monto_usd=monto_usd,
-                    client_id=fijo["client_id"],
-                    recurrente_id=fijo["id"],
-                    facturado=facturado,
-                    iva_usd=iva_usd,
-                    created_by_name="fijo",
-                )
+                with con_pais(fijo.get("pais"), "escribir"):
+                    crear_movimiento(
+                        db_path,
+                        tipo=fijo["tipo"],
+                        fecha=f"{periodo}-{dia:02d}",
+                        periodo=periodo,
+                        concepto=fijo["concepto"],
+                        categoria=fijo["categoria"],
+                        monto=fijo["monto"],
+                        moneda=fijo["moneda"],
+                        tipo_cambio=fijo["tipo_cambio"],
+                        monto_usd=monto_usd,
+                        client_id=fijo["client_id"],
+                        recurrente_id=fijo["id"],
+                        facturado=facturado,
+                        iva_usd=iva_usd,
+                        created_by_name="fijo",
+                    )
                 creados += 1
             except sqlite3.IntegrityError as e:
                 es_duplicado = (
@@ -1113,8 +1125,10 @@ FRECUENCIAS_ESENCIAL = {"mensual": 1, "anual": 12}
 
 def _conn_esenciales(db_path: str):
     import sqlite3
+    from database import aplicar_pais
     c = sqlite3.connect(db_path, timeout=10)
     c.row_factory = sqlite3.Row
+    aplicar_pais(c)
     return c
 
 
@@ -1276,8 +1290,10 @@ def _fecha_local(ts) -> str | None:
 
 
 def _conn_ventas(db_path: str):
+    from database import aplicar_pais
     c = sqlite3.connect(db_path, timeout=10)
     c.row_factory = sqlite3.Row
+    aplicar_pais(c)
     return c
 
 

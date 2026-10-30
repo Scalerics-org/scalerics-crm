@@ -384,8 +384,7 @@ def _correr(cuerpo: str, tmp_path) -> str:
         *(_funcion(n) for n in ("_ncPuedeArrastrar", "_ncDibujar", "_notionClientColHtml",
                                 "_notionClientCardHtml", "_ncVinculoHtml",
                                 "_ncProgramadorHtml",
-                                # El boton "Recordatorio de llamado" de Seguimiento de leads.
-                                "slBotonNotionHtml", "_ncDragStart",
+                                "_ncDragStart",
                                 "_ncOver", "_ncDrop", "_ncMover")),
         """
         function assert(cond, msg) { if (!cond) { throw new Error(msg); } }

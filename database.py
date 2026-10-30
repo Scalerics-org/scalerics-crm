@@ -253,7 +253,98 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
     conn.row_factory = sqlite3.Row
+    aplicar_pais(conn)
     return conn
+
+
+# ─── País (services/paises.py) ───────────────────────────────────────────────
+# Meta Ads, Inteligencia marketing y Finanzas se miran de a un país. En vez de
+# pasar el país por cada consulta (son decenas), la request de esos paneles
+# pone el país acá y cada conexión que abre se arma sola:
+#
+# - modo "leer": vistas TEMP con el mismo nombre que las tablas, que solo dejan
+#   pasar las filas del país. Una consulta sin esquema ("FROM meta_insights")
+#   lee la vista TEMP antes que la tabla de main, así que nada más cambia.
+#   Escribir en una vista falla: el modo "leer" es solo para los GET.
+# - modo "escribir": triggers TEMP que le ponen el país a lo que se inserta en
+#   las tablas de Finanzas. Lo que se carga desde el panel de Chile es de Chile.
+#
+# Sin país puesto (crons, scripts, el resto del CRM) la conexión es la de siempre.
+import contextvars
+from contextlib import contextmanager
+
+_PAIS = contextvars.ContextVar("crm_pais", default=None)
+
+# Las tablas de Finanzas que son de un país. El resto (IVA, tarjeta, Plexo,
+# meses cerrados) es de Uruguay y no se separa.
+TABLAS_FINANZAS_POR_PAIS = ("finanzas_movimientos", "finanzas_recurrentes", "finanzas_por_cobrar",
+                            "finanzas_ventas", "finanzas_esenciales", "finanzas_balance_datos")
+
+
+def poner_pais(pais, modo: str = "leer"):
+    """Lo llama el before_request de los paneles por país. Devuelve el token
+    para `sacar_pais`."""
+    from services.paises import valido
+    codigo = valido(pais)
+    return _PAIS.set((codigo, modo) if codigo else None)
+
+
+def sacar_pais(token) -> None:
+    _PAIS.reset(token)
+
+
+@contextmanager
+def sin_pais():
+    """Para lo que tiene que ver los tres países aunque la request sea de uno
+    (materializar los fijos de todos)."""
+    token = _PAIS.set(None)
+    try:
+        yield
+    finally:
+        _PAIS.reset(token)
+
+
+@contextmanager
+def con_pais(pais, modo: str = "leer"):
+    token = poner_pais(pais, modo)
+    try:
+        yield
+    finally:
+        sacar_pais(token)
+
+
+def aplicar_pais(conn: sqlite3.Connection) -> None:
+    activo = _PAIS.get()
+    if not activo:
+        return
+    pais, modo = activo   # pais ya validado: uno de tres códigos, va literal
+    from services.paises import de_lead
+    conn.create_function("pais_de", 3, de_lead, deterministic=True)
+    existentes = {f[0] for f in conn.execute("SELECT name FROM main.sqlite_master WHERE type = 'table'")}
+    if modo == "escribir":
+        for tabla in TABLAS_FINANZAS_POR_PAIS:
+            if tabla in existentes:
+                conn.execute(f"CREATE TEMP TRIGGER IF NOT EXISTS {tabla}_pais AFTER INSERT ON main.{tabla} "
+                             f"BEGIN UPDATE {tabla} SET pais = '{pais}' WHERE id = NEW.id; END")
+        return
+    vistas = {
+        "meta_insights": f"SELECT * FROM main.meta_insights WHERE pais_de(NULL, campaign_name, NULL) = '{pais}'",
+        "meta_ads": f"SELECT * FROM main.meta_ads WHERE pais_de(NULL, campaign_name, NULL) = '{pais}'",
+        "meta_ad_insights": (
+            "SELECT * FROM main.meta_ad_insights i WHERE pais_de(NULL, (SELECT a.campaign_name FROM "
+            f"main.meta_ads a WHERE a.ad_id = i.ad_id), NULL) = '{pais}'"),
+        "meta_lead_envios": (
+            "SELECT e.* FROM main.meta_lead_envios e LEFT JOIN main.businesses b ON b.id = e.business_id "
+            f"WHERE pais_de(b.pais, e.campaign_name, b.phone) = '{pais}'"),
+        "businesses": (
+            "SELECT * FROM main.businesses WHERE source IS NOT 'meta' "
+            f"OR pais_de(pais, meta_campaign_name, phone) = '{pais}'"),
+    }
+    for tabla in TABLAS_FINANZAS_POR_PAIS:
+        vistas[tabla] = f"SELECT * FROM main.{tabla} WHERE pais = '{pais}'"
+    for tabla, sql in vistas.items():
+        if tabla in existentes:
+            conn.execute(f"CREATE TEMP VIEW IF NOT EXISTS {tabla} AS {sql}")
 
 
 # ─── Init ────────────────────────────────────────────────────────────────────
@@ -1554,8 +1645,6 @@ def init_db(db_path: str) -> None:
             # Daily Programador, que era el único.
             _add_column(conn, tabla, "seccion", "TEXT NOT NULL DEFAULT 'programador'")
         conn.commit()
-        # Como Equipo: los roles que tienen Tareas reciben el Daily.
-        _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
 
         # ── horarios de trabajo ───────────────────────────────────────────────
         # Recursos Humanos > Horarios (pedido de Juan, 15/9). Un tramo por fila:
@@ -1605,9 +1694,9 @@ def init_db(db_path: str) -> None:
         # Un lead tiene a lo sumo UN recordatorio pendiente: lo garantiza el
         # índice único parcial, no solo el código. `cierre` dice por qué se
         # cerró uno: 'llamado' (Hecho) o 'reemplazado' (se creó otro).
-        seg_leads_nueva = not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='seg_recordatorios'"
-        ).fetchone()
+        #
+        # El panel se sacó del CRM el 29/10 (pedido de Juan). Las tablas quedan
+        # con lo que ya estaba cargado.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS seg_recordatorios (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1643,12 +1732,6 @@ def init_db(db_path: str) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_seg_llamados_lead "
                      "ON seg_llamados(lead_id, fecha)")
         conn.commit()
-        # Como Equipo (sin plata, así que no aplica el Ruling R20), pero solo a
-        # los roles que ya ven Proceso de venta, y UNA sola vez: en el arranque
-        # que crea la tabla. Si después Juan le saca el panel a un rol desde el
-        # editor, un deploy no se lo vuelve a poner.
-        if seg_leads_nueva:
-            _grant_panel_to_existing_roles(conn, "seg_leads", solo_si_tiene="notion_clients")
 
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
@@ -2191,40 +2274,6 @@ def init_db(db_path: str) -> None:
         conn.commit()
         _grant_panel_to_existing_roles(conn, "instagram", si_tiene=("marketing", "linkedin"))
 
-        # ── Modo sombra (services/sombra_meta.py) ─────────────────────────────
-        # Que haria el agente con la pauta y como resulto. El panel `sombra`
-        # ("Recomendaciones de pauta") va a quien ve Marketing; la evaluacion
-        # del proveedor se filtra en la ruta y solo la ven los administradores.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sombra_recomendaciones (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                semana          TEXT NOT NULL,
-                clave           TEXT NOT NULL,
-                tipo            TEXT NOT NULL,
-                objeto_id       TEXT NOT NULL,
-                objeto_nombre   TEXT,
-                campana_id      TEXT,
-                campana_nombre  TEXT,
-                evidencia       TEXT NOT NULL,
-                antes_json      TEXT NOT NULL,
-                creada_en       TEXT NOT NULL,
-                evaluada_en     TEXT,
-                seguida         INTEGER,
-                veredicto       TEXT,
-                detalle         TEXT,
-                UNIQUE (semana, clave)
-            )
-        """)
-        # Ajustes del modo sombra que edita quien ve el panel (hoy: el tope de
-        # costo por lead). Una fila por clave.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sombra_ajustes (
-                clave           TEXT PRIMARY KEY,
-                valor           TEXT,
-                actualizado_por TEXT,
-                actualizado_en  TEXT
-            )
-        """)
         # PDF mensual con la estrategia de marketing; el plan lo escribe el agente
         # despues de leerlo (services/estrategia.py).
         conn.execute("""
@@ -2242,9 +2291,17 @@ def init_db(db_path: str) -> None:
             )
         """)
         conn.commit()
-        _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
         # Reels (29/10): revisar los reels antes de la cola de publicación.
         _grant_panel_to_existing_roles(conn, "reels", si_tiene=("marketing",))
+
+        # País (29/10, services/paises.py). En la ficha solo se guarda cuando
+        # alguien lo fija (un lead cargado a mano desde el panel de un país);
+        # si no, sale de la campaña o del teléfono. Lo de Finanzas que ya
+        # estaba cargado es de Uruguay.
+        _add_column(conn, "businesses", "pais", "TEXT")
+        for tabla in TABLAS_FINANZAS_POR_PAIS:
+            _add_column(conn, tabla, "pais", "TEXT NOT NULL DEFAULT 'UY'")
+        conn.commit()
 
         # Scalerics Fidelidad (23/9): el Outbound pasa a ser del socio que vende
         # el sistema de puntos. Sus tablas son propias (services/fidelidad.py);
@@ -2415,6 +2472,7 @@ ALLOWED_COLUMNS = {
     "mantenimiento_monto", "mantenimiento_moneda",
     # Por donde llego un lead cargado a mano en Meta Ads.
     "origen_manual",
+    "pais",
 }
 
 

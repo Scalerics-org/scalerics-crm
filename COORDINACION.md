@@ -84,6 +84,24 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 | M (conector MCP para Claude) | **Listo en `feat/conector-mcp`, probado contra un CRM local con el flujo OAuth entero y las tres herramientas. Revisado por tarea y con una revisión de seguridad de toda la rama. PR y merge a main el 16/10, a pedido de Gonzalo. Sin deploy todavía.** Incluye vida máxima de 90 días por familia de tokens, botón "Cortar acceso de Claude" en el panel de usuarios, topes por IP en el OAuth y chequeo de scope y resource en `/mcp`. Para deployar: `CRM_URL` y `SECRET_KEY` en Fly, y seguir `docs/puesta-en-produccion-conector-claude.md`. | nuevos: `routes/oauth.py`, `routes/mcp.py`, `services/oauth_tokens.py`, `services/oauth_clientes.py`, `services/mcp_tools.py`, `tests/test_oauth_*.py`, `tests/test_mcp.py`, `docs/puesta-en-produccion-conector-claude.md`. Zona compartida: `database.py` (dos `init_*` en `init_db` y `update_user_password` revoca los tokens de Claude), `dashboard.py` (dos blueprints, exención exacta de rutas en `require_login`, `next` en `/login`, flags de la cookie de sesión, botón en el panel de usuarios). | 15/10 |
 
+> **Países y limpieza del menú (29/10, pedido de Juan).** Rama `feat/paises-ar-cl`.
+>
+> - **Se sacaron** Recomendaciones de pauta (`sombra`, con su job de los lunes y la
+>   subida del PDF de estrategia), Seguimiento de leads (`seg_leads`) y Daily
+>   Programador / Daily Admin. Las tablas quedan con lo cargado; no se borra nada.
+>   Lo que otros usaban de esos servicios (la hora de Montevideo) pasó a
+>   `services/hora_mvd.py`. Los colores de Horarios ya no dependen de Daily (`HR_COLORES`).
+> - **Banderitas Uruguay / Argentina / Chile** en Meta Ads, Inteligencia marketing y
+>   Finanzas (`services/paises.py`). El país va en la cookie `crm_pais`; los blueprints
+>   de marketing y finanzas lo leen con `por_pais(bp)` y `database._connect` arma vistas
+>   TEMP con el nombre de las tablas (GET) o triggers TEMP que le ponen el país a lo
+>   insertado en Finanzas (resto de métodos). **Sin cookie no se filtra nada** (crons).
+>   Ojo: en un GET con país, escribir en esas tablas falla (son vistas); lo que tenga
+>   que escribir en un GET va dentro de `database.sin_pais()`, como
+>   `materializar_recurrentes`.
+> - Campaña sin país en el nombre ("AR - …", "Chile …") = Uruguay. Finanzas acepta
+>   ARS y CLP. IVA, Tarjeta, Cobros y Aportes quedan solo para Uruguay.
+
 > **MARKETING: Email marketing y panel LinkedIn (15/9, pedido de Juan).** Misma
 > rama `feat/email-mkt-ver-mail`, commit aparte. Sin PR, sin merge y sin deploy.
 >

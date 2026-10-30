@@ -40,7 +40,7 @@ def _entre(texto, desde, hasta):
 
 PANEL = _entre(SRC, "<!-- ======= EMAIL MARKETING PANEL ======= -->",
                "<!-- ======= FIN EMAIL MARKETING PANEL ======= -->")
-JS = _entre(SRC, "// ========== Email marketing ==========", "// ========== Daily Programador ==========")
+JS = _entre(SRC, "// ========== Email marketing ==========", "// ========== Equipo ==========")
 
 REMITENTE_DISCOVERY = "Scalerics <hola@envios.scalerics.com>"
 

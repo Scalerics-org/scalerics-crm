@@ -16,10 +16,13 @@ from datetime import date, timedelta
 from flask import Blueprint, current_app, jsonify, request
 
 from services.auth import require_panel
+from services.paises import por_pais
 
 logger = logging.getLogger(__name__)
 
 marketing_bp = Blueprint("marketing", __name__)
+# Uruguay, Argentina o Chile, según las banderitas del panel.
+por_pais(marketing_bp)
 
 _FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

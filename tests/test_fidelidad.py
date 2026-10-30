@@ -344,7 +344,7 @@ def test_un_rol_que_juan_cambio_no_se_pisa(db):
 
 
 @pytest.mark.parametrize("ruta", ["/api/calendar/events", "/api/leads?page=1", "/api/finanzas/movimientos",
-                                  "/api/metrics", "/api/sdr-stats", "/api/meta/leads", "/api/seg-leads"])
+                                  "/api/metrics", "/api/sdr-stats", "/api/meta/leads"])
 def test_el_vendedor_no_ve_nada_de_la_agencia(app, ruta):
     cli = _cli(app, _usuario(app.config["_DB"], "lucas@ejemplo.com", rol=fid.ROL_VENDEDOR))
     assert cli.get(ruta).status_code == 403

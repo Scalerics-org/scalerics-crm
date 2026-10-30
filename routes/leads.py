@@ -163,11 +163,14 @@ def api_leads():
         # fecha de cada formulario que mando la persona, para que quien volvio a
         # escribir aparezca tambien en el mes de la vuelta.
         from database import envios_meta_por_lead
+        from services import paises
         from services.planilla_semaforo import color_de_estado
         envios = envios_meta_por_lead(_db())
         for b in businesses:
             b["semaforo"] = color_de_estado(b.get("crm_status"))
             b["envios"] = envios.get(b["id"]) or ([b["scraped_at"]] if b.get("scraped_at") else [])
+            # Las banderitas del panel filtran por esto (services/paises.py).
+            b["pais"] = paises.de_lead(b.get("pais"), b.get("meta_campaign_name"), b.get("phone"))
     else:
         businesses = get_all_businesses(_db(), crm_status=crm_status, cohorte=cohorte)
     if category:

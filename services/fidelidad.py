@@ -33,7 +33,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from xml.etree import ElementTree as ET
 
-from services.seg_leads import MVD, ahora_mvd
+from services.hora_mvd import MVD, ahora_mvd
 
 logger = logging.getLogger(__name__)
 

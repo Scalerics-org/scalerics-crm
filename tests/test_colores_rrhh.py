@@ -6,8 +6,8 @@ también el fondo. 'Se genera el lead' en rojo y Líder marketing digital en
 rojo como referencia."
 
 Flujos: un color por rol, definido en `services/flujos.ROL_ESTILOS`, con un
-token pleno y un tinte por tema. Horarios: cada persona con el color que ya
-tiene en Daily.
+token pleno y un tinte por tema. Horarios: cada persona con un color por su
+lugar entre los programadores.
 """
 
 import json
@@ -170,33 +170,25 @@ def test_el_flujo_se_pinta_con_el_color_de_cada_rol(cli, tmp_path):
     assert "eq-rol-naranja" in s["muestraPm"] and "Project manager" in s["muestraPm"]
 
 
-# ── Horarios: el color de Daily ──────────────────────────────────────────────
+# ── Horarios: un color por persona ────────────────────────────────────────────
 
-def test_horarios_manda_el_lugar_de_cada_persona_en_daily(cli):
+def test_horarios_manda_el_lugar_de_cada_persona(cli):
     horarios = cli.get("/api/horarios").get_json()
-    r = cli.get("/api/daily/personas?seccion=programador")
-    assert r.status_code == 200
-    ids_daily = [p["id"] for p in r.get_json()["personas"]]
     assert horarios["personas"]
-    for p in horarios["personas"]:
-        esperado = ids_daily.index(p["id"]) if p["id"] in ids_daily else None
-        assert p["orden_daily"] == esperado, p["nombre"]
-    assert any(p["orden_daily"] is not None for p in horarios["personas"]), "Juan y Gonzalo están en Daily"
+    lugares = sorted(p["orden_daily"] for p in horarios["personas"] if p["orden_daily"] is not None)
+    assert lugares, "Juan y Gonzalo están marcados como programadores"
+    # Su lugar entre los programadores: cada uno distinto (alguno puede no
+    # tener horario, así que no siempre arrancan en 0).
+    assert len(set(lugares)) == len(lugares) and lugares[0] >= 0
 
 
-def test_los_colores_de_horarios_son_los_de_daily():
-    """Horarios no tiene un mapa propio: usa DY_COLORES y, por cada lugar, el
-    mismo token que el ícono de Daily."""
-    n = int(re.search(r"const DY_COLORES = (\d+);", HTML).group(1))
+def test_los_colores_de_horarios_salen_del_css():
+    """HR_COLORES es la cantidad de hr-color-N que hay en el CSS."""
+    n = int(re.search(r"const HR_COLORES = (\d+);", HTML).group(1))
     for i in range(n):
-        dy = re.search(r"^\.dy-nav-icono\.dy-color-" + str(i) + r"\{stroke:var\((--[\w-]+)\)\}", HTML, re.M)
-        hr = re.search(r"^\.hr-color-" + str(i) + r"\{--hr-c:var\((--[\w-]+)\);--hr-t:var\((--[\w-]+)\)\}",
-                       HTML, re.M)
-        assert dy and hr, i
-        assert hr.group(1) == dy.group(1), f"el color {i} de Horarios no es el de Daily"
+        assert re.search(r"^\.hr-color-" + str(i) + r"\{--hr-c:var\((--[\w-]+)\);--hr-t:var\((--[\w-]+)\)\}",
+                         HTML, re.M), i
     assert not re.search(r"^\.hr-color-" + str(n) + r"\{", HTML, re.M)
-    js = _entre(SRC, "// ========== Horarios ==========", "// ========== FIN Horarios ==========")
-    assert "DY_COLORES" in js and "HR_COLORES" not in js
 
 
 def test_horarios_tiene_pastillas_chips_y_encabezados_alternados():
@@ -208,32 +200,29 @@ def test_horarios_tiene_pastillas_chips_y_encabezados_alternados():
 
 
 @sin_node
-def test_horarios_pinta_a_cada_persona_con_su_color_de_daily(cli, tmp_path):
+def test_horarios_pinta_a_cada_persona_con_su_color(cli, tmp_path):
     horarios = cli.get("/api/horarios").get_json()
-    daily = cli.get("/api/daily/personas?seccion=programador").get_json()["personas"]
     prueba = """
 (async () => {
-  DY_EST.programador.personas = __DAILY__;
   await hrCargar();
   const s = {html: _el('hr-contenido').innerHTML, pares: []};
-  (__HORARIOS__).personas.forEach(p => s.pares.push([p.nombre_corto, hrColor(p), dyColor('programador', p.id), p.orden_daily]));
+  (__HORARIOS__).personas.forEach(p => s.pares.push([p.nombre_corto, hrColor(p), p.orden_daily]));
   s.fuera = [hrColor({id: 9, orden_daily: null}), hrColor({id: 9, orden_daily: null}), hrColor({id: 10})];
   console.log(JSON.stringify(s));
   process.exit(0);
 })().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
-""".replace("__DAILY__", json.dumps(daily, ensure_ascii=False)).replace(
-        "__HORARIOS__", json.dumps(horarios, ensure_ascii=False))
+""".replace("__HORARIOS__", json.dumps(horarios, ensure_ascii=False))
     s = _correr_js(tmp_path, {"/api/horarios": horarios}, prueba)
 
-    en_daily = [par for par in s["pares"] if par[3] is not None]
-    assert en_daily
-    for nombre, hr, dy, _orden in en_daily:
-        assert hr == dy, f"{nombre}: Horarios {hr}, Daily {dy}"
-    assert len({hr for _n, hr, _d, _o in s["pares"]}) == len(s["pares"]), "dos personas con el mismo color"
-    assert s["fuera"] == [1, 1, 2], "quien no está en Daily toma un color estable"
+    con_lugar = [par for par in s["pares"] if par[2] is not None]
+    assert con_lugar
+    for nombre, hr, orden in con_lugar:
+        assert hr == orden % 4, f"{nombre}: color {hr}, lugar {orden}"
+    assert len({hr for _n, hr, _o in s["pares"]}) == len(s["pares"]), "dos personas con el mismo color"
+    assert s["fuera"] == [1, 1, 2], "quien no tiene lugar toma un color estable"
 
     html = s["html"]
-    for nombre, hr, _dy, _orden in s["pares"]:
+    for nombre, hr, _orden in s["pares"]:
         assert (f'<tr class="hr-fila hr-color-{hr}"><th scope="row" class="hr-persona">'
                 f'<span class="hr-punto" aria-hidden="true"></span>{nombre}</th>') in html
         assert f'<article class="hr-tarjeta hr-color-{hr}">' in html

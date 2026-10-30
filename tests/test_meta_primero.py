@@ -1,14 +1,11 @@
 """El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
 Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing, Email marketing, LinkedIn) ·
-FINANZAS (Finanzas, Simulador financiero, Métricas financieras) · VENTAS (Seguimiento de leads,
-WhatsApp, Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas,
-Daily Programador, Daily Admin, Actividad) · RECURSOS HUMANOS · CAPTACION
-(Outbound, Inteligencia comercial, SDR). La barra del celular sigue el mismo
-orden. Equipo se sumo despues de Actividad el 14/9, Seguimiento de leads
-(`seg_leads`) es el primer item de VENTAS, arriba de WhatsApp (pedido de Juan,
-14/9), Daily Programador va en OPERACION justo despues de Tareas (15/9) y Daily
-Admin justo despues de Daily Programador (16/9).
+FINANZAS (Finanzas, Simulador financiero, Métricas financieras) · VENTAS (WhatsApp,
+Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas, Actividad) ·
+RECURSOS HUMANOS · CAPTACION (Outbound, Inteligencia comercial, SDR). La barra
+del celular sigue el mismo orden. Equipo se sumo despues de Actividad el 14/9.
+Seguimiento de leads y los dos Daily se sacaron el 29/10.
 
 Al entrar se abre el Calendario (Juan lo pidio despues de haber pedido Meta
 Ads: gana el ultimo pedido). Un rol que no tiene el calendario no puede quedar
@@ -34,10 +31,10 @@ ORDEN = [
     ("CALENDARIO", ["cal"]),
     ("WHATSAPP", ["oficina"]),   # Recordatorios wpp (20/10 era la Oficina; solo este agente desde el 22/10)
     ("AGENTES", ["agentes"]),    # lo que proponen las tareas nocturnas del equipo (22/10)
-    ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "reels", "sombra"]),
+    ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin", "instagram", "reels"]),
     ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
-    ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
-    ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
+    ("VENTAS", ["wa", "notion_clients", "demos", "plantillas"]),
+    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
     ("CAPTACIÓN", ["cola", "metrics", "fid_mails"]),   # SDR salio el 23/9; mails a restaurantes el 30/9
     ("SEGURIDAD", ["credenciales"]),
@@ -135,13 +132,11 @@ def _primer_panel(access, existentes):
     (["cola", "flujos"], "flujos"),
     (["cola", "horarios"], "horarios"),
     (["horarios", "flujos"], "flujos"),                  # Flujos va antes que Horarios
-    (["activity", "daily"], "daily"),                     # Daily va antes que Actividad
-    (["activity", "daily_admin"], "daily_admin"),         # Daily Admin también
 ])
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
-                  "equipo", "ausencias", "flujos", "horarios", "seg_leads", "daily", "daily_admin"]
+                  "equipo", "ausencias", "flujos", "horarios"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")
