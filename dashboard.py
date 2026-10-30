@@ -6,7 +6,7 @@ import time
 import webbrowser
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template_string, request, session, url_for
 
 from database import init_db, seed_pitch_templates
 from routes.leads import leads_bp
@@ -7451,7 +7451,9 @@ _paisGuardar();   // antes de cualquier fetch: sin cookie el servidor no filtra
 function paisDelLead(l) { return (l && l.pais) || 'UY'; }
 
 function paisPintar() {
-  const html = Object.keys(PAISES).map(p =>
+  // El socio de un país (Ciro) ve solo su banderita: el servidor ya le
+  // filtra todo a ese país, la cookie no cuenta.
+  const html = (window._paisFijo ? [window._paisFijo] : Object.keys(PAISES)).map(p =>
     '<button type="button" class="pais-btn" data-pais="' + p + '" aria-pressed="' + (p === paisActual) + '"'
     + ' onclick="paisElegir(this.dataset.pais)" title="' + PAISES[p].nombre + '">'
     + PAISES[p].bandera + '<span class="pais-nombre">' + PAISES[p].nombre + '</span></button>').join('');
@@ -7472,7 +7474,7 @@ function paisPintar() {
 }
 
 function paisElegir(p) {
-  if (!PAISES[p] || p === paisActual) return;
+  if (!PAISES[p] || p === paisActual || window._paisFijo) return;
   paisActual = p;
   _paisGuardar();
   paisPintar();
@@ -12957,6 +12959,12 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     if (!r.ok) return;
     const m = await r.json();
     window._isAdmin = m.is_admin;
+    if (m.pais_fijo && PAISES[m.pais_fijo]) {
+      window._paisFijo = m.pais_fijo;
+      paisActual = m.pais_fijo;
+      _paisGuardar();
+      paisPintar();
+    }
     // Paneles que el rol ve pero no modifica (el Contador, en Finanzas). Si
     // /api/me falla queda vacio: se ve el modo normal y el servidor igual
     // bloquea las escrituras con 403.
@@ -12987,7 +12995,7 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
       });
       // El vendedor de Fidelidad es de afuera: fuera de sus dos pantallas no ve
       // ningun item, tampoco los que no estan en ALL_PANELS (Demos, Marketing).
-      if (m.solo_fidelidad) document.querySelectorAll('.nav-item[id^="nav-"]').forEach(nav => {
+      if (m.solo_fidelidad || m.pais_fijo) document.querySelectorAll('.nav-item[id^="nav-"]').forEach(nav => {
         if (!access.includes(nav.id.slice(4)) && !(nav.id === 'nav-fid_mails' && access.includes('cola'))) nav.style.display = 'none';
       });
       // El Email marketing de Captacion va atado a Outbound, no es un permiso aparte.
@@ -22433,10 +22441,31 @@ def create_app(db_path: str) -> Flask:
             if es_vendedor(app.config["DB_PATH"], session.get("user_id")):
                 return jsonify({"ok": False, "error": "No autorizado"}), 403
 
+        # El socio de un país (Ciro, Argentina): calendario y su país, solo
+        # mirar. Mismo motivo que arriba: el menú esconde, el candado es este.
+        # Su país va puesto en toda la request, diga lo que diga la cookie.
+        from services.socio_pais import pais_fijo, permitido
+        _pais_socio = pais_fijo(app.config["DB_PATH"], session.get("user_id"))
+        if _pais_socio:
+            if not permitido(request.method, request.path, request.args):
+                if request.path.startswith("/api/"):
+                    return jsonify({"ok": False, "error": "No autorizado"}), 403
+                return redirect("/")
+            from database import poner_pais
+            g._pais_fijo = _pais_socio
+            g._pais_fijo_token = poner_pais(_pais_socio, "leer")
+
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
             _maybe_sync_calendly(app.config["DB_PATH"])
             _maybe_sync_notion(app.config["DB_PATH"])
+
+    @app.teardown_request
+    def _sacar_pais_fijo(_error=None):
+        token = g.pop("_pais_fijo_token", None)
+        if token is not None:
+            from database import sacar_pais
+            sacar_pais(token)
 
     @app.route("/privacidad")
     def privacidad():
@@ -22611,6 +22640,8 @@ def create_app(db_path: str) -> Flask:
                     _c = _sq3.connect(db_path)
                     try:
                         asignar_vendedores(_c, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
+                        from services.socio_pais import asignar_socios
+                        asignar_socios(_c, os.environ)
                     finally:
                         _c.close()
                     session["logged_in"] = True
@@ -23006,6 +23037,12 @@ def create_app(db_path: str) -> Flask:
                 panel_access = "[]"  # sin rol = sin acceso
         from services.auth import paneles_solo_lectura
         from services.fidelidad import es_vendedor
+        from services import socio_pais
+        pais_fijo = None if es_admin else socio_pais.pais_fijo(db_path, user_id)
+        if pais_fijo:
+            # Los paneles salen del código, no del editor de roles: son los
+            # mismos que deja pasar el candado de require_login.
+            panel_access = _j2.dumps(socio_pais.PANELES)
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -23019,6 +23056,8 @@ def create_app(db_path: str) -> Flask:
             # no mostrar botones que van a dar 403.
             "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
             "solo_fidelidad": (not es_admin) and es_vendedor(db_path, user_id),
+            # El socio de un país ve solo ese país en las banderitas.
+            "pais_fijo": pais_fijo,
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -23161,6 +23200,11 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/users/<int:uid>/role", methods=["PUT"])
     def admin_set_user_role(uid):
         import sqlite3 as _sq
+        # No miraba si quien llama es admin: cualquier logueado podía ponerse
+        # el rol Admin a sí mismo con un PUT.
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         role_id = data.get("role_id")  # None = no role (full access for admins)
         conn2 = _sq.connect(db_path)
