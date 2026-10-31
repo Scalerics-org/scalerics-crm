@@ -173,8 +173,9 @@ def _materializar(db_path: str, hoy: date | None) -> int:
         if fijo.get("tarjeta") and fijo["tipo"] == "ingreso":
             # Con la tarjeta guardada en Plexo, el mes se anota cuando Plexo
             # aprueba el cobro (services/plexo.py), no suponiendo que pagó.
-            from services.plexo import es_automatico
-            if es_automatico(db_path, fijo["id"]):
+            # Tampoco mientras espera que el cliente cargue la tarjeta.
+            from services.plexo import es_automatico, espera_tarjeta
+            if es_automatico(db_path, fijo["id"]) or espera_tarjeta(db_path, fijo["id"]):
                 continue
             hechos = _materializar_con_tarjeta(db_path, fijo, fin, dia)
             if hechos is not None:
