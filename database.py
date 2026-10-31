@@ -2339,6 +2339,10 @@ def init_db(db_path: str) -> None:
         conn.commit()
         archivar_outbound_viejo(conn)
         asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
+        # El socio de Argentina (30/10, services/socio_pais.py).
+        from services.socio_pais import asignar_socios, init_socio_pais
+        init_socio_pais(conn)
+        asignar_socios(conn, os.environ)
 
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""

@@ -84,5 +84,11 @@ def test_finanzas_y_simulador_siguen_sin_repartirse(tmp_path):
     db = str(tmp_path / "plata.db")
     init_db(db)
     init_db(db)
-    for (crudo,) in _sql(db, "SELECT panel_access FROM roles"):
+    for nombre, crudo in _sql(db, "SELECT name, panel_access FROM roles"):
+        if nombre == "Socio Argentina":
+            # La única excepción, pedida por Juan (30/10): el socio ve la
+            # Finanzas de Argentina, en solo lectura. No es un reparto: el rol
+            # nace así y el candado de services/socio_pais.py lo deja en eso.
+            assert "simulador" not in json.loads(crudo)
+            continue
         assert not {"finanzas", "simulador"} & set(json.loads(crudo))

@@ -81,6 +81,8 @@ def por_pais(bp) -> None:
 
     @bp.before_request
     def _poner_pais():
+        if g.get("_pais_fijo"):
+            return   # el socio de un país: ya lo puso require_login, sin cookie
         pais = valido(request.cookies.get(COOKIE))
         if pais:
             g._pais_token = poner_pais(pais, "leer" if request.method in ("GET", "HEAD") else "escribir")
