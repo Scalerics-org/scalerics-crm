@@ -9,7 +9,7 @@ import re
 import threading
 
 import requests
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 import sqlite3 as _sq_meta
 
@@ -671,6 +671,14 @@ def meta_crear_lead_manual():
 
     db = _db()
     ya = (get_business_by_phone(db, phone) if phone else None) or buscar_ficha_meta_por_mail(db, email)
+    # El socio de un país (services/socio_pais.py) no ve ni se lleva fichas de
+    # otro país o de otra cohorte: ni su nombre en el error.
+    pais_socio = g.get("_pais_fijo")
+    if ya and pais_socio:
+        from services.paises import de_lead
+        if (ya.get("source") or "") != "meta" or de_lead(
+                ya.get("pais"), ya.get("meta_campaign_name"), ya.get("phone")) != pais_socio:
+            return jsonify({"ok": False, "error": "Ese teléfono o mail ya está en el CRM. Avisale a Juan."}), 409
     if ya and (ya.get("source") or "") == "meta":
         return jsonify({"ok": False, "error": f"Ya está en Meta Ads: {ya.get('name') or 'sin nombre'}.",
                         "id": ya["id"]}), 409
@@ -720,7 +728,7 @@ def meta_crear_lead_manual():
     # El país del panel desde el que se cargó (services/paises.py); sin uno
     # válido sale del teléfono, como el resto.
     from services.paises import valido
-    update_business(db, biz_id, origen_manual=origen, pais=valido(data.get("pais")))
+    update_business(db, biz_id, origen_manual=origen, pais=valido(pais_socio or data.get("pais")))
 
     log_activity(db, quien, "lead_created", "lead", biz_id, name,
                  f"Cargado a mano en Meta Ads · llegó por {etiqueta}"
