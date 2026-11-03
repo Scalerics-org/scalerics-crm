@@ -440,13 +440,47 @@ def verificar_tarjeta(db: str, recurrente_id: int) -> dict:
     t = sorted(tarjetas, key=lambda x: x.get("createdAt") or "", reverse=True)[0]
     texto = f"{t.get('cardName') or ''}".replace("X", "•")
     vence = f"{t.get('expMonth') or ''}/{str(t.get('expYear') or '')[-2:]}" if t.get("expMonth") else None
+    nueva = _token_nuevo(db, recurrente_id, t.get("token"))
     _guardar(db, recurrente_id, token=t.get("token"), tarjeta_texto=texto[-9:] if texto else None, vence=vence,
              estado="activa", ultimo_error=None, activada_en=s.get("activada_en") or _ahora())
     clave = tarjeta_de(t)
     fijo = get_recurrente(db, recurrente_id)
     if clave and fijo and fijo.get("tarjeta") != clave:
         actualizar_recurrente(db, recurrente_id, tarjeta=clave)
+    if nueva and fijo:
+        _avisar_tarjeta_cargada(db, get_recurrente(db, recurrente_id), texto[-9:] if texto else None, vence)
     return {"estado": "activa", "tarjeta": texto, "vence": vence, "tarjeta_tipo": clave}
+
+
+def _token_nuevo(db: str, recurrente_id: int, token: str | None) -> bool:
+    """Si este token todavía no estaba guardado. Lo marca en el mismo UPDATE:
+    el callback, la página de "listo" y el botón "Ya la cargó" llegan casi
+    juntos, y solo uno tiene que mandar el aviso."""
+    if not token:
+        return False
+    c = _conn(db)
+    try:
+        cur = c.execute("UPDATE plexo_suscripciones SET token = ? WHERE recurrente_id = ? "
+                        "AND (token IS NULL OR token != ?)", (token, recurrente_id, token))
+        c.commit()
+        return cur.rowcount == 1
+    finally:
+        c.close()
+
+
+def _avisar_tarjeta_cargada(db: str, fijo: dict, tarjeta: str | None, vence: str | None) -> None:
+    """Mail a contacto@ cuando un cliente carga la tarjeta. Juan (3/11): "¿cómo
+    me doy cuenta cuando carguen?" → "que me mande un mail a contacto@". Si el
+    mail falla la tarjeta queda igual: el aviso no puede trabar la activación."""
+    try:
+        from database import get_business
+        from services.email_service import send_plexo_tarjeta_cargada
+        d, _ = _monto_a_cobrar(db, fijo)
+        cliente = get_business(db, fijo["client_id"]) if fijo.get("client_id") else None
+        send_plexo_tarjeta_cargada((cliente or {}).get("name") or fijo["concepto"], fijo["concepto"],
+                                   tarjeta, vence, d["total"], fijo["moneda"])
+    except Exception:
+        logger.exception("no se pudo avisar por mail la tarjeta del fijo %s", fijo.get("id"))
 
 
 def por_customer(db: str, customer_id: str) -> dict | None:

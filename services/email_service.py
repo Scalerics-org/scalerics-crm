@@ -517,6 +517,25 @@ def send_instagram_banco_bajo(feed: int, historias: int) -> bool:
     return _send(_destino_instagram(), "Instagram: quedan pocas ideas en el banco", html_mail)
 
 
+@_tipo_envio("aviso_equipo")
+def send_plexo_tarjeta_cargada(cliente: str, concepto: str, tarjeta: str | None, vence: str | None,
+                               total: float, moneda: str) -> bool:
+    """Un cliente cargó la tarjeta desde el link de pago (services/plexo.py)."""
+    monto = f"{moneda} {float(total):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    filas = [("Cliente", html.escape(cliente or "")), ("Qué paga", html.escape(concepto or "")),
+             ("Por mes", f"{monto} (IVA incluido)")]
+    if tarjeta:
+        filas.append(("Tarjeta", html.escape(tarjeta) + (f" · vence {html.escape(vence)}" if vence else "")))
+    body = (_muted(f"<b>{html.escape(cliente or '')}</b> cargó la tarjeta. De ahora en más el "
+                   "mantenimiento se le cobra solo todos los meses.")
+            + _info_card(filas)
+            + _muted("Lo ves en Finanzas → Cobro con tarjeta."))
+    html_mail = _layout(badge="Cobro con tarjeta", title="Un cliente cargó la tarjeta", body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Ver en el CRM →")
+    destino = os.environ.get("PLEXO_AVISO_MAIL", "").strip() or "contacto@scalerics.com"
+    return _send(destino, f"{cliente} cargó la tarjeta", html_mail)
+
+
 @_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
