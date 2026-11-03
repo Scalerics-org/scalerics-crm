@@ -139,8 +139,7 @@ padding:14px;border-radius:10px}a.b:hover{background:#005f8e}.s{color:#94a3b8;fo
 <table><tr><td>Precio</td><td>{{ r.moneda }} {{ plata(r.precio) }}</td></tr>
 <tr><td>IVA</td><td>{{ r.moneda }} {{ plata(r.iva) }}</td></tr>
 <tr class="t"><td>Total por mes</td><td>{{ r.moneda }} {{ plata(r.total) }}</td></tr></table>
-<p class="n">Se debita automáticamente de tu tarjeta el día {{ r.dia }} de cada mes.
-En el próximo paso cargás la tarjeta en la página segura de Plexo.</p>
+<p class="n">En el próximo paso cargás la tarjeta en la página segura de Plexo.</p>
 <a class="b" href="{{ ir }}">Cargar tarjeta</a>
 <p class="s">Pago procesado por Plexo · Scalerics no ve ni guarda los datos de tu tarjeta.</p></div></body></html>"""
 

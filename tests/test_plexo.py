@@ -396,7 +396,7 @@ def test_el_link_muestra_cuanto_se_cobra_antes_de_ir_a_plexo(app, falso):
     assert r.status_code == 200
     assert "Mantenimiento mensual" in html and "Diego Hinze" in html
     assert "USD 120,00" in html and "USD 26,40" in html and "USD 146,40" in html
-    assert "día 1 de cada mes" in html and f"/plexo/tarjeta/{codigo}/ir" in html
+    assert "debita" not in html and f"/plexo/tarjeta/{codigo}/ir" in html
     assert sum(c[1] == "/v1/sessions" for c in falso.llamadas) == sesiones_antes
     assert app.test_client().get("/plexo/tarjeta/" + "z" * 24).status_code == 404
 
