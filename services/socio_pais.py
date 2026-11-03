@@ -22,6 +22,13 @@ clientes o la plata de Uruguay.
 
 Los mails de SOCIOS_ARGENTINA (separados por coma) entran con el rol en el
 alta, sin esperar a Juan, igual que VENDEDORES_FIDELIDAD.
+
+Dos excepciones al "solo mirar" (Juan, 2/11):
+- Carga leads a mano en Meta Ads (POST /api/meta/leads). Quedan de su país
+  aunque el cuerpo diga otro, y la request corre en modo "escribir" (las
+  vistas de "leer" no dejan insertar).
+- Le llega el mail de cada lead nuevo de su país, como a los admins
+  (`emails_socios`, que usa routes/meta._notify_new_meta_lead).
 """
 
 import json
@@ -43,6 +50,8 @@ _PERMITIDAS = [(m, re.compile(p)) for m, p in (
     ("GET", r"/api/calendar/clients/\d+/meetings"),
     # Meta Ads: la lista de leads de Meta (ver `candado`, que pide crm_group=meta).
     ("GET", r"/api/leads"),
+    ("POST", r"/api/meta/leads"),                           # cargar un lead a mano
+
     # Inteligencia marketing. La radiografía no: es un informe de toda la cuenta.
     ("GET", r"/api/marketing/(dossier|piezas|leads-semana|version)"),
     ("GET", r"/api/marketing/creativo/\d+"),
@@ -77,6 +86,25 @@ def asignar_socios(conn: sqlite3.Connection, environ) -> int:
         total += cur.rowcount
     conn.commit()
     return total
+
+
+def emails_socios(db: str, pais: str, environ) -> set[str]:
+    """Los mails de los socios de ese país: los que ya tienen el rol y los del
+    secret, así el aviso le llega aunque todavía no se haya registrado."""
+    nombres = [n for n, p in ROLES.items() if p == pais]
+    emails = set()
+    for nombre in nombres:
+        emails |= {e.strip().lower() for e in (environ.get(ENV_EMAILS[nombre]) or "").split(",") if e.strip()}
+    if not nombres:
+        return emails
+    c = sqlite3.connect(db, timeout=10)
+    try:
+        filas = c.execute(
+            f"SELECT u.email FROM users u JOIN roles r ON u.role_id = r.id "
+            f"WHERE r.name IN ({', '.join('?' * len(nombres))})", nombres).fetchall()
+    finally:
+        c.close()
+    return emails | {f[0].strip().lower() for f in filas if f[0]}
 
 
 def pais_fijo(db: str, user_id) -> str | None:

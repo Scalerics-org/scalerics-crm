@@ -111,8 +111,26 @@ def _guardar_campana_del_lead(db: str, lead_id: int, lead_data: dict) -> None:
         conn.close()
 
 
+def _emails_del_pais_del_lead(db: str, lead_id: int, campaign: str, phone: str) -> set[str]:
+    """Los socios del país del lead (Ciro para Argentina, Juan 2/11). Con
+    META_NOTIFY_OVERRIDE puesto no se suma nadie: es la válvula de prueba."""
+    if os.environ.get("META_NOTIFY_OVERRIDE", "").strip():
+        return set()
+    from database import get_business
+    from services.paises import de_lead
+    from services.socio_pais import emails_socios
+    try:
+        ficha = get_business(db, lead_id) or {}
+        pais = de_lead(ficha.get("pais"), ficha.get("meta_campaign_name") or campaign, ficha.get("phone") or phone)
+        return emails_socios(db, pais, os.environ)
+    except Exception as e:
+        logger.warning(f"No se pudo ver el país del lead {lead_id} para avisar al socio: {e}")
+        return set()
+
+
 def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int):
-    for email in _get_admin_emails(db):
+    destinos = set(_get_admin_emails(db)) | _emails_del_pais_del_lead(db, lead_id, campaign, phone)
+    for email in destinos:
         try:
             send_new_meta_lead_notification(email, lead_name, phone, campaign, city, lead_id)
         except Exception as e:
@@ -669,9 +687,18 @@ def meta_crear_lead_manual():
     if not scraped_at:
         return jsonify({"ok": False, "error": "La fecha no es válida (no puede ser futura)."}), 400
 
+    # El socio de un país (Ciro) carga siempre en el suyo, diga lo que diga el
+    # cuerpo (ver services/socio_pais.py).
+    from flask import g
+    from services.paises import de_lead, valido
+    pais_socio = g.get("_pais_fijo")
+
     db = _db()
     ya = (get_business_by_phone(db, phone) if phone else None) or buscar_ficha_meta_por_mail(db, email)
     if ya and (ya.get("source") or "") == "meta":
+        if pais_socio and de_lead(ya.get("pais"), ya.get("meta_campaign_name"), ya.get("phone")) != pais_socio:
+            # Es de otro país: no le mostramos de quién es.
+            return jsonify({"ok": False, "error": "Ese teléfono o mail ya está cargado en el CRM."}), 409
         return jsonify({"ok": False, "error": f"Ya está en Meta Ads: {ya.get('name') or 'sin nombre'}.",
                         "id": ya["id"]}), 409
 
@@ -719,8 +746,7 @@ def meta_crear_lead_manual():
                              form_data=json.dumps(fields, ensure_ascii=False))
     # El país del panel desde el que se cargó (services/paises.py); sin uno
     # válido sale del teléfono, como el resto.
-    from services.paises import valido
-    update_business(db, biz_id, origen_manual=origen, pais=valido(data.get("pais")))
+    update_business(db, biz_id, origen_manual=origen, pais=pais_socio or valido(data.get("pais")))
 
     log_activity(db, quien, "lead_created", "lead", biz_id, name,
                  f"Cargado a mano en Meta Ads · llegó por {etiqueta}"

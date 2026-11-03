@@ -126,7 +126,7 @@ def test_lo_demas_le_da_403(app, ruta):
                                            "monto": 1, "moneda": "USD", "fecha": "2026-11-01"}),
     ("post", "/api/calendar/events", {"title": "x"}),
     ("delete", "/api/calendar/meetings/1", None),
-    ("post", "/api/meta/leads", {"name": "x", "phone": "1"}),
+    ("put", "/api/leads/1", {"name": "x"}),
     ("put", "/api/admin/users/1/role", {"role_id": 1}),
 ])
 def test_no_modifica_nada(app, metodo, ruta, cuerpo):
@@ -158,3 +158,52 @@ def test_un_usuario_comun_sigue_eligiendo_el_pais_con_la_cookie(app):
     d = cli.get("/api/finanzas/recurrentes").get_json()
     filas = d if isinstance(d, list) else (d.get("recurrentes") or d.get("items") or [])
     assert {f["concepto"] for f in filas} == {"Sueldo Uruguay"}
+
+
+# ── Lo que sí puede (Juan, 2/11): cargar leads y recibir el aviso ────────────
+
+_ALTA = {"name": "Lead de Ciro", "phone": "+54 9 11 5555 1234", "origen": "whatsapp"}
+
+
+def test_carga_un_lead_a_mano_y_queda_de_argentina_aunque_pida_otro_pais(app):
+    cli = _ciro(app)
+    r = cli.post("/api/meta/leads", json=dict(_ALTA, pais="UY", phone="099 444 444"))
+    assert r.status_code == 200, r.get_json()
+    c = sqlite3.connect(app.config["_DB"])
+    pais = c.execute("SELECT pais FROM businesses WHERE id = ?", (r.get_json()["id"],)).fetchone()[0]
+    c.close()
+    assert pais == "AR"
+    d = cli.get("/api/leads?crm_group=meta").get_json()
+    leads = d if isinstance(d, list) else d["items"]
+    assert "Lead de Ciro" in {l["name"] for l in leads}
+
+
+def test_un_lead_repetido_de_otro_pais_no_le_dice_de_quien_es(app):
+    _lead(app.config["_DB"], "Montevideano", "+59899333333", campana="Web")
+    r = _ciro(app).post("/api/meta/leads", json=dict(_ALTA, phone="+59899333333"))
+    assert r.status_code == 409
+    assert "Montevideano" not in json.dumps(r.get_json()) and "id" not in r.get_json()
+
+
+def _avisos(app, monkeypatch, lead_id):
+    from routes import meta
+    enviados = []
+    monkeypatch.setattr(meta, "send_new_meta_lead_notification", lambda to, *a, **k: enviados.append(to))
+    meta._notify_new_meta_lead(app.config["_DB"], "x", "", "", "", lead_id)
+    return set(enviados)
+
+
+def test_el_lead_de_argentina_le_avisa_a_ciro_y_a_los_admins(app, monkeypatch):
+    bid = _lead(app.config["_DB"], "Porteño", "099 222 222", campana="AR - Web")
+    assert _avisos(app, monkeypatch, bid) == {"raiz@scalerics.com", "ciro@ejemplo.com"}
+
+
+def test_el_lead_de_uruguay_no_le_avisa_a_ciro(app, monkeypatch):
+    bid = _lead(app.config["_DB"], "Montevideano", "099 333 333", campana="Web")
+    assert _avisos(app, monkeypatch, bid) == {"raiz@scalerics.com"}
+
+
+def test_con_el_override_de_prueba_no_le_llega_a_ciro(app, monkeypatch):
+    monkeypatch.setenv("META_NOTIFY_OVERRIDE", "prueba@scalerics.com")
+    bid = _lead(app.config["_DB"], "Porteño", "099 222 222", campana="AR - Web")
+    assert _avisos(app, monkeypatch, bid) == {"prueba@scalerics.com"}

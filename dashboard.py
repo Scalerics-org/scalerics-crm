@@ -22453,7 +22453,9 @@ def create_app(db_path: str) -> Flask:
                 return redirect("/")
             from database import poner_pais
             g._pais_fijo = _pais_socio
-            g._pais_fijo_token = poner_pais(_pais_socio, "leer")
+            # Lo único que escribe es su perfil y el lead a mano: con las
+            # vistas de "leer" el INSERT del lead fallaría.
+            g._pais_fijo_token = poner_pais(_pais_socio, "leer" if request.method == "GET" else "escribir")
 
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
