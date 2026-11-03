@@ -122,8 +122,45 @@ h1{font-size:1.3rem;margin:12px 0 8px}p{color:#475569;line-height:1.5;margin:0}.
 </head><body><div class="c"><div class="i">{{ icono }}</div><h1>{{ titulo }}</h1><p>{{ texto }}</p></div></body></html>"""
 
 
+_PAGINA_MONTO = """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Scalerics</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f1f5f9;
+font-family:Inter,Arial,sans-serif;color:#0f172a}.c{background:#fff;border-radius:16px;padding:32px 28px;
+max-width:420px;width:100%;margin:16px;box-sizing:border-box;box-shadow:0 4px 24px rgba(15,23,42,.08)}
+.m{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:#0088CC;font-weight:700;margin:0 0 6px}
+h1{font-size:1.25rem;margin:0 0 4px}.q{color:#64748b;margin:0 0 20px}
+table{width:100%;border-collapse:collapse;margin:0 0 8px}td{padding:8px 0;border-bottom:1px solid #e2e8f0}
+td:last-child{text-align:right;font-variant-numeric:tabular-nums}tr.t td{border:0;font-weight:700;font-size:1.15rem;padding-top:12px}
+p.n{color:#475569;font-size:.92rem;line-height:1.5;margin:12px 0 22px}
+a.b{display:block;text-align:center;background:#0088CC;color:#fff;text-decoration:none;font-weight:600;
+padding:14px;border-radius:10px}a.b:hover{background:#005f8e}.s{color:#94a3b8;font-size:.8rem;text-align:center;margin:14px 0 0}</style>
+</head><body><div class="c"><p class="m">Scalerics</p><h1>{{ r.concepto }}</h1>
+{% if r.cliente %}<p class="q">{{ r.cliente }}</p>{% else %}<p class="q"></p>{% endif %}
+<table><tr><td>Precio</td><td>{{ r.moneda }} {{ plata(r.precio) }}</td></tr>
+<tr><td>IVA</td><td>{{ r.moneda }} {{ plata(r.iva) }}</td></tr>
+<tr class="t"><td>Total por mes</td><td>{{ r.moneda }} {{ plata(r.total) }}</td></tr></table>
+<p class="n">En el próximo paso cargás la tarjeta en la página segura de Plexo.</p>
+<a class="b" href="{{ ir }}">Cargar tarjeta</a>
+<p class="s">Pago procesado por Plexo · Scalerics no ve ni guarda los datos de tu tarjeta.</p></div></body></html>"""
+
+
+def _plata(n) -> str:
+    """213.5 → "213,50", como se escribe en Uruguay."""
+    return f"{float(n):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 @plexo_bp.route("/plexo/tarjeta/<codigo>")
 def pagina_tarjeta(codigo):
+    """Primero cuánto y cada cuánto se cobra; recién con el botón va a Plexo."""
+    r = plexo.resumen_del_link(_db(), codigo)
+    if not r:
+        return render_template_string(_PAGINA, icono="🔗", titulo="Este link ya no está activo",
+                                      texto="Pedinos uno nuevo y te lo mandamos."), 404
+    return render_template_string(_PAGINA_MONTO, r=r, plata=_plata, ir=f"/plexo/tarjeta/{codigo}/ir")
+
+
+@plexo_bp.route("/plexo/tarjeta/<codigo>/ir")
+def pagina_ir_a_plexo(codigo):
     try:
         url = plexo.abrir_link(_db(), codigo, _base())
     except plexo.PlexoError:

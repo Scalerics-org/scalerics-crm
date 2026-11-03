@@ -358,20 +358,42 @@ def pedir_tarjeta(db: str, fijo: dict, cliente: dict | None, base_url: str, emai
     return {"link": f"{base_url.rstrip('/')}/plexo/tarjeta/{codigo}", "cliente": nombre}
 
 
-def abrir_link(db: str, codigo: str, base_url: str) -> str | None:
-    """La página de Plexo para ese link del CRM, recién creada. None si el código no existe."""
+def _link_vigente(db: str, codigo: str) -> tuple[dict, dict] | tuple[None, None]:
+    """(suscripción, configuración) del link del CRM, o (None, None) si no sirve."""
     if not codigo or len(codigo) < 16:
-        return None
-    c = _conn(db)
-    try:
-        f = c.execute("SELECT * FROM plexo_suscripciones WHERE link_publico = ?", (codigo,)).fetchone()
-    finally:
-        c.close()
-    if not f or f["estado"] == "pausada" or not f["customer_id"]:
-        return None
-    s = dict(f)
+        return None, None
+    s = por_link(db, codigo)
+    if not s or s["estado"] == "pausada" or not s["customer_id"]:
+        return None, None
     cfg = configuracion(db)
     if s["env"] != cfg["env"]:
+        return None, None
+    return s, cfg
+
+
+def resumen_del_link(db: str, codigo: str) -> dict | None:
+    """Lo que el cliente ve antes de cargar la tarjeta: qué se le cobra, cuánto
+    y cada cuánto. Juan (3/11): "les mando el link de pago y no les aparece
+    cuánto se les va a debitar" (la página de Plexo solo pide la tarjeta).
+    El total sale del mismo desglose con el que después se cobra."""
+    from database import get_business, get_recurrente
+    s, _ = _link_vigente(db, codigo)
+    if not s:
+        return None
+    fijo = get_recurrente(db, s["recurrente_id"])
+    if not fijo:
+        return None
+    d, _ = _monto_a_cobrar(db, fijo)
+    cliente = get_business(db, fijo["client_id"]) if fijo.get("client_id") else None
+    return {"concepto": fijo["concepto"], "cliente": (cliente or {}).get("name"),
+            "moneda": fijo["moneda"], "precio": d["precio"], "iva": d["iva_venta"], "total": d["total"],
+            "dia": min(max(int(fijo.get("dia_del_mes") or 1), 1), 28)}
+
+
+def abrir_link(db: str, codigo: str, base_url: str) -> str | None:
+    """La página de Plexo para ese link del CRM, recién creada. None si el código no existe."""
+    s, cfg = _link_vigente(db, codigo)
+    if not s:
         return None
     base = base_url.rstrip("/")
     ses = crear_sesion_tarjeta(cfg, s["customer_id"], f"tarjeta-fijo-{s['recurrente_id']}-{int(time.time())}",
