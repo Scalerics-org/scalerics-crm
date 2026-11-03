@@ -380,9 +380,33 @@ def test_el_link_publico_redirige_a_plexo_sin_sesion(app, falso):
     fijo = _fijo(app.config["_DB"])
     link = plexo.pedir_tarjeta(app.config["_DB"], fijo, None, "https://crm.test")["link"]
     anonimo = app.test_client()
-    r = anonimo.get("/plexo/tarjeta/" + link.rsplit("/", 1)[1])
+    r = anonimo.get("/plexo/tarjeta/" + link.rsplit("/", 1)[1] + "/ir")
     assert r.status_code == 302 and r.headers["Location"].startswith("https://tokenizations.testing")
-    assert anonimo.get("/plexo/tarjeta/" + "z" * 24).status_code == 404
+    assert anonimo.get("/plexo/tarjeta/" + "z" * 24 + "/ir").status_code == 404
+
+
+def test_el_link_muestra_cuanto_se_cobra_antes_de_ir_a_plexo(app, falso):
+    """Juan (3/11): la página de Plexo no dice el monto. La del link sí, y
+    todavía no le pide nada a Plexo."""
+    fijo = _fijo(app.config["_DB"])
+    codigo = plexo.pedir_tarjeta(app.config["_DB"], fijo, None, "https://crm.test")["link"].rsplit("/", 1)[1]
+    sesiones_antes = sum(c[1] == "/v1/sessions" for c in falso.llamadas)
+    r = app.test_client().get("/plexo/tarjeta/" + codigo)
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200
+    assert "Mantenimiento mensual" in html and "Diego Hinze" in html
+    assert "USD 120,00" in html and "USD 26,40" in html and "USD 146,40" in html
+    assert "día 1 de cada mes" in html and f"/plexo/tarjeta/{codigo}/ir" in html
+    assert sum(c[1] == "/v1/sessions" for c in falso.llamadas) == sesiones_antes
+    assert app.test_client().get("/plexo/tarjeta/" + "z" * 24).status_code == 404
+
+
+def test_un_link_pausado_no_muestra_el_monto(app, falso):
+    db = app.config["_DB"]
+    fijo = _fijo(db)
+    codigo = plexo.pedir_tarjeta(db, fijo, None, "https://crm.test")["link"].rsplit("/", 1)[1]
+    plexo.pausar(db, fijo["id"], True)
+    assert app.test_client().get("/plexo/tarjeta/" + codigo).status_code == 404
 
 
 def test_el_callback_no_le_cree_al_cuerpo(app, falso):
