@@ -123,6 +123,15 @@ def asignar_socios(conn: sqlite3.Connection, environ) -> int:
     return total
 
 
+def mails_del_pais(pais, environ) -> list:
+    """Los mails del socio de ese país, para avisarle de sus leads nuevos
+    (routes/meta._notify_new_meta_lead). Sin socio: lista vacía."""
+    for nombre, codigo in ROLES.items():
+        if codigo == pais:
+            return [e.strip().lower() for e in (environ.get(ENV_EMAILS[nombre]) or "").split(",") if e.strip()]
+    return []
+
+
 def pais_fijo(db: str, user_id) -> str | None:
     """El país del socio, o None si el usuario no es socio de un país."""
     if not user_id:
