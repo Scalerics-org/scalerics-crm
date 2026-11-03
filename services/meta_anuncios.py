@@ -64,12 +64,33 @@ def _dir_creativos(db_path: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(db_path)), "creativos")
 
 
+def _de_todas_las_cuentas(traer, *args, **kwargs) -> list:
+    """`traer(cuenta, ...)` en cada cuenta publicitaria (meta_config). Si falla
+    la principal, falla todo, como antes; si falla una extra (la de Argentina
+    recién creada, sin permisos todavía), se avisa en el log y sigue con lo de
+    las demás: una cuenta nueva no puede dejar a Uruguay sin datos."""
+    from meta_config import cuentas_publicitarias
+
+    filas = []
+    for i, cuenta in enumerate(cuentas_publicitarias()):
+        try:
+            filas.extend(traer(cuenta, *args, **kwargs))
+        except _ErrorDeMeta as e:
+            if i == 0:
+                raise
+            logger.warning(f"Anuncios: se saltea la cuenta {cuenta} ({e})")
+    return filas
+
+
 def _traer_ads() -> list:
+    return _de_todas_las_cuentas(_traer_ads_de)
+
+
+def _traer_ads_de(cuenta: str) -> list:
     import requests
 
     from meta_config import GRAPH
 
-    cuenta = os.environ["META_AD_ACCOUNT_ID"]
     params = {"access_token": os.environ["META_ADS_TOKEN"],
               "fields": _CAMPOS_AD, "limit": 200}
     filas, url = [], f"{GRAPH}/{cuenta}/ads"
@@ -94,6 +115,12 @@ def _traer_ads() -> list:
 
 def _traer_insights(desde: str, hasta: str, pausa: float = 0,
                     max_paginas=None, dormir=None) -> list:
+    return _de_todas_las_cuentas(_traer_insights_de, desde, hasta, pausa=pausa,
+                                 max_paginas=max_paginas, dormir=dormir)
+
+
+def _traer_insights_de(cuenta: str, desde: str, hasta: str, pausa: float = 0,
+                       max_paginas=None, dormir=None) -> list:
     """Los insights por anuncio y por dia, pagina por pagina.
 
     `pausa` y `max_paginas` son para el relleno hacia atras: cada pagina es una
@@ -109,7 +136,6 @@ def _traer_insights(desde: str, hasta: str, pausa: float = 0,
     from meta_config import GRAPH
 
     dormir = dormir or time.sleep
-    cuenta = os.environ["META_AD_ACCOUNT_ID"]
     params = {
         "access_token": os.environ["META_ADS_TOKEN"],
         "level": "ad",

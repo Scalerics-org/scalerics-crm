@@ -117,11 +117,24 @@ def _get(ruta: str, **params) -> dict:
 
 
 def _insights(nivel: str, desde: date, hasta: date, campos: str) -> list:
-    d = _get(f"{os.environ['META_AD_ACCOUNT_ID']}/insights",
-             level=nivel, fields=campos, limit=500,
-             time_range=json.dumps({"since": desde.isoformat(),
-                                    "until": hasta.isoformat()}))
-    return d.get("data", [])
+    """De todas las cuentas publicitarias (meta_config). Si falla la principal
+    no hay alerta, como antes; una extra que falla se saltea con un aviso."""
+    from meta_config import cuentas_publicitarias
+
+    filas = []
+    for i, cuenta in enumerate(cuentas_publicitarias()):
+        try:
+            d = _get(f"{cuenta}/insights",
+                     level=nivel, fields=campos, limit=500,
+                     time_range=json.dumps({"since": desde.isoformat(),
+                                            "until": hasta.isoformat()}))
+        except ErrorDeMeta as e:
+            if i == 0:
+                raise
+            logger.warning(f"Alertas Meta: se saltea la cuenta {cuenta} ({e})")
+            continue
+        filas.extend(d.get("data", []))
+    return filas
 
 
 def _ultimo_post() -> str | None:

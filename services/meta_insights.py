@@ -61,32 +61,34 @@ def _traer_de_la_api(desde: str, hasta: str) -> list:
 
     import requests
 
-    from meta_config import GRAPH
+    from meta_config import GRAPH, cuentas_publicitarias
 
-    cuenta = os.environ["META_AD_ACCOUNT_ID"]
-    params = {
-        "access_token": os.environ["META_ADS_TOKEN"],
-        "level": "campaign",
-        "time_increment": 1,
-        "fields": ("campaign_id,campaign_name,spend,account_currency,"
-                   "impressions,clicks,reach,actions"),
-        "time_range": json.dumps({"since": desde, "until": hasta}),
-        "limit": 500,
-    }
-
-    filas, url = [], f"{GRAPH}/{cuenta}/insights"
-    while url:
-        r = requests.get(url, params=params, timeout=30)
-        if not r.ok:
-            logger.error(f"Insights: la API contesto {r.status_code}")
-            break
-        d = r.json()
-        if "error" in d:
-            logger.error(f"Insights: {d['error']}")
-            break
-        filas.extend(d.get("data", []))
-        url = d.get("paging", {}).get("next")
-        params = {}   # el `next` ya trae todo adentro
+    filas = []
+    # Una pasada por cuenta (la principal y la de Argentina): campaign_id es
+    # único en todo Meta, así que las filas no chocan en la tabla.
+    for cuenta in cuentas_publicitarias():
+        params = {
+            "access_token": os.environ["META_ADS_TOKEN"],
+            "level": "campaign",
+            "time_increment": 1,
+            "fields": ("campaign_id,campaign_name,spend,account_currency,"
+                       "impressions,clicks,reach,actions"),
+            "time_range": json.dumps({"since": desde, "until": hasta}),
+            "limit": 500,
+        }
+        url = f"{GRAPH}/{cuenta}/insights"
+        while url:
+            r = requests.get(url, params=params, timeout=30)
+            if not r.ok:
+                logger.error(f"Insights {cuenta}: la API contesto {r.status_code}")
+                break
+            d = r.json()
+            if "error" in d:
+                logger.error(f"Insights {cuenta}: {d['error']}")
+                break
+            filas.extend(d.get("data", []))
+            url = d.get("paging", {}).get("next")
+            params = {}   # el `next` ya trae todo adentro
     return filas
 
 
