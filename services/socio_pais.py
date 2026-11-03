@@ -24,7 +24,15 @@ Los mails de SOCIOS_ARGENTINA (separados por coma) entran con el rol en el
 alta, sin esperar a Juan, igual que VENDEDORES_FIDELIDAD.
 
 Federico es el socio de Chile (Juan, 3/11: "igual al de Ciro pero solo para
-Chile"): mismo rol con CL, y sus mails van en SOCIOS_CHILE.
+Chile"): mismo rol con CL, y sus mails van en SOCIOS_CHILE. Ese mismo día Juan
+pidió que Federico también pueda cargar: leads de Meta y movimientos de
+Finanzas, solo de Chile (`_ESCRITURAS`). Ciro sigue solo mirando.
+
+- Lo que crea queda de Chile: el lead de Meta toma el país fijo en la ruta, y
+  lo de Finanzas lo marcan los triggers del modo "escribir" (database.aplicar_pais).
+- Lo que toca por id tiene que ser de Chile (`_es_de_su_pais`). En modo
+  "escribir" no hay vistas, así que sin ese chequeo un PUT o DELETE con el id
+  de una fila de Uruguay pasaría.
 """
 
 import json
@@ -34,6 +42,8 @@ import sqlite3
 ROLES = {"Socio Argentina": "AR", "Socio Chile": "CL"}
 PANELES = ["cal", "meta", "marketing", "finanzas"]
 ENV_EMAILS = {"Socio Argentina": "SOCIOS_ARGENTINA", "Socio Chile": "SOCIOS_CHILE"}
+# Los países cuyo socio además carga y edita en sus secciones (Juan, 3/11).
+PAISES_QUE_ESCRIBEN = {"CL"}
 
 # (método, patrón de la ruta). Lo que no está acá da 403.
 _PERMITIDAS = [(m, re.compile(p)) for m, p in (
@@ -53,16 +63,47 @@ _PERMITIDAS = [(m, re.compile(p)) for m, p in (
     ("GET", r"/api/finanzas/(movimientos|recurrentes|resumen|pauta|meses|por-cobrar"
             r"|balance|balance-general|balance-datos|categorias|esenciales|ventas)"),
 )]
+
+# Lo que puede modificar el socio de un país de PAISES_QUE_ESCRIBEN:
+# (método, patrón, dueño). El dueño dice dónde mirar que el id del patrón sea
+# de su país: "lead" (un lead de Meta) o la tabla de Finanzas. None: crea algo
+# nuevo, que queda de su país solo.
+_ESCRITURAS = [(m, re.compile(p), d) for m, p, d in (
+    # Meta Ads: cargar un lead a mano, el semáforo y la ficha.
+    ("POST", r"/api/meta/leads", None),
+    ("POST", r"/api/meta/leads/(\d+)/semaforo", "lead"),
+    ("GET", r"/api/leads/(\d+)", "lead"),
+    ("POST", r"/api/leads/(\d+)/(crm-status|contact|calls|callback)", "lead"),
+    ("PUT", r"/api/leads/(\d+)/notes", "lead"),
+    # Finanzas, lo de su país. Cerrar meses, IVA, tarjeta y cobros no: son de Uruguay.
+    ("POST", r"/api/finanzas/(movimientos|recurrentes|por-cobrar|balance-datos|esenciales|ventas)", None),
+    ("PUT", r"/api/finanzas/movimientos/(\d+)", "finanzas_movimientos"),
+    ("DELETE", r"/api/finanzas/movimientos/(\d+)", "finanzas_movimientos"),
+    ("POST", r"/api/finanzas/movimientos/(\d+)/hecho", "finanzas_movimientos"),
+    ("PUT", r"/api/finanzas/recurrentes/(\d+)", "finanzas_recurrentes"),
+    ("DELETE", r"/api/finanzas/recurrentes/(\d+)", "finanzas_recurrentes"),
+    ("POST", r"/api/finanzas/por-cobrar/(\d+)/cobrar", "finanzas_por_cobrar"),
+    ("DELETE", r"/api/finanzas/por-cobrar/(\d+)", "finanzas_por_cobrar"),
+    ("PUT", r"/api/finanzas/balance-datos/(\d+)", "finanzas_balance_datos"),
+    ("DELETE", r"/api/finanzas/balance-datos/(\d+)", "finanzas_balance_datos"),
+    ("PUT", r"/api/finanzas/esenciales/(\d+)", "finanzas_esenciales"),
+    ("DELETE", r"/api/finanzas/esenciales/(\d+)", "finanzas_esenciales"),
+    ("PUT", r"/api/finanzas/ventas/(\d+)", "finanzas_ventas"),
+    ("DELETE", r"/api/finanzas/ventas/(\d+)", "finanzas_ventas"),
+)]
 # Las páginas (no /api/): el CRM y salir. /admin/users y el resto, no.
 _PAGINAS = {"/", "/logout"}
 
 
 def init_socio_pais(conn: sqlite3.Connection) -> None:
     """Los roles, una vez. Finanzas va en solo lectura también en el dato,
-    para que el panel no muestre los botones de cargar."""
-    for nombre in ROLES:
+    para que el panel no muestre los botones de cargar; salvo para el país que
+    escribe. Eso se pisa en cada arranque: lo manda el código, no el editor."""
+    for nombre, pais in ROLES.items():
+        solo_lectura = json.dumps([] if pais in PAISES_QUE_ESCRIBEN else ["finanzas"])
         conn.execute("INSERT OR IGNORE INTO roles (name, panel_access, paneles_solo_lectura) "
-                     "VALUES (?, ?, ?)", (nombre, json.dumps(PANELES), json.dumps(["finanzas"])))
+                     "VALUES (?, ?, ?)", (nombre, json.dumps(PANELES), solo_lectura))
+        conn.execute("UPDATE roles SET paneles_solo_lectura = ? WHERE name = ?", (solo_lectura, nombre))
 
 
 def asignar_socios(conn: sqlite3.Connection, environ) -> int:
@@ -95,9 +136,33 @@ def pais_fijo(db: str, user_id) -> str | None:
     return ROLES.get(f[0]) if f else None
 
 
-def permitido(metodo: str, ruta: str, args) -> bool:
+def permitido(metodo: str, ruta: str, args, pais=None, db=None) -> bool:
     if not ruta.startswith("/api/"):
         return ruta in _PAGINAS or ruta.startswith("/static/")
     if ruta == "/api/leads" and args.get("crm_group") != "meta":
         return False
-    return any(metodo == m and p.fullmatch(ruta) for m, p in _PERMITIDAS)
+    if any(metodo == m and p.fullmatch(ruta) for m, p in _PERMITIDAS):
+        return True
+    if pais not in PAISES_QUE_ESCRIBEN:
+        return False
+    for m, p, dueno in _ESCRITURAS:
+        hecho = p.fullmatch(ruta) if metodo == m else None
+        if hecho:
+            return dueno is None or _es_de_su_pais(db, pais, dueno, int(hecho.group(1)))
+    return False
+
+
+def _es_de_su_pais(db: str, pais: str, dueno: str, fila_id: int) -> bool:
+    """Si esa fila es de su país. Contra main, sin vistas: corre antes de que
+    la request ponga el país."""
+    from services.paises import de_lead
+    c = sqlite3.connect(db, timeout=10)
+    try:
+        if dueno == "lead":
+            f = c.execute("SELECT source, pais, meta_campaign_name, phone FROM businesses WHERE id = ?",
+                          (fila_id,)).fetchone()
+            return bool(f) and f[0] == "meta" and de_lead(f[1], f[2], f[3]) == pais
+        f = c.execute(f"SELECT pais FROM {dueno} WHERE id = ?", (fila_id,)).fetchone()
+        return bool(f) and f[0] == pais
+    finally:
+        c.close()

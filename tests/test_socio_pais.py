@@ -160,7 +160,7 @@ def test_un_usuario_comun_sigue_eligiendo_el_pais_con_la_cookie(app):
     assert {f["concepto"] for f in filas} == {"Sueldo Uruguay"}
 
 
-def test_el_socio_de_chile_ve_solo_chile_y_no_escribe(app, monkeypatch):
+def test_el_socio_de_chile_ve_solo_chile(app, monkeypatch):
     """Federico (Juan, 3/11): igual que Ciro pero con Chile."""
     db = app.config["_DB"]
     uid = _usuario(db, "fede@ejemplo.com", None)
@@ -169,7 +169,7 @@ def test_el_socio_de_chile_ve_solo_chile_y_no_escribe(app, monkeypatch):
     fila = c.execute("SELECT r.name, r.paneles_solo_lectura FROM users u JOIN roles r ON r.id = u.role_id "
                      "WHERE u.id = ?", (uid,)).fetchone()
     c.close()
-    assert fila == ("Socio Chile", '["finanzas"]')
+    assert fila == ("Socio Chile", '[]')
     assert socio_pais.pais_fijo(db, uid) == "CL"
 
     _movimientos_de_los_tres(db)
@@ -180,6 +180,109 @@ def test_el_socio_de_chile_ve_solo_chile_y_no_escribe(app, monkeypatch):
         d = cli.get("/api/finanzas/recurrentes").get_json()
         filas = d if isinstance(d, list) else (d.get("recurrentes") or d.get("items") or [])
         assert {f["concepto"] for f in filas} == {"Pauta Chile"}, cookie
-    cli = _cli(app, uid)
-    assert cli.post("/api/finanzas/recurrentes", json={}).status_code == 403
-    assert cli.get("/api/clientes-activos").status_code == 403
+    assert _cli(app, uid).get("/api/clientes-activos").status_code == 403
+
+
+# ── Federico además carga, solo en Chile (Juan, 3/11) ─────────────────────────
+
+def _fede(app):
+    db = app.config["_DB"]
+    if "_FEDE" not in app.config:
+        app.config["_FEDE"] = _usuario(db, "fede@ejemplo.com", None)
+        c = sqlite3.connect(db)
+        socio_pais.asignar_socios(c, {"SOCIOS_CHILE": "fede@ejemplo.com"})
+        c.close()
+    return _cli(app, app.config["_FEDE"])
+
+
+_MOV = {"tipo": "egreso", "concepto": "Pauta Santiago", "categoria": "publicidad",
+        "monto": 100, "moneda": "USD", "fecha": f"{date.today():%Y-%m-%d}"}
+
+
+def _lead_manual(cli, nombre, telefono, **extra):
+    from routes.meta import ORIGENES_MANUALES
+    return cli.post("/api/meta/leads", json=dict(name=nombre, phone=telefono, origen=next(iter(ORIGENES_MANUALES)),
+                                                 fecha=f"{date.today():%Y-%m-%d}", **extra))
+
+
+def _pais_de_movimiento(db, mid):
+    c = sqlite3.connect(db)
+    try:
+        return c.execute("SELECT pais FROM finanzas_movimientos WHERE id = ?", (mid,)).fetchone()
+    finally:
+        c.close()
+
+
+def test_federico_carga_un_movimiento_y_queda_de_chile(app):
+    db = app.config["_DB"]
+    cli = _fede(app)
+    cli.set_cookie(paises.COOKIE, "UY")     # la cookie no cuenta
+    r = cli.post("/api/finanzas/movimientos", json=_MOV)
+    assert r.status_code == 201, r.get_json()
+    mid = r.get_json()["id"]
+    assert _pais_de_movimiento(db, mid) == ("CL",)
+    assert cli.put(f"/api/finanzas/movimientos/{mid}", json=dict(_MOV, monto=200)).status_code == 200
+    assert cli.delete(f"/api/finanzas/movimientos/{mid}").status_code == 200
+    assert cli.get("/api/me").get_json()["paneles_solo_lectura"] == []
+
+
+def test_federico_no_toca_lo_de_uruguay_ni_lo_de_argentina(app):
+    db = app.config["_DB"]
+    ids = {}
+    # Los movimientos de los otros dos, cargados como los carga Juan.
+    juan = _cli(app, _usuario(db, "raiz@scalerics.com", None))
+    for pais in ("UY", "AR"):
+        juan.set_cookie(paises.COOKIE, pais)
+        r = juan.post("/api/finanzas/movimientos", json=dict(_MOV, concepto=f"De {pais}"))
+        assert r.status_code == 201, r.get_json()
+        ids[pais] = r.get_json()["id"]
+        assert _pais_de_movimiento(db, ids[pais]) == (pais,)
+    cli = _fede(app)
+    for mid in ids.values():
+        assert cli.put(f"/api/finanzas/movimientos/{mid}", json=_MOV).status_code == 403
+        assert cli.delete(f"/api/finanzas/movimientos/{mid}").status_code == 403
+        assert cli.post(f"/api/finanzas/movimientos/{mid}/hecho").status_code == 403
+    assert _pais_de_movimiento(db, ids["UY"]) == ("UY",)
+
+
+@pytest.mark.parametrize("metodo,ruta", [
+    ("post", "/api/finanzas/meses/2026-11/cerrar"),
+    ("put", "/api/finanzas/tarjeta/ajustes"),
+    ("post", "/api/finanzas/cobros-tarjeta"),
+    ("post", "/api/calendar/events"),
+    ("post", "/api/marketing/generar"),
+    ("post", "/api/leads/batch-status"),
+    ("delete", "/api/leads/1"),
+])
+def test_federico_sigue_sin_poder_lo_demas(app, metodo, ruta):
+    assert getattr(_fede(app), metodo)(ruta, json={}).status_code == 403, ruta
+
+
+def test_ciro_sigue_solo_mirando(app):
+    assert _ciro(app).post("/api/finanzas/movimientos", json=_MOV).status_code == 403
+    assert _lead_manual(_ciro(app), "x", "099 555 555").status_code == 403
+
+
+def test_federico_carga_un_lead_de_meta_y_queda_de_chile(app):
+    cli = _fede(app)
+    r = _lead_manual(cli, "Café Santiago", "099 444 444", pais="UY")
+    assert r.status_code == 200, r.get_json()
+    bid = r.get_json()["id"]
+    d = cli.get("/api/leads?crm_group=meta").get_json()
+    leads = d if isinstance(d, list) else d["items"]
+    assert {l["name"] for l in leads} == {"Café Santiago"}
+    assert cli.get(f"/api/leads/{bid}").status_code == 200
+    assert cli.put(f"/api/leads/{bid}/notes", json={"notes": "llamar"}).status_code == 200
+
+
+def test_federico_no_abre_ni_marca_leads_de_otro_pais(app):
+    db = app.config["_DB"]
+    uy = _lead(db, "Montevideano", "+59899333333", campana="Web")
+    cli = _fede(app)
+    assert cli.get(f"/api/leads/{uy}").status_code == 403
+    assert cli.post(f"/api/leads/{uy}/crm-status", json={"crm_status": "interesado"}).status_code == 403
+    assert cli.post(f"/api/meta/leads/{uy}/semaforo", json={"color": "celeste"}).status_code == 403
+    # Cargar el mismo teléfono no le dice de quién es ni se lleva la ficha.
+    r = _lead_manual(cli, "Otro", "099 333 333")
+    assert r.status_code == 409
+    assert "Montevideano" not in r.get_data(as_text=True) and "id" not in r.get_json()

@@ -22442,18 +22442,21 @@ def create_app(db_path: str) -> Flask:
                 return jsonify({"ok": False, "error": "No autorizado"}), 403
 
         # El socio de un país (Ciro, Argentina): calendario y su país, solo
-        # mirar. Mismo motivo que arriba: el menú esconde, el candado es este.
-        # Su país va puesto en toda la request, diga lo que diga la cookie.
+        # mirar; el de Chile además carga en su país. Mismo motivo que arriba:
+        # el menú esconde, el candado es este. Su país va puesto en toda la
+        # request, diga lo que diga la cookie.
         from services.socio_pais import pais_fijo, permitido
         _pais_socio = pais_fijo(app.config["DB_PATH"], session.get("user_id"))
         if _pais_socio:
-            if not permitido(request.method, request.path, request.args):
+            if not permitido(request.method, request.path, request.args,
+                             pais=_pais_socio, db=app.config["DB_PATH"]):
                 if request.path.startswith("/api/"):
                     return jsonify({"ok": False, "error": "No autorizado"}), 403
                 return redirect("/")
             from database import poner_pais
             g._pais_fijo = _pais_socio
-            g._pais_fijo_token = poner_pais(_pais_socio, "leer")
+            g._pais_fijo_token = poner_pais(
+                _pais_socio, "leer" if request.method in ("GET", "HEAD") else "escribir")
 
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
