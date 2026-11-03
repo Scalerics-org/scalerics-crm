@@ -286,3 +286,22 @@ def test_federico_no_abre_ni_marca_leads_de_otro_pais(app):
     r = _lead_manual(cli, "Otro", "099 333 333")
     assert r.status_code == 409
     assert "Montevideano" not in r.get_data(as_text=True) and "id" not in r.get_json()
+
+
+# ── El aviso de lead nuevo le llega al socio de su país (Juan, 3/11) ──────────
+
+@pytest.mark.parametrize("telefono,campana,quien", [
+    ("+56 9 1234 5678", None, "fede@ejemplo.com"),
+    ("099 777 777", "Chile | Fidelidad", "fede@ejemplo.com"),
+    ("099 888 888", "AR - Web", "ciro@ejemplo.com"),
+    ("099 999 999", "Web", None),
+])
+def test_el_aviso_de_lead_nuevo_le_llega_al_socio_de_su_pais(app, monkeypatch, telefono, campana, quien):
+    from routes import meta
+    monkeypatch.setenv("SOCIOS_CHILE", "Fede@Ejemplo.com")
+    monkeypatch.setattr(meta, "_get_admin_emails", lambda db: ["juan@scalerics.com"])
+    enviados = []
+    monkeypatch.setattr(meta, "send_new_meta_lead_notification", lambda to, *a: enviados.append(to))
+    bid = _lead(app.config["_DB"], "Nuevo", telefono, campana=campana)
+    meta._notify_new_meta_lead(app.config["_DB"], "Nuevo", telefono, campana, "", bid)
+    assert sorted(enviados) == sorted(["juan@scalerics.com"] + ([quien] if quien else []))

@@ -111,8 +111,27 @@ def _guardar_campana_del_lead(db: str, lead_id: int, lead_data: dict) -> None:
         conn.close()
 
 
+def _mails_del_socio(db: str, lead_id: int, phone: str, campaign: str) -> list:
+    """El socio del país del lead (Juan, 3/11: los de Chile a Federico, los de
+    Argentina a Ciro). Uruguay no tiene socio: solo los admins."""
+    from services.paises import de_lead
+    from services.socio_pais import mails_del_pais
+    try:
+        conn = _sq_meta.connect(db, timeout=10)
+        try:
+            fila = conn.execute("SELECT pais, meta_campaign_name FROM businesses WHERE id = ?",
+                                (lead_id,)).fetchone()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"No se pudo ver el país del lead {lead_id}: {e}")
+        fila = None
+    pais_fijo, campana_guardada = fila if fila else (None, None)
+    return mails_del_pais(de_lead(pais_fijo, campaign or campana_guardada, phone), os.environ)
+
+
 def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int):
-    for email in _get_admin_emails(db):
+    for email in sorted(set(_get_admin_emails(db)) | set(_mails_del_socio(db, lead_id, phone, campaign))):
         try:
             send_new_meta_lead_notification(email, lead_name, phone, campaign, city, lead_id)
         except Exception as e:
