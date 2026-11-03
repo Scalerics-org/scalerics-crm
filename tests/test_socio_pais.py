@@ -158,3 +158,28 @@ def test_un_usuario_comun_sigue_eligiendo_el_pais_con_la_cookie(app):
     d = cli.get("/api/finanzas/recurrentes").get_json()
     filas = d if isinstance(d, list) else (d.get("recurrentes") or d.get("items") or [])
     assert {f["concepto"] for f in filas} == {"Sueldo Uruguay"}
+
+
+def test_el_socio_de_chile_ve_solo_chile_y_no_escribe(app, monkeypatch):
+    """Federico (Juan, 3/11): igual que Ciro pero con Chile."""
+    db = app.config["_DB"]
+    uid = _usuario(db, "fede@ejemplo.com", None)
+    c = sqlite3.connect(db)
+    socio_pais.asignar_socios(c, {"SOCIOS_CHILE": "Fede@Ejemplo.com"})
+    fila = c.execute("SELECT r.name, r.paneles_solo_lectura FROM users u JOIN roles r ON r.id = u.role_id "
+                     "WHERE u.id = ?", (uid,)).fetchone()
+    c.close()
+    assert fila == ("Socio Chile", '["finanzas"]')
+    assert socio_pais.pais_fijo(db, uid) == "CL"
+
+    _movimientos_de_los_tres(db)
+    for cookie in (None, "UY", "AR"):
+        cli = _cli(app, uid)
+        if cookie:
+            cli.set_cookie(paises.COOKIE, cookie)
+        d = cli.get("/api/finanzas/recurrentes").get_json()
+        filas = d if isinstance(d, list) else (d.get("recurrentes") or d.get("items") or [])
+        assert {f["concepto"] for f in filas} == {"Pauta Chile"}, cookie
+    cli = _cli(app, uid)
+    assert cli.post("/api/finanzas/recurrentes", json={}).status_code == 403
+    assert cli.get("/api/clientes-activos").status_code == 403

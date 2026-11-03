@@ -22,15 +22,18 @@ clientes o la plata de Uruguay.
 
 Los mails de SOCIOS_ARGENTINA (separados por coma) entran con el rol en el
 alta, sin esperar a Juan, igual que VENDEDORES_FIDELIDAD.
+
+Federico es el socio de Chile (Juan, 3/11: "igual al de Ciro pero solo para
+Chile"): mismo rol con CL, y sus mails van en SOCIOS_CHILE.
 """
 
 import json
 import re
 import sqlite3
 
-ROLES = {"Socio Argentina": "AR"}
+ROLES = {"Socio Argentina": "AR", "Socio Chile": "CL"}
 PANELES = ["cal", "meta", "marketing", "finanzas"]
-ENV_EMAILS = {"Socio Argentina": "SOCIOS_ARGENTINA"}
+ENV_EMAILS = {"Socio Argentina": "SOCIOS_ARGENTINA", "Socio Chile": "SOCIOS_CHILE"}
 
 # (método, patrón de la ruta). Lo que no está acá da 403.
 _PERMITIDAS = [(m, re.compile(p)) for m, p in (

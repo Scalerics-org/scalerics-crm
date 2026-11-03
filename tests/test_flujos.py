@@ -178,7 +178,7 @@ def test_el_panel_les_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
     # El vendedor de Fidelidad y el socio de Argentina son de afuera: ningun
     # reparto les suma paneles.
     acceso = {n: json.loads(p) for n, p in _sql(db, "SELECT name, panel_access FROM roles")
-              if n not in ("Vendedor Fidelidad", "Socio Argentina")}
+              if n not in ("Vendedor Fidelidad", "Socio Argentina", "Socio Chile")}
     assert acceso and all(p.count("flujos") == 1 for p in acceso.values()), acceso
 
     conn = sqlite3.connect(db)
