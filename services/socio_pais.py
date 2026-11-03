@@ -26,11 +26,13 @@ alta, sin esperar a Juan, igual que VENDEDORES_FIDELIDAD.
 Federico es el socio de Chile (Juan, 3/11: "igual al de Ciro pero solo para
 Chile"): mismo rol con CL, y sus mails van en SOCIOS_CHILE. Ese mismo día Juan
 pidió que Federico también pueda cargar: leads de Meta y movimientos de
-Finanzas, solo de Chile (`_ESCRITURAS`). Ciro sigue solo mirando.
+Finanzas, solo de Chile (`_ESCRITURAS`). Después, lo mismo para Ciro con
+Argentina. Así que el "solo GET" de arriba vale para lo que no está en
+`_ESCRITURAS`.
 
-- Lo que crea queda de Chile: el lead de Meta toma el país fijo en la ruta, y
-  lo de Finanzas lo marcan los triggers del modo "escribir" (database.aplicar_pais).
-- Lo que toca por id tiene que ser de Chile (`_es_de_su_pais`). En modo
+- Lo que crea queda de su país: el lead de Meta toma el país fijo en la ruta,
+  y lo de Finanzas lo marcan los triggers del modo "escribir" (database.aplicar_pais).
+- Lo que toca por id tiene que ser de su país (`_es_de_su_pais`). En modo
   "escribir" no hay vistas, así que sin ese chequeo un PUT o DELETE con el id
   de una fila de Uruguay pasaría.
 """
@@ -43,7 +45,7 @@ ROLES = {"Socio Argentina": "AR", "Socio Chile": "CL"}
 PANELES = ["cal", "meta", "marketing", "finanzas"]
 ENV_EMAILS = {"Socio Argentina": "SOCIOS_ARGENTINA", "Socio Chile": "SOCIOS_CHILE"}
 # Los países cuyo socio además carga y edita en sus secciones (Juan, 3/11).
-PAISES_QUE_ESCRIBEN = {"CL"}
+PAISES_QUE_ESCRIBEN = {"CL", "AR"}
 
 # (método, patrón de la ruta). Lo que no está acá da 403.
 _PERMITIDAS = [(m, re.compile(p)) for m, p in (
@@ -69,6 +71,9 @@ _PERMITIDAS = [(m, re.compile(p)) for m, p in (
 # de su país: "lead" (un lead de Meta) o la tabla de Finanzas. None: crea algo
 # nuevo, que queda de su país solo.
 _ESCRITURAS = [(m, re.compile(p), d) for m, p, d in (
+    # Calendario (Juan, 3/11): agendar. Un asunto, o una reunión con un lead de
+    # su país (ver `_agenda_permitida`). Mover o borrar reuniones, no.
+    ("POST", r"/api/calendar/events", "agenda"),
     # Meta Ads: cargar un lead a mano, el semáforo y la ficha.
     ("POST", r"/api/meta/leads", None),
     ("POST", r"/api/meta/leads/(\d+)/semaforo", "lead"),
@@ -145,7 +150,7 @@ def pais_fijo(db: str, user_id) -> str | None:
     return ROLES.get(f[0]) if f else None
 
 
-def permitido(metodo: str, ruta: str, args, pais=None, db=None) -> bool:
+def permitido(metodo: str, ruta: str, args, pais=None, db=None, cuerpo=None) -> bool:
     if not ruta.startswith("/api/"):
         return ruta in _PAGINAS or ruta.startswith("/static/")
     if ruta == "/api/leads" and args.get("crm_group") != "meta":
@@ -157,8 +162,22 @@ def permitido(metodo: str, ruta: str, args, pais=None, db=None) -> bool:
     for m, p, dueno in _ESCRITURAS:
         hecho = p.fullmatch(ruta) if metodo == m else None
         if hecho:
+            if dueno == "agenda":
+                return _agenda_permitida(db, pais, cuerpo)
             return dueno is None or _es_de_su_pais(db, pais, dueno, int(hecho.group(1)))
     return False
+
+
+def _agenda_permitida(db: str, pais: str, cuerpo) -> bool:
+    """Una reunión nueva: un asunto, o con un lead de Meta de su país. Un
+    cliente de Uruguay no: la reunión le cambiaría el estado."""
+    cuerpo = cuerpo if isinstance(cuerpo, dict) else {}
+    if (cuerpo.get("tipo") or "cliente") == "asunto":
+        return True
+    try:
+        return _es_de_su_pais(db, pais, "lead", int(cuerpo.get("client_id")))
+    except (TypeError, ValueError):
+        return False
 
 
 def _es_de_su_pais(db: str, pais: str, dueno: str, fila_id: int) -> bool:
