@@ -1551,6 +1551,8 @@ async function fidEventoBorrar(eid) {
 # Cobro automático con Plexo (services/plexo.py). Crudo por las barras del JS.
 ESENCIALES_JS = r"""
 // ── Aportes: lo aportado hasta la fecha (Juan, 1/10) ─────────────────────────
+// Arriba, tres tarjetas (Juan, 3/11): lo aportado, lo que ya se devolvió y lo
+// que los socios todavía no recuperaron.
 async function loadAportes() {
   const cont = document.getElementById('fin-aportes');
   const tot = document.getElementById('fin-aportes-totales');
@@ -1561,25 +1563,37 @@ async function loadAportes() {
     d = await r.json();
   } catch (e) { cont.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>'; return; }
   const fecha = f => f ? f.slice(8, 10) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4) : '—';
-  tot.innerHTML = '<div class="fin-kpi fin-kpi-aporte"><div class="fin-kpi-label">Aportado hasta la fecha</div>'
+  const nd = d.cantidad_devoluciones || 0;
+  tot.innerHTML = '<div class="fin-kpi fin-kpi-aporte" id="fin-aporte-total"><div class="fin-kpi-label">Aporte total</div>'
     + '<div class="fin-kpi-valor fin-amarillo">' + _finUsd(d.total_usd) + '</div>'
     + '<div class="fin-kpi-var">' + d.cantidad + (d.cantidad === 1 ? ' aporte' : ' aportes') + (d.primero ? ' desde el ' + fecha(d.primero) : '') + '</div></div>'
+    + '<div class="fin-kpi" id="fin-aporte-devuelto"><div class="fin-kpi-label">Devolución</div>'
+    + '<div class="fin-kpi-valor fin-verde">' + _finUsd(d.devuelto_usd || 0) + '</div>'
+    + '<div class="fin-kpi-var">' + (nd ? nd + (nd === 1 ? ' devolución' : ' devoluciones') : 'todavía no se devolvió nada') + '</div></div>'
+    + '<div class="fin-kpi" id="fin-aporte-falta"><div class="fin-kpi-label">Lo que no ha recuperado aún</div>'
+    + '<div class="fin-kpi-valor fin-amarillo">' + _finUsd(d.por_recuperar_usd != null ? d.por_recuperar_usd : d.total_usd) + '</div>'
+    + '<div class="fin-kpi-var">aporte total menos devoluciones</div></div>'
     + d.por_persona.map(p => '<div class="fin-kpi"><div class="fin-kpi-label">' + esc(p.persona) + '</div>'
       + '<div class="fin-kpi-valor fin-amarillo">' + _finUsd(p.total_usd) + '</div>'
-      + '<div class="fin-kpi-var">' + (d.total_usd ? Math.round(100 * p.total_usd / d.total_usd) : 0) + '% del total</div></div>').join('');
-  if (!d.cantidad) {
-    cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">Todavía no hay aportes. Se cargan con "+ Movimiento" → Aporte.</div>';
+      + '<div class="fin-kpi-var">' + (d.total_usd ? Math.round(100 * p.total_usd / d.total_usd) : 0) + '% del total'
+      + (p.devuelto_usd ? ' · le falta recuperar ' + _finUsd(p.por_recuperar_usd) : '') + '</div></div>').join('');
+  if (!d.cantidad && !nd) {
+    cont.innerHTML = '<div style="color:var(--texto-debil);padding:16px">Todavía no hay aportes. Se cargan con "+ Movimiento" → Aporte, y lo que se les devuelve con "+ Movimiento" → Devolución.</div>';
     return;
   }
+  const filas = lista => lista.map(m => '<tr><td>' + fecha(m.fecha) + '</td><td>' + esc(m.persona) + '</td><td>' + esc(m.concepto)
+      + (m.moneda !== 'USD' ? ' <span style="color:var(--texto-debil)">(' + m.moneda + ' ' + Math.round(m.monto).toLocaleString('es-UY') + ')</span>' : '')
+      + '</td><td class="fb-num">' + _finUsd(m.monto_usd) + '</td></tr>').join('');
+  const cabecera = '<thead><tr><th>Fecha</th><th>Quién</th><th>Concepto</th><th class="fb-num">USD</th></tr></thead>';
   cont.innerHTML = '<div class="fin-split">'
     + '<div><div class="fin-card-title">Por mes</div><table class="fin-tabla"><tbody>'
     + d.por_mes.map(m => '<tr><td>' + _finNombreMes(m.periodo) + '</td><td class="fb-num fin-amarillo">' + _finUsd(m.total_usd) + '</td></tr>').join('')
     + '<tr class="fb-total"><td>Total</td><td class="fb-num fin-amarillo">' + _finUsd(d.total_usd) + '</td></tr></tbody></table></div>'
-    + '<div><div class="fin-card-title">Cada aporte</div><div style="overflow-x:auto"><table class="fin-tabla"><thead><tr><th>Fecha</th><th>Quién</th><th>Concepto</th><th class="fb-num">USD</th></tr></thead><tbody>'
-    + d.movimientos.map(m => '<tr><td>' + fecha(m.fecha) + '</td><td>' + esc(m.persona) + '</td><td>' + esc(m.concepto)
-      + (m.moneda !== 'USD' ? ' <span style="color:var(--texto-debil)">(' + m.moneda + ' ' + Math.round(m.monto).toLocaleString('es-UY') + ')</span>' : '')
-      + '</td><td class="fb-num">' + _finUsd(m.monto_usd) + '</td></tr>').join('')
-    + '</tbody></table></div></div></div>';
+    + '<div><div class="fin-card-title">Cada aporte</div><div style="overflow-x:auto"><table class="fin-tabla">' + cabecera + '<tbody>'
+    + filas(d.movimientos) + '</tbody></table></div>'
+    + (nd ? '<div class="fin-card-title" style="margin-top:16px">Cada devolución</div><div style="overflow-x:auto"><table class="fin-tabla" id="fin-devoluciones">' + cabecera + '<tbody>'
+      + filas(d.devoluciones) + '</tbody></table></div>' : '')
+    + '</div></div>';
 }
 
 // ── Gastos esenciales (Juan, 1/10) ───────────────────────────────────────────
@@ -7033,6 +7047,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <button class="pill active" id="fin-tipo-egreso" onclick="finSetTipo('egreso')">Egreso</button>
       <button class="pill" id="fin-tipo-ingreso" onclick="finSetTipo('ingreso')">Ingreso</button>
       <button class="pill" id="fin-tipo-aporte" onclick="finSetTipo('aporte')" title="Plata que ponen los socios: entra como ingreso y se ve aparte">Aporte</button>
+      <button class="pill" id="fin-tipo-devolucion" onclick="finSetTipo('devolucion')" title="Plata de un aporte que se le devuelve a un socio: sale como egreso y se ve en Aportes">Devolución</button>
     </div>
 
     <label class="modal-label">Fecha</label>
@@ -14204,18 +14219,21 @@ async function _finCargarCategorias() {
 
 // "Aporte" (1/10) no es un tipo aparte: es un ingreso con la categoría
 // "aporte" ya elegida y sin IVA (no se factura). Así suma en Ingresos y además
-// sale en su tarjeta amarilla.
+// sale en su tarjeta amarilla. "Devolución" (3/11) es lo mismo al revés: un
+// egreso con la categoría "devolucion_aporte", que se resta en Aportes.
 function finSetTipo(tipo) {
   const aporte = tipo === 'aporte';
-  _finTipo = aporte ? 'ingreso' : tipo;
+  const devolucion = tipo === 'devolucion';
+  _finTipo = aporte ? 'ingreso' : (devolucion ? 'egreso' : tipo);
   document.getElementById('fin-tipo-egreso').classList.toggle('active', tipo === 'egreso');
   document.getElementById('fin-tipo-ingreso').classList.toggle('active', tipo === 'ingreso');
   document.getElementById('fin-tipo-aporte').classList.toggle('active', aporte);
+  document.getElementById('fin-tipo-devolucion').classList.toggle('active', devolucion);
   const sel = document.getElementById('fin-mov-categoria');
   sel.innerHTML = (_finCategorias[_finTipo] || [])
     .map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
-  if (aporte) {
-    sel.value = 'aporte';
+  if (aporte || devolucion) {
+    sel.value = aporte ? 'aporte' : 'devolucion_aporte';
     finSetModoIva('sin');
   }
   if (document.getElementById('fin-parcial-row')) _finParcialAplica();
@@ -14928,6 +14946,8 @@ function _finBalPintar(d) {
                  + _finBalDesglose(d.resultado, interno))
     + (d.aportes && d.aportes.total ? _finBalKpi('Aportes de socios', d.aportes.total, 'fin-amarillo',
                  '<div class="fin-kpi-var">entraron a caja, pero no son ingreso del negocio</div>') : '')
+    + (d.aportes && d.aportes.devoluciones ? _finBalKpi('Devoluciones de aportes', d.aportes.devoluciones, 'fin-verde',
+                 '<div class="fin-kpi-var">salieron de caja, pero no son gasto del negocio</div>') : '')
     + '</div>';
 
   html += '<div class="fb-seccion"><div class="fin-card-title">Ingresos por categoría</div>'
@@ -15263,7 +15283,8 @@ async function abrirMovimiento(prefill) {
   document.getElementById('fin-mov-notas').value = p.notas || '';
   document.getElementById('fin-modal-error').textContent = '';
 
-  finSetTipo(p.categoria === 'aporte' && p.tipo === 'ingreso' ? 'aporte' : (p.tipo || 'egreso'));
+  finSetTipo(p.categoria === 'aporte' && p.tipo === 'ingreso' ? 'aporte'
+    : (p.categoria === 'devolucion_aporte' && p.tipo === 'egreso' ? 'devolucion' : (p.tipo || 'egreso')));
   finSetModoIva(!p.facturado ? 'sin' : (p.iva_incluido ? 'incluido' : 'sobre'));
   document.getElementById('fin-mov-total').value = '';
   document.getElementById('fin-mov-vence').value = '';
