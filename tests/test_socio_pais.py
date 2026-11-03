@@ -49,14 +49,14 @@ def _movimientos_de_los_tres(db):
                              monto=10, moneda="USD", desde=f"{hoy:%Y-%m}")
 
 
-def test_el_mail_del_socio_entra_con_el_rol_y_el_rol_es_solo_lectura(app):
+def test_el_mail_del_socio_entra_con_el_rol_y_puede_editar_finanzas(app):
     db = app.config["_DB"]
     _ciro(app)
     c = sqlite3.connect(db)
     fila = c.execute("SELECT r.name, r.paneles_solo_lectura FROM users u JOIN roles r ON r.id = u.role_id "
                      "WHERE u.email = 'ciro@ejemplo.com'").fetchone()
     c.close()
-    assert fila == ("Socio Argentina", '["finanzas"]')
+    assert fila == ("Socio Argentina", '[]')
     assert socio_pais.pais_fijo(db, app.config["_CIRO"]) == "AR"
 
 
@@ -65,7 +65,7 @@ def test_me_le_dice_al_menu_su_pais_y_sus_cuatro_paneles(app):
     assert d["pais_fijo"] == "AR"
     assert json.loads(d["panel_access"]) == ["cal", "meta", "marketing", "finanzas"]
     assert d["is_admin"] is False
-    assert "finanzas" in d["paneles_solo_lectura"]
+    assert d["paneles_solo_lectura"] == []
 
 
 def test_finanzas_le_muestra_solo_argentina_aunque_la_cookie_diga_otra_cosa(app):
@@ -122,14 +122,11 @@ def test_lo_demas_le_da_403(app, ruta):
 
 
 @pytest.mark.parametrize("metodo,ruta,cuerpo", [
-    ("post", "/api/finanzas/movimientos", {"tipo": "egreso", "concepto": "x", "categoria": "publicidad",
-                                           "monto": 1, "moneda": "USD", "fecha": "2026-11-01"}),
     ("post", "/api/calendar/events", {"title": "x"}),
     ("delete", "/api/calendar/meetings/1", None),
-    ("post", "/api/meta/leads", {"name": "x", "phone": "1"}),
     ("put", "/api/admin/users/1/role", {"role_id": 1}),
 ])
-def test_no_modifica_nada(app, metodo, ruta, cuerpo):
+def test_no_modifica_lo_que_no_es_de_su_pais(app, metodo, ruta, cuerpo):
     r = getattr(_ciro(app), metodo)(ruta, json=cuerpo)
     assert r.status_code == 403, (ruta, r.status_code)
 
@@ -258,9 +255,19 @@ def test_federico_sigue_sin_poder_lo_demas(app, metodo, ruta):
     assert getattr(_fede(app), metodo)(ruta, json={}).status_code == 403, ruta
 
 
-def test_ciro_sigue_solo_mirando(app):
-    assert _ciro(app).post("/api/finanzas/movimientos", json=_MOV).status_code == 403
-    assert _lead_manual(_ciro(app), "x", "099 555 555").status_code == 403
+def test_ciro_tambien_carga_y_queda_de_argentina_sin_tocar_chile(app):
+    """Juan, 3/11: "hacé que Ciro edite"."""
+    db = app.config["_DB"]
+    r = _ciro(app, "CL").post("/api/finanzas/movimientos", json=_MOV)
+    assert r.status_code == 201, r.get_json()
+    assert _pais_de_movimiento(db, r.get_json()["id"]) == ("AR",)
+    r = _lead_manual(_ciro(app), "Porteño", "099 555 555", pais="CL")
+    assert r.status_code == 200, r.get_json()
+    c = sqlite3.connect(db)
+    assert c.execute("SELECT pais FROM businesses WHERE id = ?", (r.get_json()["id"],)).fetchone() == ("AR",)
+    c.close()
+    de_chile = _fede(app).post("/api/finanzas/movimientos", json=_MOV).get_json()["id"]
+    assert _ciro(app).delete(f"/api/finanzas/movimientos/{de_chile}").status_code == 403
 
 
 def test_federico_carga_un_lead_de_meta_y_queda_de_chile(app):
@@ -305,3 +312,30 @@ def test_el_aviso_de_lead_nuevo_le_llega_al_socio_de_su_pais(app, monkeypatch, t
     bid = _lead(app.config["_DB"], "Nuevo", telefono, campana=campana)
     meta._notify_new_meta_lead(app.config["_DB"], "Nuevo", telefono, campana, "", bid)
     assert sorted(enviados) == sorted(["juan@scalerics.com"] + ([quien] if quien else []))
+
+
+# ── Agendar en el calendario (Juan, 3/11) ─────────────────────────────────────
+
+_REUNION = {"date": "2026-11-20", "time": "10:00", "duration_min": 30}
+
+
+def test_el_socio_agenda_un_asunto_o_una_reunion_con_un_lead_de_su_pais(app):
+    db = app.config["_DB"]
+    de_chile = _lead(db, "Santiaguino", "+56 9 1234 5678")
+    cli = _fede(app)
+    r = cli.post("/api/calendar/events", json=dict(_REUNION, tipo="asunto", title="Plan Chile"))
+    assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
+    r = cli.post("/api/calendar/events", json=dict(_REUNION, title="Demo", client_id=de_chile))
+    assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
+    d = cli.get("/api/leads?crm_group=meta&page=1&search=santi").get_json()
+    assert [l["name"] for l in d["items"]] == ["Santiaguino"]
+
+
+def test_el_socio_no_agenda_con_un_lead_de_otro_pais_ni_mueve_reuniones(app):
+    db = app.config["_DB"]
+    uy = _lead(db, "Montevideano", "+59899333333", campana="Web")
+    cli = _fede(app)
+    assert cli.post("/api/calendar/events", json=dict(_REUNION, title="x", client_id=uy)).status_code == 403
+    assert cli.post("/api/calendar/events", json=dict(_REUNION, title="x")).status_code == 403
+    assert cli.patch("/api/calendar/meetings/1", json={"title": "y"}).status_code == 403
+    assert cli.delete("/api/calendar/meetings/1").status_code == 403
