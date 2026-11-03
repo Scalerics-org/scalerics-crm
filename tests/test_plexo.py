@@ -241,6 +241,39 @@ def test_en_automatico_finanzas_no_supone_que_pago(db, falso):
     assert listar_movimientos(db) == []
 
 
+def test_con_el_link_mandado_finanzas_espera_la_tarjeta(db, falso):
+    """29/10, el primer cobro real: alguien abrió Finanzas entre que se armó
+    el link y que Juan cargó la tarjeta, el mes quedó anotado y Plexo no lo
+    cobró."""
+    from services.finanzas import materializar_recurrentes
+    fijo = _fijo(db)
+    plexo.pedir_tarjeta(db, fijo, None, "https://crm.test")
+    assert materializar_recurrentes(db) == 0
+    falso.tarjetas = [TARJETA_MASTER]
+    plexo.verificar_tarjeta(db, fijo["id"])
+    assert plexo.cobrar_mes(db, get_recurrente(db, fijo["id"]), HOY)["resultado"] == "aprobado"
+
+
+def test_borrar_el_mes_en_finanzas_deja_cobrarlo(db, falso):
+    """Borrar en Finanzas el ingreso de un fijo lo anula (no lo borra). Ese
+    anulado no puede trabar el cobro ni dejar el cobro aprobado sin anotar."""
+    from database import actualizar_movimiento
+    from services.finanzas import materializar_recurrentes
+    fijo = _fijo(db)
+    materializar_recurrentes(db)
+    ingreso = next(m for m in listar_movimientos(db) if m["recurrente_id"] == fijo["id"])
+    actualizar_movimiento(db, ingreso["id"], anulado=1)     # lo que hace el tacho
+    plexo.pedir_tarjeta(db, fijo, None, "https://crm.test")
+    falso.tarjetas = [TARJETA_MASTER]
+    plexo.verificar_tarjeta(db, fijo["id"])
+
+    assert plexo.cobrar_mes(db, get_recurrente(db, fijo["id"]), HOY)["resultado"] == "aprobado"
+    anotados = [m for m in listar_movimientos(db) if m["recurrente_id"] == fijo["id"]]
+    assert len(anotados) == 1 and anotados[0]["id"] != ingreso["id"]
+    # Y el hilo de cada hora no lo cobra otra vez.
+    assert plexo.cobrar_mes(db, get_recurrente(db, fijo["id"]), HOY)["resultado"] == "ya_cobrado"
+
+
 def test_antes_del_dia_de_cobro_no_se_cobra(db, falso):
     fijo = _con_tarjeta(db, falso, dia_del_mes=20)
     assert plexo.cobrar_mes(db, fijo, HOY.replace(day=5))["resultado"] == "todavia_no"
