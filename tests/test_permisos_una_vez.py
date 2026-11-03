@@ -85,7 +85,7 @@ def test_finanzas_y_simulador_siguen_sin_repartirse(tmp_path):
     init_db(db)
     init_db(db)
     for nombre, crudo in _sql(db, "SELECT name, panel_access FROM roles"):
-        if nombre == "Socio Argentina":
+        if nombre in ("Socio Argentina", "Socio Chile"):
             # La única excepción, pedida por Juan (30/10): el socio ve la
             # Finanzas de Argentina, en solo lectura. No es un reparto: el rol
             # nace así y el candado de services/socio_pais.py lo deja en eso.

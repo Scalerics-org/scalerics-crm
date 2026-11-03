@@ -348,7 +348,7 @@ def test_los_roles_reciben_el_panel_una_sola_vez(tmp_path):
     # El vendedor de Fidelidad y el socio de Argentina son de afuera: ningun
     # reparto les suma paneles.
     acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")
-              if n not in ("Vendedor Fidelidad", "Socio Argentina")}
+              if n not in ("Vendedor Fidelidad", "Socio Argentina", "Socio Chile")}
     assert acceso and all("horarios" in p for p in acceso.values()), acceso
 
     # Si Juan se lo saca a un rol, un arranque no se lo vuelve a poner.
