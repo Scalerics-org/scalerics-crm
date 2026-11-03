@@ -180,6 +180,54 @@ def test_verificar_activa_la_tarjeta_y_corrige_la_comision(db, falso):
     assert plexo.es_automatico(db, fijo["id"])
 
 
+@pytest.fixture
+def mails(monkeypatch):
+    import services.email_service as es
+    enviados = []
+    monkeypatch.setattr(es, "send_plexo_tarjeta_cargada", lambda *a: enviados.append(a) or True)
+    return enviados
+
+
+def test_al_cargar_la_tarjeta_avisa_por_mail_una_sola_vez(db, falso, mails):
+    """Juan (3/11): que le llegue un mail a contacto@ cuando un cliente carga la
+    tarjeta. El callback, la página de listo y el botón llaman todos a
+    verificar: el aviso sale una vez por tarjeta."""
+    fijo = _con_tarjeta(db, falso)
+    assert len(mails) == 1
+    cliente, concepto, tarjeta, vence, total, moneda = mails[0]
+    assert cliente == "Diego Hinze" and concepto == "Mantenimiento mensual"
+    assert tarjeta.endswith("4444") and vence == "12/27"
+    assert (total, moneda) == (146.4, "USD")
+
+    plexo.verificar_tarjeta(db, fijo["id"])
+    assert len(mails) == 1
+
+    falso.tarjetas = [{**TARJETA_MASTER, "token": "tok_otra", "createdAt": "2026-11-03T18:00:00Z"}]
+    plexo.verificar_tarjeta(db, fijo["id"])
+    assert len(mails) == 2
+
+
+def test_si_el_mail_falla_la_tarjeta_queda_activa(db, falso, monkeypatch):
+    import services.email_service as es
+
+    def rompe(*a):
+        raise RuntimeError("resend caído")
+    monkeypatch.setattr(es, "send_plexo_tarjeta_cargada", rompe)
+    fijo = _con_tarjeta(db, falso)
+    assert plexo.suscripcion(db, fijo["id"])["estado"] == "activa"
+
+
+def test_el_mail_dice_quien_cargo_y_cuanto(monkeypatch):
+    import services.email_service as es
+    enviados = []
+    monkeypatch.setattr(es, "_send", lambda to, asunto, html_mail, **k: enviados.append((to, asunto, html_mail)) or True)
+    monkeypatch.delenv("PLEXO_AVISO_MAIL", raising=False)
+    es.send_plexo_tarjeta_cargada("Trouville", "Mantenimiento Trouville", "•••• 4444", "12/27", 146.4, "USD")
+    to, asunto, cuerpo = enviados[0]
+    assert to == "contacto@scalerics.com" and asunto == "Trouville cargó la tarjeta"
+    assert "USD 146,40" in cuerpo and "4444" in cuerpo
+
+
 def test_sin_tarjeta_cargada_sigue_esperando(db, falso):
     fijo = _fijo(db)
     plexo.pedir_tarjeta(db, fijo, None, "https://crm.test")
