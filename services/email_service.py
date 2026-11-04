@@ -536,6 +536,31 @@ def send_plexo_tarjeta_cargada(cliente: str, concepto: str, tarjeta: str | None,
     return _send(destino, f"{cliente} cargó la tarjeta", html_mail)
 
 
+@_tipo_envio("aviso_equipo")
+def send_plexo_cobro(cliente: str, concepto: str, total: float, moneda: str, aprobado: bool,
+                     detalle: str = "", reintenta: bool = False) -> bool:
+    """Se le cobró (o no) el mes a la tarjeta de un cliente (services/plexo.py).
+    Juan (4/11): que avise también cuando se cobra y cuando falla."""
+    monto = f"{moneda} {float(total):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    filas = [("Cliente", html.escape(cliente or "")), ("Qué paga", html.escape(concepto or "")),
+             ("Monto", f"{monto} (IVA incluido)")]
+    if aprobado:
+        texto = (f"Se le cobró el mes a <b>{html.escape(cliente or '')}</b> y quedó anotado en Finanzas. "
+                 "La plata llega a la cuenta en unos días.")
+        titulo, asunto = "Cobro aprobado", f"Cobrado: {cliente} {monto}"
+    else:
+        filas.append(("Qué dijo la tarjeta", html.escape(detalle or "rechazado")))
+        texto = (f"No se le pudo cobrar el mes a <b>{html.escape(cliente or '')}</b>. "
+                 + ("El CRM lo vuelve a intentar solo en unos días." if reintenta
+                    else "Ya no se reintenta este mes: hay que hablar con el cliente."))
+        titulo, asunto = "Cobro rechazado", f"No se pudo cobrar: {cliente}"
+    body = _muted(texto) + _info_card(filas) + _muted("Lo ves en Finanzas → Cobro con tarjeta.")
+    html_mail = _layout(badge="Cobro con tarjeta", title=titulo, body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Ver en el CRM →")
+    destino = os.environ.get("PLEXO_AVISO_MAIL", "").strip() or "contacto@scalerics.com"
+    return _send(destino, asunto, html_mail)
+
+
 @_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).

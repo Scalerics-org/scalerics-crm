@@ -483,6 +483,20 @@ def _avisar_tarjeta_cargada(db: str, fijo: dict, tarjeta: str | None, vence: str
         logger.exception("no se pudo avisar por mail la tarjeta del fijo %s", fijo.get("id"))
 
 
+def _avisar_cobro(db: str, fijo: dict, d: dict, aprobado: bool, detalle: str = "") -> None:
+    """Mail a contacto@ con cada cobro, aprobado o rechazado (Juan, 4/11). Como
+    el de la tarjeta: si el mail falla, el cobro queda igual."""
+    try:
+        from database import get_business
+        from services.email_service import send_plexo_cobro
+        cliente = get_business(db, fijo["client_id"]) if fijo.get("client_id") else None
+        reintenta = not aprobado and len(_intentos(db, fijo["id"], _periodo(date.today()))) < REINTENTOS
+        send_plexo_cobro((cliente or {}).get("name") or fijo["concepto"], fijo["concepto"],
+                         d["total"], fijo["moneda"], aprobado, detalle, reintenta)
+    except Exception:
+        logger.exception("no se pudo avisar por mail el cobro del fijo %s", fijo.get("id"))
+
+
 def por_customer(db: str, customer_id: str) -> dict | None:
     c = _conn(db)
     try:
@@ -654,6 +668,7 @@ def cobrar_mes(db: str, fijo: dict, hoy: date, manual: bool = False) -> dict:
         if "respondió 4" in str(e):
             _actualizar_cobro(db, cobro_id, estado="error", detalle=str(e)[:300])
             _guardar(db, fijo["id"], estado="rechazada", ultimo_error=str(e)[:300])
+            _avisar_cobro(db, fijo, d, False, str(e)[:200])
             return {"resultado": "error", "detalle": str(e)}
         _actualizar_cobro(db, cobro_id, detalle=str(e)[:300])
         return {"resultado": "sin_respuesta", "detalle": str(e)}
@@ -684,9 +699,11 @@ def _cerrar(db: str, fijo: dict, cobro_id: int, pago: dict, d: dict, ajustes: di
         _actualizar_cobro(db, cobro_id, estado="aprobado", payment_id=pago.get("id"), detalle=_detalle(pago),
                           cobro_tarjeta_id=ct_id)
         _guardar(db, fijo["id"], estado="activa", ultimo_error=None)
+        _avisar_cobro(db, fijo, d, True)
         return {"resultado": "aprobado", "total": d["total"], "moneda": fijo["moneda"]}
     _actualizar_cobro(db, cobro_id, estado="rechazado", payment_id=pago.get("id"), detalle=_detalle(pago))
     _guardar(db, fijo["id"], estado="rechazada", ultimo_error=_detalle(pago) or "rechazado")
+    _avisar_cobro(db, fijo, d, False, _detalle(pago))
     return {"resultado": "rechazado", "detalle": _detalle(pago)}
 
 

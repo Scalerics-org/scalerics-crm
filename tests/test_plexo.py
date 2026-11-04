@@ -514,3 +514,59 @@ def test_la_pagina_de_listo_confirma_la_tarjeta(app, falso):
     r = app.test_client().get("/plexo/listo/" + link.rsplit("/", 1)[1])
     assert r.status_code == 200 and "Listo" in r.get_data(as_text=True)
     assert plexo.suscripcion(db, fijo["id"])["estado"] == "activa"
+
+
+# ── Aviso de cada cobro a contacto@ (Juan, 4/11) ──────────────────────────────
+
+@pytest.fixture
+def mails_cobro(monkeypatch):
+    import services.email_service as es
+    enviados = []
+    monkeypatch.setattr(es, "send_plexo_cobro", lambda *a: enviados.append(a) or True)
+    return enviados
+
+
+def test_avisa_cuando_cobra(db, falso, mails_cobro):
+    fijo = _con_tarjeta(db, falso)
+    assert plexo.cobrar_mes(db, fijo, HOY)["resultado"] == "aprobado"
+    assert len(mails_cobro) == 1
+    cliente, concepto, total, moneda, aprobado, detalle, reintenta = mails_cobro[0]
+    assert (cliente, total, moneda, aprobado) == ("Diego Hinze", 146.4, "USD", True)
+    # Ya cobrado: correrlo otra vez no avisa de nuevo.
+    plexo.cobrar_mes(db, fijo, HOY)
+    assert len(mails_cobro) == 1
+
+
+def test_avisa_cuando_rechaza_y_si_reintenta(db, falso, mails_cobro):
+    fijo = _con_tarjeta(db, falso)
+    falso.estado_pago = "rejected"
+    assert plexo.cobrar_mes(db, fijo, HOY, manual=True)["resultado"] == "rechazado"
+    _, _, _, _, aprobado, detalle, reintenta = mails_cobro[-1]
+    assert aprobado is False and "Fondos" in detalle and reintenta is True
+    plexo.cobrar_mes(db, fijo, HOY, manual=True)
+    plexo.cobrar_mes(db, fijo, HOY, manual=True)
+    assert len(mails_cobro) == 3 and mails_cobro[-1][6] is False   # tercer intento: ya no reintenta
+
+
+def test_si_el_mail_del_cobro_falla_el_cobro_queda(db, falso, monkeypatch):
+    import services.email_service as es
+
+    def rompe(*a):
+        raise RuntimeError("resend caído")
+    monkeypatch.setattr(es, "send_plexo_cobro", rompe)
+    fijo = _con_tarjeta(db, falso)
+    assert plexo.cobrar_mes(db, fijo, HOY)["resultado"] == "aprobado"
+    assert len(listar_movimientos(db)) == 3
+
+
+def test_el_mail_del_cobro_dice_quien_y_cuanto(monkeypatch):
+    import services.email_service as es
+    enviados = []
+    monkeypatch.setattr(es, "_send", lambda to, asunto, html_mail, **k: enviados.append((to, asunto, html_mail)) or True)
+    monkeypatch.delenv("PLEXO_AVISO_MAIL", raising=False)
+    es.send_plexo_cobro("Trouville", "Mantenimiento Trouville", 146.4, "USD", True)
+    es.send_plexo_cobro("Trouville", "Mantenimiento Trouville", 146.4, "USD", False, "Fondos insuficientes", True)
+    (to, asunto, cuerpo), (_, asunto2, cuerpo2) = enviados
+    assert to == "contacto@scalerics.com" and asunto == "Cobrado: Trouville USD 146,40"
+    assert asunto2 == "No se pudo cobrar: Trouville"
+    assert "Fondos insuficientes" in cuerpo2 and "lo vuelve a intentar" in cuerpo2
