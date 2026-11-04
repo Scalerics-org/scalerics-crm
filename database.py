@@ -2192,6 +2192,28 @@ def init_db(db_path: str) -> None:
         # para que el render sepa que dibujar. Ver
         # services/linkedin_borradores.necesita_render().
         _add_column(conn, "linkedin_borradores", "frase", "TEXT")
+        # Publicacion automatica (decision de Juan, 4/11/2026: salen solos).
+        # El URN del post en LinkedIn y, si no se pudo publicar, el motivo: un
+        # borrador con error queda fuera de la publicacion automatica. Ver
+        # services/linkedin_publicador.py.
+        _add_column(conn, "linkedin_borradores", "linkedin_urn", "TEXT")
+        _add_column(conn, "linkedin_borradores", "error_pub", "TEXT")
+        # Una sola fila: la conexion con la pagina (token de un admin).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_conexion (
+                id              INTEGER PRIMARY KEY CHECK (id = 1),
+                access_token    TEXT NOT NULL,
+                vence_en        TEXT NOT NULL,
+                refresh_token   TEXT,
+                refresh_vence_en TEXT,
+                org_urn         TEXT NOT NULL,
+                org_nombre      TEXT,
+                conectado_por   TEXT,
+                conectado_en    TEXT NOT NULL,
+                activado_en     TEXT NOT NULL,
+                pausado         INTEGER NOT NULL DEFAULT 0
+            )
+        """)
         conn.commit()
         # LinkedIn va a quien ya ve Inteligencia marketing, una sola vez
         # (desde ahi manda lo que Juan tilde en el editor). No es un panel de

@@ -8,13 +8,15 @@ No confundir con `routes/linkedin.py`, que es lo que usa el cron de GitHub
 """
 
 import json
+import os
 import secrets
 from datetime import datetime
 
-from flask import Blueprint, Response, current_app, jsonify, request, session
+from flask import Blueprint, Response, current_app, jsonify, redirect, request, session
 
 from database import create_job
 from services import linkedin_borradores as lb
+from services import linkedin_publicador as pub
 from services.auth import is_admin, require_admin, require_panel
 from services.job_service import get_worker
 
@@ -150,3 +152,71 @@ def api_generar():
     payload = {"db_path": _db(), "lote": lote, "ahora": datetime.now().isoformat()}
     job_id = create_job(_db(), "linkedin", json.dumps(payload))
     return jsonify({"ok": True, "job_id": job_id, "lote": lote}), 202
+
+
+# ── publicacion automatica ───────────────────────────────────────────────────
+# services/linkedin_publicador.py. Ver el estado lo puede cualquiera con el
+# panel; conectar la pagina y pausar, solo admin.
+
+def _redirect_uri() -> str:
+    base = os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev").rstrip("/")
+    return base + "/api/linkedin/oauth/callback"
+
+
+def _volver(resultado: str):
+    return redirect("/?panel=linkedin&linkedin=" + resultado)
+
+
+@linkedin_panel_bp.route("/api/linkedin/publicacion")
+def api_publicacion():
+    return jsonify({"ok": True, **pub.estado_panel(_db(), _ahora()),
+                    "puede_administrar": is_admin(_db(), session.get("user_id"))})
+
+
+@linkedin_panel_bp.route("/api/linkedin/publicacion/pausa", methods=["POST"])
+def api_pausa():
+    err = require_admin(_db())
+    if err:
+        return err
+    pausado = bool((request.get_json(silent=True) or {}).get("pausado"))
+    if not pub.pausar(_db(), pausado):
+        return jsonify({"ok": False, "error": "La página todavía no está conectada"}), 400
+    return jsonify({"ok": True, **pub.estado_panel(_db(), _ahora())})
+
+
+@linkedin_panel_bp.route("/api/linkedin/borradores/<int:borrador_id>/reintentar", methods=["POST"])
+def api_reintentar(borrador_id):
+    """Vuelve a poner en fila un borrador que quedo afuera por un error."""
+    if not lb.limpiar_error(_db(), borrador_id):
+        return jsonify({"ok": False, "error": "Ese borrador no tiene un error de publicación"}), 400
+    return jsonify({"ok": True, "borrador": lb.obtener(_db(), borrador_id)})
+
+
+@linkedin_panel_bp.route("/api/linkedin/oauth/conectar")
+def api_oauth_conectar():
+    err = require_admin(_db())
+    if err:
+        return err
+    if not all(pub._credenciales()):
+        return _volver("faltan-credenciales")
+    session["linkedin_oauth_state"] = state = pub.nuevo_state()
+    return redirect(pub.url_autorizar(_redirect_uri(), state))
+
+
+@linkedin_panel_bp.route("/api/linkedin/oauth/callback")
+def api_oauth_callback():
+    err = require_admin(_db())
+    if err:
+        return err
+    esperado = session.pop("linkedin_oauth_state", None)
+    if not esperado or not secrets.compare_digest(esperado, request.args.get("state", "")):
+        return _volver("estado-invalido")
+    if request.args.get("error") or not request.args.get("code"):
+        return _volver("cancelado")
+    quien = session.get("user_name") or session.get("user_email") or ""
+    try:
+        pub.conectar(_db(), request.args["code"], _redirect_uri(), quien, ahora=_ahora())
+    except Exception:
+        current_app.logger.exception("LinkedIn: no se pudo conectar la página")
+        return _volver("error")
+    return _volver("conectado")

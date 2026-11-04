@@ -1612,6 +1612,40 @@ def send_linkedin_drafts(to: str, borradores: list, base_url: str,
 
 
 @_tipo_envio("linkedin")
+def send_linkedin_publicacion(tipo: str, borrador: dict | None = None, motivo: str = "",
+                              vence=None) -> bool:
+    """Avisos de la publicacion automatica (services/linkedin_publicador.py).
+
+    tipo: 'error' (LinkedIn no lo acepto), 'salteado' (no paso la revision y
+    no salio) o 'vence' (hay que reconectar la pagina).
+    """
+    to = os.environ.get("LINKEDIN_MAIL_TO", "scalerics@gmail.com")
+    b = borrador or {}
+    filas = [("Borrador", f"N.º {b.get('orden', '')} · {html.escape(b.get('tema') or '')}"),
+             ("Motivo", html.escape(motivo or ""))]
+    if tipo == "vence":
+        cuando = vence.strftime("%d/%m") if vence else "en estos días"
+        titulo = "Hay que reconectar LinkedIn"
+        asunto = "LinkedIn: la conexión con la página vence pronto"
+        body = _muted(f"La conexión del CRM con la página de Scalerics en LinkedIn vence el <b>{cuando}</b>. "
+                      "Después de esa fecha los posteos dejan de salir solos.") + _muted(
+            "Entrá a la sección LinkedIn del CRM y tocá <b>Reconectar LinkedIn</b>. Lleva un minuto.")
+    elif tipo == "salteado":
+        titulo = "Un posteo no salió"
+        asunto = "LinkedIn: un posteo no pasó la revisión y no salió"
+        body = _muted("Antes de publicar, el CRM revisa cada posteo. Este <b>no pasó la revisión</b> y "
+                      "quedó afuera de la publicación automática. Sale el siguiente en la fila.") + _info_card(filas)
+    else:
+        titulo = "No se pudo publicar en LinkedIn"
+        asunto = "ALERTA: no se pudo publicar en LinkedIn"
+        body = _muted("LinkedIn <b>no aceptó</b> el posteo de este turno. Quedó marcado con el error en el "
+                      "CRM y no se reintenta solo. El próximo turno sale el siguiente.") + _info_card(filas)
+    html_mail = _layout(badge="LinkedIn", title=titulo, body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Ver en el CRM →")
+    return _send(to, asunto, html_mail)
+
+
+@_tipo_envio("linkedin")
 def send_linkedin_failure(to: str, motivo: str) -> bool:
     html = _layout(
         badge="LinkedIn",
