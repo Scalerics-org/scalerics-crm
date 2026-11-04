@@ -265,12 +265,6 @@ def test_conectar_exige_admin_de_scalerics(db, monkeypatch):
         pub.conectar(db, "code", "https://x/cb", "Juan", http=Http, cliente=Ajeno())
 
 
-def test_el_post_de_prueba_queda_usado_en_el_banco(db):
-    pub._marcar_banco_prueba(db)
-    filas = _sql(db, "SELECT usado_en FROM linkedin_banco WHERE texto LIKE ?", (pub._TEXTO_PRUEBA + "%",))
-    assert filas and all(f["usado_en"] for f in filas)
-
-
 def test_estado_panel(db):
     assert pub.estado_panel(db, TURNO_MARTES)["conectado"] is False
     _conectar(db)

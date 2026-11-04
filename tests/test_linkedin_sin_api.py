@@ -145,16 +145,13 @@ def test_las_frases_de_tarjeta_entran_en_la_imagen():
     assert not largas, "\n".join(largas)
 
 
-def test_cada_tema_del_banco_tiene_los_dos_angulos():
+def test_cada_tema_del_banco_es_unico_y_tiene_un_angulo_valido():
+    """Banco del 4/11/2026: un post por tema, de tipo caso, scalerics o general."""
     from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
 
-    por_tema = {}
-    for tema, angulo, _texto, _frase in LINKEDIN_BANCO_SEMILLA:
-        por_tema.setdefault(tema, set()).add(angulo)
-
-    incompletos = [t for t, a in por_tema.items() if a != {"concreto", "implicancia"}]
-
-    assert not incompletos, f"temas sin los dos angulos: {incompletos}"
+    temas = [t for t, _a, _x, _f in LINKEDIN_BANCO_SEMILLA]
+    assert len(temas) == len(set(temas))
+    assert {a for _t, a, _x, _f in LINKEDIN_BANCO_SEMILLA} == {"caso", "scalerics", "general"}
 
 
 # ── Cobertura heredada de test_linkedin_redaccion.py y test_linkedin_tarjeta.py
@@ -400,16 +397,17 @@ def test_el_par_del_mail_son_dos_temas_distintos(db_path):
 def test_un_tema_no_vuelve_hasta_agotar_los_demas(db_path):
     """Martes y viernes no pueden hablar del mismo tema.
 
-    Los dos angulos de un tema son filas contiguas, asi que ordenando por
-    antiguedad la corrida del viernes agarra el otro angulo de los mismos dos
-    temas del martes. Para el que sigue la pagina, eso es la misma semana
-    hablando dos veces de lo mismo.
+    Una vuelta entera al banco (dos posts por corrida) sin repetir ningun
+    tema. Para el que sigue la pagina, repetir es la misma semana hablando dos
+    veces de lo mismo.
     """
     from datetime import timedelta
 
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
     ahora = AHORA
     vistos = []
-    for i in range(21):                 # media vuelta al banco: 42 posts
+    for i in range(len(LINKEDIN_BANCO_SEMILLA) // 2):
         r = linkedin_job_handler({
             "db_path": db_path, "lote": f"l{i}",
             "job_id": None, "ahora": ahora.isoformat(),
@@ -419,4 +417,4 @@ def test_un_tema_no_vuelve_hasta_agotar_los_demas(db_path):
 
     repetidos = {t for t in vistos if vistos.count(t) > 1}
 
-    assert not repetidos, f"temas repetidos en las primeras 21 corridas: {repetidos}"
+    assert not repetidos, f"temas repetidos en la primera vuelta al banco: {repetidos}"

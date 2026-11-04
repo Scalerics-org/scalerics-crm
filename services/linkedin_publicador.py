@@ -58,12 +58,6 @@ SCOPES = "w_organization_social r_organization_social rw_organization_admin"
 AUTORIZAR = "https://www.linkedin.com/oauth/v2/authorization"
 TOKEN = "https://www.linkedin.com/oauth/v2/accessToken"
 
-# El primer posteo por la API (prueba del 4/11) salio del banco a mano: se
-# marca usado para que el cron no lo vuelva a elegir.
-_TEXTO_PRUEBA = "La ficha de Google de un taller mecánico tenía el nombre"
-_JOB_PRUEBA = "linkedin_pub_banco_prueba"
-
-
 def activo() -> bool:
     return os.environ.get("LINKEDIN_PUBLICAR", "on").strip().lower() not in ("off", "0", "no")
 
@@ -344,22 +338,6 @@ def publicar_uno(db_path: str, b: dict, con: dict, cliente=None, ahora: datetime
 
 # ── rutina ───────────────────────────────────────────────────────────────────
 
-def _marcar_banco_prueba(db_path: str) -> None:
-    if not puede_correr(db_path, _JOB_PRUEBA, 24 * 3650):
-        return
-    conn = _conn(db_path)
-    try:
-        conn.execute("UPDATE linkedin_banco SET usado_en = '2026-11-04T13:00:00' "
-                     "WHERE substr(texto, 1, ?) = ?", (len(_TEXTO_PRUEBA), _TEXTO_PRUEBA))
-        conn.commit()
-    except sqlite3.Error as e:
-        logger.warning(f"LinkedIn: no se pudo marcar el post de prueba en el banco ({e})")
-        return
-    finally:
-        conn.close()
-    marcar_corrida(db_path, _JOB_PRUEBA)
-
-
 def _avisar_vencimiento(db_path: str, con: dict, ahora: datetime, avisar) -> None:
     vence = _de_txt(con["vence_en"])
     if not vence or vence - ahora > timedelta(days=AVISO_VENCE_DIAS):
@@ -375,7 +353,6 @@ def rutina(db_path: str, ahora: datetime | None = None, cliente=None, avisar=Non
 
     ahora = ahora or lb.ahora_utc()
     avisar = avisar or send_linkedin_publicacion
-    _marcar_banco_prueba(db_path)
     con = conexion(db_path)
     if not con:
         return {"estado": "sin_conectar"}

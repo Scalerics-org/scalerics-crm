@@ -1089,6 +1089,10 @@ def init_db(db_path: str) -> None:
                 UNIQUE (tema, angulo)
             )
         """)
+        # El banco de agosto se retiro el 4/11/2026 (pedido de Juan: menos
+        # anecdotas puntuales, casos y lo que hace Scalerics). Las filas viejas
+        # quedan para el historial pero no vuelven a salir: ver seed_linkedin_banco.
+        _add_column(conn, "linkedin_banco", "retirado", "INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
 
         # ── finanzas ──────────────────────────────────────────────────────────
@@ -4323,21 +4327,16 @@ def get_banco_disponible(db_path: str, limite_iso: str) -> list[dict]:
     """Posts del banco nunca usados o usados antes de `limite_iso`.
 
     Primero los que nunca salieron, despues los reciclados de mas viejo a mas
-    nuevo. Dentro de los que nunca salieron el orden es por angulo y recien
-    despues por id, y eso no es cosmetico: los dos angulos de un tema son
-    filas contiguas, asi que ordenando solo por id la corrida del viernes
-    agarraba el otro angulo de los mismos temas del martes y la semana quedaba
-    hablando dos veces de lo mismo. Ordenando por angulo se da una vuelta
-    entera al banco en "concreto" (21 semanas) antes de empezar la vuelta en
-    "implicancia", asi que un tema no se repite hasta cinco meses despues y
-    vuelve desde el otro lado.
+    nuevo. Los que nunca salieron van en el orden de la semilla (por id): el
+    banco del 4/11 ya viene intercalado (caso, general, scalerics, general) y
+    cada tema tiene un solo post. Los retirados no salen nunca.
     """
     conn = _connect(db_path)
     try:
         rows = conn.execute(
             "SELECT * FROM linkedin_banco "
-            "WHERE usado_en IS NULL OR usado_en < ? "
-            "ORDER BY usado_en IS NOT NULL, usado_en, angulo, id",
+            "WHERE retirado = 0 AND (usado_en IS NULL OR usado_en < ?) "
+            "ORDER BY usado_en IS NOT NULL, usado_en, id",
             (limite_iso,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -4465,8 +4464,10 @@ def seed_linkedin_temas(db_path: str) -> None:
 def seed_linkedin_banco(db_path: str) -> None:
     """Inserta los posts ya escritos que falten. Idempotente por (tema, angulo).
 
-    La semilla vive en su propio modulo: son 84 textos largos y no tienen nada
-    que hacer en el medio de las queries.
+    Lo que esta en la base y ya no esta en la semilla queda retirado: no se
+    borra (linkedin_posts guarda de donde salio cada post), pero no vuelve a
+    salir. La semilla vive en su propio modulo: son textos largos y no tienen
+    nada que hacer en el medio de las queries.
     """
     from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
 
@@ -4476,6 +4477,11 @@ def seed_linkedin_banco(db_path: str) -> None:
             "INSERT OR IGNORE INTO linkedin_banco (tema, angulo, texto, frase) "
             "VALUES (?, ?, ?, ?)",
             LINKEDIN_BANCO_SEMILLA,
+        )
+        conn.execute("UPDATE linkedin_banco SET retirado = 1")
+        conn.executemany(
+            "UPDATE linkedin_banco SET retirado = 0 WHERE tema = ? AND angulo = ?",
+            [(tema, angulo) for tema, angulo, _texto, _frase in LINKEDIN_BANCO_SEMILLA],
         )
         conn.commit()
     finally:
