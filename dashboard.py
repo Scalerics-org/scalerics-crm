@@ -4725,6 +4725,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .li-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .li-nota{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
 .li-nota:empty{display:none}
+.li-auto{display:flex;align-items:center;justify-content:space-between;gap:8px 14px;flex-wrap:wrap;background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.8rem;line-height:1.5;color:var(--texto)}
+.li-auto b{color:var(--texto-fuerte)}
+.li-auto-sub{display:block;color:var(--texto-debil);font-size:.74rem}
+.li-error-pub{font-size:.76rem;color:var(--rojo-texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:8px 10px}
 .li-barra{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
 .li-nav-semana{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
 .li-vacio{font-size:.82rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px;line-height:1.5}
@@ -6245,6 +6249,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="li-nota" id="li-nota" role="status" aria-live="polite"></div>
+    <div class="li-auto li-oculto" id="li-auto" role="status" aria-live="polite"></div>
     <div class="li-barra">
       <div class="li-nav-semana">
         <button type="button" class="cal-nav-btn" onclick="liSemana(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
@@ -10227,6 +10232,21 @@ function waTogglePlantillas() {
   if (q.get('panel') !== 'wa') return;
   waChatPendiente = (q.get('chat') || '').replace(/[^0-9]/g, '') || null;
   setTimeout(() => { try { showPanel('wa'); } catch (e) {} }, 0);
+})();
+
+// La vuelta de LinkedIn despues de "Conectar LinkedIn": /?panel=linkedin&linkedin=conectado
+(function () {
+  if (typeof location === 'undefined' || !location.search) return;
+  let q;
+  try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (q.get('panel') !== 'linkedin') return;
+  const vuelta = q.get('linkedin');
+  history.replaceState(null, '', location.pathname);
+  setTimeout(() => {
+    try { showPanel('linkedin'); } catch (e) {}
+    const nota = document.getElementById('li-nota');
+    if (nota && LI_VUELTA[vuelta]) nota.textContent = LI_VUELTA[vuelta];
+  }, 0);
 })();
 
 // ========== Calendar panel ==========
@@ -16606,6 +16626,7 @@ let liPublicandoId = null;
 const LI_ESTADOS = {
   borrador: ['Borrador', 'li-chip-azul'],
   publicado: ['Publicada', 'li-chip-verde'],
+  publicando: ['Publicando', 'li-chip-azul'],
   descartado: ['Descartada', 'li-chip-gris']
 };
 
@@ -16676,6 +16697,85 @@ async function loadLinkedin() {
   if (pedido !== liPedido) return;
   liDatos = d;
   liPintar(d);
+  liCargarAuto();
+}
+
+// Publicacion automatica (services/linkedin_publicador.py): arriba de los
+// borradores, si la pagina esta conectada, cuando sale el proximo y la pausa.
+const LI_VUELTA = {conectado: 'Listo: LinkedIn quedó conectado. Los posteos salen solos.',
+  cancelado: 'No se conectó LinkedIn.', 'faltan-credenciales': 'Falta cargar el Client Secret de LinkedIn en el servidor.',
+  'estado-invalido': 'La conexión con LinkedIn venció a mitad de camino. Probá de nuevo.',
+  error: 'No se pudo conectar LinkedIn. Revisá que la cuenta sea admin de la página de Scalerics.'};
+
+async function liCargarAuto() {
+  const caja = document.getElementById('li-auto');
+  if (!caja) return;
+  let d;
+  try {
+    const r = await fetch('/api/linkedin/publicacion');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+  } catch (e) {
+    liClase('li-auto', true, 'li-oculto');
+    return;
+  }
+  caja.innerHTML = liAutoHtml(d);
+  liClase('li-auto', false, 'li-oculto');
+}
+
+function liAutoHtml(d) {
+  const admin = !!d.puede_administrar;
+  const conectar = admin
+    ? '<a class="li-btn" href="/api/linkedin/oauth/conectar">' + (d.conectado ? 'Reconectar LinkedIn' : 'Conectar LinkedIn') + '</a>' : '';
+  if (!d.activo) return '<span><b>Publicación automática apagada</b> en el servidor.</span>';
+  if (!d.conectado) {
+    return '<span><b>Publicación automática: falta conectar la página.</b>' +
+      '<span class="li-auto-sub">Una vez conectada, los posteos salen solos los ' + liEsc(d.dias) + ' a las ' + liEsc(d.hora) + '.</span></span>' + conectar;
+  }
+  const vence = d.vence_en ? (d.se_renueva ? 'La conexión se renueva sola.' : 'La conexión vence el ' + liFechaLarga(d.vence_en) + ': te avisamos por mail una semana antes.') : '';
+  let titulo;
+  if (d.vencido) titulo = '<b>La conexión con LinkedIn venció.</b> No sale nada hasta reconectar.';
+  else if (d.pausado) titulo = '<b>Publicación automática en pausa.</b> No sale nada hasta reanudarla.';
+  else {
+    const prox = d.proximo ? 'el N.º ' + Number(d.proximo.orden) + ', «' + liEsc(d.proximo.tema || 'Publicación') + '»'
+      : 'el próximo borrador que entre';
+    titulo = '<b>Publicación automática activa</b> en ' + liEsc(d.pagina || 'la página de Scalerics') +
+      '. Próximo posteo: ' + liEsc(d.proximo_turno) + ', ' + prox + '.';
+  }
+  const pausa = admin && !d.vencido
+    ? '<button type="button" class="li-btn li-btn-suave" onclick="liPausa(' + (d.pausado ? 'false' : 'true') + ')">' +
+      (d.pausado ? 'Reanudar' : 'Pausar') + '</button>' : '';
+  return '<span>' + titulo + '<span class="li-auto-sub">Salen los ' + liEsc(d.dias) + ' a las ' + liEsc(d.hora) +
+    ', uno por vez y en orden. Antes de publicar se revisa el texto, el largo y la imagen. ' + liEsc(vence) + '</span></span>' +
+    '<span class="li-acciones">' + pausa + conectar + '</span>';
+}
+
+async function liPausa(pausar) {
+  const nota = document.getElementById('li-nota');
+  try {
+    const r = await fetch('/api/linkedin/publicacion/pausa', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pausado: !!pausar})
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    if (nota) nota.textContent = pausar ? 'Publicación automática en pausa.' : 'Publicación automática reanudada.';
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo cambiar la pausa. Probá de nuevo.';
+  }
+  liCargarAuto();
+}
+
+async function liReintentar(id) {
+  const msg = document.getElementById('li-msg-' + Number(id));
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id) + '/reintentar', {method: 'POST'});
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) {
+    if (msg) msg.textContent = 'No se pudo volver a poner en fila.';
+    return;
+  }
+  await loadLinkedin();
 }
 
 function liPintar(d) {
@@ -16709,6 +16809,12 @@ function liTarjeta(b, limite) {
     ? '<span class="li-meta">Publicada el ' + liEsc(liFechaLarga(b.publicado_en)) + '</span>' : '';
   const editada = b.editado_por ? '<span class="li-meta">Editada por ' + liEsc(b.editado_por) + '</span>' : '';
   const id = Number(b.id);
+  const enLinkedin = b.linkedin_urn
+    ? '<a class="li-meta" href="https://www.linkedin.com/feed/update/' + encodeURIComponent(b.linkedin_urn) +
+      '/" target="_blank" rel="noopener">Ver en LinkedIn</a>' : '';
+  const errorPub = b.error_pub && b.estado === 'borrador'
+    ? '<div class="li-error-pub"><b>No sale solo:</b> ' + liEsc(b.error_pub) +
+      ' <button type="button" class="li-btn li-btn-suave" onclick="liReintentar(' + id + ')">Volver a ponerlo en fila</button></div>' : '';
   // La tarjeta que salio en el mail, si el runner la mando. Se muestra y se baja
   // desde el CRM, detras del mismo permiso del panel.
   const visual = b.tiene_imagen
@@ -16738,7 +16844,7 @@ function liTarjeta(b, limite) {
     '<span class="li-tema">' + liEsc(b.tema || 'Publicación') + '</span>' +
     '<span class="li-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' +
     '<div class="li-texto">' + liEsc(b.texto) + '</div>' + visual +
-    '<div class="li-pie">' + contador + publicada + editada + pendiente + '</div>' +
+    '<div class="li-pie">' + contador + publicada + enLinkedin + editada + pendiente + '</div>' + errorPub +
     liPedidoHtml(b) +
     '<div class="li-msg" id="li-msg-' + id + '" role="status"></div>' +
     '<div class="li-acciones-tarjeta">' + acciones + '</div></article>';
@@ -23701,6 +23807,11 @@ loadBackups();
         # Instagram: publica solo lo aprobado. INSTAGRAM_AGENTE=off lo apaga.
         from services.instagram import start_instagram
         start_instagram(app)
+
+        # LinkedIn: publica solo los borradores, lun/mar/jue/vie a las 10:00,
+        # si la pagina esta conectada. LINKEDIN_PUBLICAR=off lo apaga.
+        from services.linkedin_publicador import start_linkedin_publicador
+        start_linkedin_publicador(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.

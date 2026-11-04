@@ -248,7 +248,7 @@ def copiar_historico(conn: sqlite3.Connection) -> int:
 # ── pantalla ─────────────────────────────────────────────────────────────────
 
 _CAMPOS = ("id, post_id, semana, orden, tema, texto, hashtags, estado, publicado_en, "
-           "editado_por, editado_en, created_at, imagen_png IS NOT NULL AS tiene_imagen")
+           "editado_por, editado_en, created_at, imagen_png IS NOT NULL AS tiene_imagen, linkedin_urn, error_pub")
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -294,7 +294,8 @@ def editar(db_path: str, borrador_id: int, texto: str, quien: str) -> dict | Non
     conn = _conn(db_path)
     try:
         cur = conn.execute(
-            "UPDATE linkedin_borradores SET texto = ?, hashtags = ?, editado_por = ?, editado_en = ? WHERE id = ?",
+            "UPDATE linkedin_borradores SET texto = ?, hashtags = ?, editado_por = ?, editado_en = ?, "
+            "error_pub = NULL WHERE id = ?",
             (texto, hashtags_de(texto), quien or None, ahora_utc().strftime(_FORMATO), borrador_id))
         conn.commit()
     finally:
@@ -324,6 +325,18 @@ def cambiar_estado(db_path: str, borrador_id: int, estado: str, fecha: date | No
     finally:
         conn.close()
     return obtener(db_path, borrador_id)
+
+
+def limpiar_error(db_path: str, borrador_id: int) -> bool:
+    """Vuelve a poner en fila un borrador que la publicacion automatica dejo afuera."""
+    conn = _conn(db_path)
+    try:
+        n = conn.execute("UPDATE linkedin_borradores SET error_pub = NULL WHERE id = ? AND error_pub IS NOT NULL "
+                         "AND estado = 'borrador'", (borrador_id,)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return bool(n)
 
 
 def marcar_publicado_por_post(db_path: str, post_id: int, ahora: datetime | None = None) -> None:

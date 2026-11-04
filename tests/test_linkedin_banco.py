@@ -106,3 +106,41 @@ def test_sembrar_el_banco_dos_veces_no_duplica(db_path):
 
     assert total == distintos
     assert total > 0
+
+
+def test_lo_que_no_esta_en_la_semilla_queda_retirado(db_path):
+    """El banco de agosto se retiro el 4/11/2026: sus filas quedan pero no salen."""
+    _insertar(db_path, "Tema viejo de agosto", "concreto")
+    seed_linkedin_banco(db_path)
+
+    libres = get_banco_disponible(db_path, "2026-01-01T00:00:00")
+    assert "Tema viejo de agosto" not in [f["tema"] for f in libres]
+    conn = sqlite3.connect(db_path)
+    retirado = conn.execute(
+        "SELECT retirado FROM linkedin_banco WHERE tema = 'Tema viejo de agosto'").fetchone()[0]
+    conn.close()
+    assert retirado == 1
+
+
+def test_el_banco_nuevo_sale_en_el_orden_de_la_semilla(db_path):
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
+    seed_linkedin_banco(db_path)
+    libres = get_banco_disponible(db_path, "2026-01-01T00:00:00")
+    assert [f["tema"] for f in libres] == [t for t, _a, _x, _f in LINKEDIN_BANCO_SEMILLA]
+    # Intercalado: en cada tanda de cuatro hay un caso y uno de Scalerics.
+    for i in range(0, len(libres) - 3, 4):
+        angulos = {f["angulo"] for f in libres[i:i + 4]}
+        assert {"caso", "scalerics", "general"} <= angulos
+
+
+def test_el_banco_nuevo_no_nombra_clientes_ni_dice_pymes():
+    """Pedido de Juan (4/11): nunca el nombre de un cliente; y las reglas de voz
+    no encasillan por tamaño."""
+    import re
+
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
+    prohibidos = re.compile(r"(?i)trouville|jackson|garage|barbacoa|pymes?|diego")
+    for tema, _a, texto, frase in LINKEDIN_BANCO_SEMILLA:
+        assert not prohibidos.search(texto + " " + frase + " " + tema), tema
