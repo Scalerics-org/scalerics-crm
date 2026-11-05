@@ -130,9 +130,16 @@ class Api:
         salida = {}
         for m in self._get(f"{ig}/media", limit=PUBLICACIONES_A_MIRAR, fields="id").get("data", []):
             salida[m["id"]] = ("publicacion", "Publicación")
-        cuenta = os.environ["META_AD_ACCOUNT_ID"]
-        ads = self._get(f"{cuenta}/ads", limit=200, effective_status='["ACTIVE"]',
-                        fields="name,creative{effective_instagram_media_id}").get("data", [])
+        from meta_config import cuentas_publicitarias
+        ads = []
+        for i, cuenta in enumerate(cuentas_publicitarias()):
+            try:
+                ads += self._get(f"{cuenta}/ads", limit=200, effective_status='["ACTIVE"]',
+                                 fields="name,creative{effective_instagram_media_id}").get("data", [])
+            except Exception as e:      # la cuenta de Argentina no frena a la principal
+                if i == 0:
+                    raise
+                logger.warning(f"Comentarios IG: se saltea la cuenta {cuenta} ({e})")
         for a in ads:
             mid = (a.get("creative") or {}).get("effective_instagram_media_id")
             if mid:
