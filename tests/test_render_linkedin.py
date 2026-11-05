@@ -274,7 +274,7 @@ def test_el_fondo_sale_siempre_de_la_paleta_de_marca():
     from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
 
     permitidos = ("#0f2430", "#0b1d35", "#0a1620", "#122c3a")
-    for _tema, _ang, _texto, frase in LINKEDIN_BANCO_SEMILLA:
+    for *_, frase in LINKEDIN_BANCO_SEMILLA:
         estilo = _estilo_variante(frase)
         assert any(c in estilo for c in permitidos), frase
 

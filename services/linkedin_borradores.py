@@ -169,9 +169,9 @@ def guardar_borradores(db_path: str, borradores: list[dict], ahora: datetime | N
                 try:
                     conn.execute(
                         "INSERT INTO linkedin_borradores (post_id, semana, orden, tema, texto, texto_original, "
-                        "hashtags, estado, created_at, frase) VALUES (?,?,?,?,?,?,?,'borrador',?,?)",
+                        "hashtags, estado, created_at, frase, objetivo) VALUES (?,?,?,?,?,?,?,'borrador',?,?,?)",
                         (post_id, semana, _siguiente_orden(conn, semana), tema_de(b), texto, texto,
-                         hashtags_de(texto), creado, frase))
+                         hashtags_de(texto), creado, frase, b.get("objetivo")))
                     nuevos += 1
                     break
                 except sqlite3.IntegrityError:
@@ -248,7 +248,8 @@ def copiar_historico(conn: sqlite3.Connection) -> int:
 # ── pantalla ─────────────────────────────────────────────────────────────────
 
 _CAMPOS = ("id, post_id, semana, orden, tema, texto, hashtags, estado, publicado_en, "
-           "editado_por, editado_en, created_at, imagen_png IS NOT NULL AS tiene_imagen, linkedin_urn, error_pub")
+           "editado_por, editado_en, created_at, imagen_png IS NOT NULL AS tiene_imagen, linkedin_urn, error_pub, "
+           "objetivo")
 
 
 def _a_dict(fila: sqlite3.Row) -> dict:
@@ -379,10 +380,10 @@ def otra_idea(db_path: str, borrador_id: int, ahora: datetime | None = None) -> 
         marcar_banco_usado(db_path, fila["id"], ahora.isoformat())
         conn.execute(
             "UPDATE linkedin_borradores SET tema = ?, texto = ?, texto_original = ?, hashtags = ?, "
-            "frase = ?, estado = 'borrador', publicado_en = NULL, imagen_png = NULL, "
+            "frase = ?, objetivo = ?, estado = 'borrador', publicado_en = NULL, imagen_png = NULL, "
             "editado_por = NULL, editado_en = NULL WHERE id = ?",
             (fila["tema"], fila["texto"], fila["texto"], hashtags_de(fila["texto"]),
-             fila["frase"], borrador_id))
+             fila["frase"], fila.get("objetivo"), borrador_id))
         conn.commit()
     finally:
         conn.close()

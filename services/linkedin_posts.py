@@ -299,6 +299,7 @@ def _borrador_educativo(db_path: str, job_id, lote: str, fila: dict):
         "imagen_tipo": "tarjeta",
         "imagen_spec": json.loads(imagen_spec),
         "fuente_id": fila["id"],
+        "objetivo": fila.get("objetivo"),
     }
 
 

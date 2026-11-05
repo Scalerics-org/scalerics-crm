@@ -127,11 +127,34 @@ def test_el_banco_nuevo_sale_en_el_orden_de_la_semilla(db_path):
 
     seed_linkedin_banco(db_path)
     libres = get_banco_disponible(db_path, "2026-01-01T00:00:00")
-    assert [f["tema"] for f in libres] == [t for t, _a, _x, _f in LINKEDIN_BANCO_SEMILLA]
-    # Intercalado: en cada tanda de cuatro hay un caso y uno de Scalerics.
-    for i in range(0, len(libres) - 3, 4):
-        angulos = {f["angulo"] for f in libres[i:i + 4]}
-        assert {"caso", "scalerics", "general"} <= angulos
+    assert [f["tema"] for f in libres] == [t for t, *_ in LINKEDIN_BANCO_SEMILLA]
+    assert [f["objetivo"] for f in libres] == [o for _t, _a, o, _x, _f in LINKEDIN_BANCO_SEMILLA]
+
+
+def test_las_primeras_vueltas_tienen_un_post_de_cada_objetivo():
+    """Pedido de Juan (5/11): los posts persiguen objetivos y se alternan."""
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA, OBJETIVOS
+
+    objetivos = [o for _t, _a, o, _x, _f in LINKEDIN_BANCO_SEMILLA]
+    n = len(OBJETIVOS)
+    for i in range(0, 5 * n, n):
+        assert set(objetivos[i:i + n]) == set(OBJETIVOS)
+
+
+def test_el_orden_nuevo_le_gana_al_id(db_path):
+    """Un post que se suma a la semilla despues sale en su lugar de la rotacion,
+    no al final: el orden lo da la semilla y no el id de la fila."""
+    _insertar(db_path, "Viejo", "general")
+    _insertar(db_path, "Nuevo", "scalerics")
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE linkedin_banco SET orden = 1 WHERE tema = 'Viejo'")
+    conn.execute("UPDATE linkedin_banco SET orden = 0 WHERE tema = 'Nuevo'")
+    conn.commit()
+    conn.close()
+
+    libres = get_banco_disponible(db_path, "2026-01-01T00:00:00")
+
+    assert [f["tema"] for f in libres] == ["Nuevo", "Viejo"]
 
 
 def test_el_banco_nuevo_no_nombra_clientes_ni_dice_pymes():
@@ -142,5 +165,5 @@ def test_el_banco_nuevo_no_nombra_clientes_ni_dice_pymes():
     from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
 
     prohibidos = re.compile(r"(?i)trouville|jackson|garage|barbacoa|pymes?|diego")
-    for tema, _a, texto, frase in LINKEDIN_BANCO_SEMILLA:
+    for tema, _a, _o, texto, frase in LINKEDIN_BANCO_SEMILLA:
         assert not prohibidos.search(texto + " " + frase + " " + tema), tema

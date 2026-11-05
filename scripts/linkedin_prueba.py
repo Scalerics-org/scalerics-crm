@@ -50,7 +50,7 @@ def main() -> None:
         return
 
     n = int(sys.argv[2])
-    tema, _angulo, texto, frase = LINKEDIN_BANCO_SEMILLA[n]
+    tema, _angulo, _objetivo, texto, frase = LINKEDIN_BANCO_SEMILLA[n]
     from services.linkedin_render import dibujar
     png = dibujar(frase)
 
