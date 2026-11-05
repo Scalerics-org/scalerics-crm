@@ -371,7 +371,6 @@ def test_lo_aportado_hasta_la_fecha_por_persona_y_por_mes(db):
     d = aportado_hasta_la_fecha(db)
     assert d["total_usd"] == 1000 and d["cantidad"] == 3
     assert d["primero"] == "2026-08-10" and d["ultimo"] == "2026-09-12"
-    assert d["por_persona"] == [{"persona": "Javier", "total_usd": 500},
-                                {"persona": "Padre Juan", "total_usd": 300},
-                                {"persona": "Juan", "total_usd": 200}]
+    assert [(p["persona"], p["total_usd"]) for p in d["por_persona"]] == [
+        ("Javier", 500), ("Padre Juan", 300), ("Juan", 200)]
     assert d["por_mes"] == [{"periodo": "2026-08", "total_usd": 300}, {"periodo": "2026-09", "total_usd": 700}]

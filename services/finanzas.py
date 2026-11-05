@@ -27,8 +27,11 @@ MONEDAS = ("USD", "UYU", "ARS", "CLP")
 # "Infra" una vez en lugar de "Infraestructura" para que el desglose por
 # categoría se parta en dos sin que nadie lo note.
 CATEGORIAS = {
+    # "devolucion_aporte" (Juan, 3/11): plata de un aporte que se le devuelve
+    # al socio. Sale de la caja como egreso, pero no es gasto del negocio.
     "egreso": ["infraestructura", "herramientas", "publicidad",
-               "retiros", "impuestos", "servicios", "comisiones", "otros"],
+               "retiros", "impuestos", "servicios", "comisiones",
+               "devolucion_aporte", "otros"],
     # "aporte" (Juan, 1/10): plata que ponen los socios. Es un ingreso y suma
     # en Ingresos, pero tiene su propia tarjeta (amarilla) para diferenciarlo
     # de lo que se vende.
@@ -37,15 +40,23 @@ CATEGORIAS = {
 }
 
 CATEGORIA_APORTE = "aporte"
+CATEGORIA_DEVOLUCION = "devolucion_aporte"
 
 
 def es_aporte(m: dict) -> bool:
     return m.get("tipo") == "ingreso" and m.get("categoria") == CATEGORIA_APORTE
 
 
+def es_devolucion(m: dict) -> bool:
+    return m.get("tipo") == "egreso" and m.get("categoria") == CATEGORIA_DEVOLUCION
+
+
 def _aportes(movimientos: list[dict]) -> float:
-    return round(sum(m["monto_usd"] for m in movimientos
-                     if m["tipo"] == "ingreso" and m["categoria"] == CATEGORIA_APORTE), 2)
+    return round(sum(m["monto_usd"] for m in movimientos if es_aporte(m)), 2)
+
+
+def _devoluciones(movimientos: list[dict]) -> float:
+    return round(sum(m["monto_usd"] for m in movimientos if es_devolucion(m)), 2)
 
 
 # Tasa basica de Uruguay. Se guarda el IVA calculado en cada movimiento en vez
@@ -543,10 +554,14 @@ def resumen(db_path: str, desde: str, hasta: str) -> dict:
             # Ya están dentro de ingresos_usd: es la parte que no es venta.
             "aportes_usd": _aportes(movs),
             "aportes_previos_usd": _aportes(prev),
+            # Ya están dentro de egresos_usd: es la parte que no es gasto.
+            "devoluciones_usd": _devoluciones(movs),
+            "devoluciones_previas_usd": _devoluciones(prev),
             # Lo que de verdad ganó (o perdió) la empresa: un aporte de un
-            # socio no es ganancia (Juan, 1/10).
-            "resultado_real_usd": round(ingresos - egresos - _aportes(movs), 2),
-            "resultado_real_previo_usd": round(ingresos_prev - egresos_prev - _aportes(prev), 2),
+            # socio no es ganancia (Juan, 1/10), ni devolvérselo es pérdida.
+            "resultado_real_usd": round(ingresos - egresos - _aportes(movs) + _devoluciones(movs), 2),
+            "resultado_real_previo_usd": round(ingresos_prev - egresos_prev - _aportes(prev)
+                                               + _devoluciones(prev), 2),
         },
         "serie": serie,
         "por_categoria": por_categoria,
@@ -679,8 +694,10 @@ def calcular_balance(movimientos: list[dict], tipo: str, desde: str, hasta: str,
     # Los aportes de los socios no son ingreso del negocio: van aparte y no
     # entran en el resultado (Juan, 1/10). En el tablero de Movimientos siguen
     # sumando en Ingresos; acá no, porque esto es el estado de resultados.
+    # Lo mismo con lo que se les devuelve: no es gasto (Juan, 3/11).
     aportes = _r2(sum(float(m["monto_usd"]) for m in movs if es_aporte(m)))
-    movs = [m for m in movs if not es_aporte(m)]
+    devoluciones = _r2(sum(float(m["monto_usd"]) for m in movs if es_devolucion(m)))
+    movs = [m for m in movs if not (es_aporte(m) or es_devolucion(m))]
     ingresos = _bloque_balance(movs, "ingreso")
     egresos = _bloque_balance(movs, "egreso")
 
@@ -711,7 +728,8 @@ def calcular_balance(movimientos: list[dict], tipo: str, desde: str, hasta: str,
         "sin_cotizacion": sin_cotizacion,
         "ingresos": ingresos,
         "egresos": egresos,
-        "aportes": {"total": aportes},
+        "aportes": {"total": aportes, "devoluciones": devoluciones,
+                    "neto": _r2(aportes - devoluciones)},
         "resultado": {
             "total": _r2(ingresos["total"] - egresos["total"]),
             "blanco": _r2(ingresos["blanco"] - egresos["blanco"]),
@@ -893,6 +911,9 @@ def calcular_balance_general(movimientos: list[dict], pendientes: list[dict],
             # Entra a la caja pero no es resultado: es patrimonio que pusieron
             # los socios (Juan, 1/10).
             aportes += neto
+        elif es_devolucion(m):
+            # Lo devuelto achica lo que quedó puesto, no la utilidad (Juan, 3/11).
+            aportes -= neto
         elif str(m["fecha"])[:10] >= inicio_ejercicio:
             utilidad += signo * neto
         else:
@@ -1223,35 +1244,59 @@ def borrar_esencial(db_path: str, eid: int) -> bool:
 # ── Lo aportado hasta la fecha (Juan, 1/10) ──────────────────────────────────
 # Todos los aportes, sin rango: cuánto pusieron los socios desde el principio,
 # por persona (sale del concepto: "Aporte Javier (…)" es Javier) y por mes.
+# Las devoluciones (Juan, 3/11) se restan: "Devolución aporte Javier" es lo que
+# ya se le devolvió a Javier, y lo que falta es lo que todavía no recuperó.
 
 def _persona_del_aporte(concepto: str | None) -> str:
     import re as _re
     t = _re.sub(r"\(.*?\)", "", concepto or "")
-    t = _re.sub(r"^\s*aportes?\b[\s:-]*(de\s+)?", "", t, flags=_re.I).strip(" -:")
+    t = _re.sub(r"^\s*devoluci[oó]n(es)?\b[\s:-]*(de(l)?\s+)?", "", t, flags=_re.I)
+    t = _re.sub(r"^\s*aportes?\b[\s:-]*(de\s+|a\s+)?", "", t, flags=_re.I)
+    t = _re.sub(r"^\s*a\s+", "", t, flags=_re.I).strip(" -:")
     return (t[:1].upper() + t[1:]) if t else "Sin nombre"
+
+
+def _fila_aporte(m: dict) -> dict:
+    return {"id": m["id"], "fecha": m["fecha"], "concepto": m["concepto"],
+            "persona": _persona_del_aporte(m.get("concepto")), "monto": m["monto"],
+            "moneda": m["moneda"], "monto_usd": m["monto_usd"]}
 
 
 def aportado_hasta_la_fecha(db_path: str) -> dict:
     from database import listar_movimientos
-    movs = [m for m in listar_movimientos(db_path) if es_aporte(m) and not m.get("anulado")]
+    todos = [m for m in listar_movimientos(db_path) if not m.get("anulado")]
+    movs = [m for m in todos if es_aporte(m)]
+    devs = [m for m in todos if es_devolucion(m)]
     movs.sort(key=lambda m: (m["fecha"], m["id"]), reverse=True)
+    devs.sort(key=lambda m: (m["fecha"], m["id"]), reverse=True)
     personas: dict[str, float] = {}
+    devuelto: dict[str, float] = {}
     meses: dict[str, float] = {}
     for m in movs:
         p = _persona_del_aporte(m.get("concepto"))
         personas[p] = personas.get(p, 0.0) + float(m["monto_usd"])
         meses[m["periodo"]] = meses.get(m["periodo"], 0.0) + float(m["monto_usd"])
+    for m in devs:
+        p = _persona_del_aporte(m.get("concepto"))
+        devuelto[p] = devuelto.get(p, 0.0) + float(m["monto_usd"])
+    total = _r2(sum(personas.values()))
+    total_devuelto = _r2(sum(devuelto.values()))
     return {
-        "total_usd": _r2(sum(personas.values())),
+        "total_usd": total,
+        "devuelto_usd": total_devuelto,
+        "por_recuperar_usd": _r2(total - total_devuelto),
         "cantidad": len(movs),
+        "cantidad_devoluciones": len(devs),
         "primero": movs[-1]["fecha"] if movs else None,
         "ultimo": movs[0]["fecha"] if movs else None,
-        "por_persona": sorted(({"persona": k, "total_usd": _r2(v)} for k, v in personas.items()),
-                              key=lambda x: -x["total_usd"]),
+        "por_persona": sorted(({"persona": k, "total_usd": _r2(personas.get(k, 0.0)),
+                                "devuelto_usd": _r2(devuelto.get(k, 0.0)),
+                                "por_recuperar_usd": _r2(personas.get(k, 0.0) - devuelto.get(k, 0.0))}
+                               for k in personas.keys() | devuelto.keys()),
+                              key=lambda x: (-x["total_usd"], x["persona"])),
         "por_mes": [{"periodo": k, "total_usd": _r2(v)} for k, v in sorted(meses.items())],
-        "movimientos": [{"id": m["id"], "fecha": m["fecha"], "concepto": m["concepto"],
-                         "persona": _persona_del_aporte(m.get("concepto")), "monto": m["monto"],
-                         "moneda": m["moneda"], "monto_usd": m["monto_usd"]} for m in movs],
+        "movimientos": [_fila_aporte(m) for m in movs],
+        "devoluciones": [_fila_aporte(m) for m in devs],
     }
 
 
