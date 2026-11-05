@@ -124,7 +124,7 @@ def test_todos_los_posts_de_la_semilla_pasan_el_validador():
     from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
 
     fallados = []
-    for tema, angulo, texto, _frase in LINKEDIN_BANCO_SEMILLA:
+    for tema, angulo, _objetivo, texto, _frase in LINKEDIN_BANCO_SEMILLA:
         violaciones = validar_borrador(texto)
         if violaciones:
             fallados.append(f"{tema} [{angulo}]: {'; '.join(violaciones)}")
@@ -138,20 +138,22 @@ def test_las_frases_de_tarjeta_entran_en_la_imagen():
 
     largas = [
         f"{tema} [{angulo}]: {len(frase)} caracteres"
-        for tema, angulo, _texto, frase in LINKEDIN_BANCO_SEMILLA
+        for tema, angulo, _objetivo, _texto, frase in LINKEDIN_BANCO_SEMILLA
         if len(frase) > MAX_FRASE
     ]
 
     assert not largas, "\n".join(largas)
 
 
-def test_cada_tema_del_banco_es_unico_y_tiene_un_angulo_valido():
-    """Banco del 4/11/2026: un post por tema, de tipo caso, scalerics o general."""
-    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+def test_cada_tema_del_banco_es_unico_y_tiene_un_angulo_y_un_objetivo_validos():
+    """Banco del 4/11/2026: un post por tema, de tipo caso, scalerics o general.
+    Desde el 5/11 cada uno persigue un objetivo, y todos los objetivos tienen posts."""
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA, OBJETIVOS
 
-    temas = [t for t, _a, _x, _f in LINKEDIN_BANCO_SEMILLA]
+    temas = [t for t, *_ in LINKEDIN_BANCO_SEMILLA]
     assert len(temas) == len(set(temas))
-    assert {a for _t, a, _x, _f in LINKEDIN_BANCO_SEMILLA} == {"caso", "scalerics", "general"}
+    assert {a for _t, a, *_ in LINKEDIN_BANCO_SEMILLA} == {"caso", "scalerics", "general"}
+    assert {o for _t, _a, o, _x, _f in LINKEDIN_BANCO_SEMILLA} == set(OBJETIVOS)
 
 
 # ── Cobertura heredada de test_linkedin_redaccion.py y test_linkedin_tarjeta.py

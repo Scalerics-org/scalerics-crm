@@ -1093,6 +1093,11 @@ def init_db(db_path: str) -> None:
         # anecdotas puntuales, casos y lo que hace Scalerics). Las filas viejas
         # quedan para el historial pero no vuelven a salir: ver seed_linkedin_banco.
         _add_column(conn, "linkedin_banco", "retirado", "INTEGER NOT NULL DEFAULT 0")
+        # Pedido de Juan (5/11/2026): cada post persigue un objetivo (marca,
+        # confianza, clientes, caso, equipo) y la rotacion los alterna. El
+        # orden es el de la semilla: lo reescribe seed_linkedin_banco.
+        _add_column(conn, "linkedin_banco", "objetivo", "TEXT")
+        _add_column(conn, "linkedin_banco", "orden", "INTEGER")
         _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
 
         # ── finanzas ──────────────────────────────────────────────────────────
@@ -2202,6 +2207,8 @@ def init_db(db_path: str) -> None:
         # services/linkedin_publicador.py.
         _add_column(conn, "linkedin_borradores", "linkedin_urn", "TEXT")
         _add_column(conn, "linkedin_borradores", "error_pub", "TEXT")
+        # El objetivo del post del banco del que salio (ver linkedin_banco).
+        _add_column(conn, "linkedin_borradores", "objetivo", "TEXT")
         # Una sola fila: la conexion con la pagina (token de un admin).
         conn.execute("""
             CREATE TABLE IF NOT EXISTS linkedin_conexion (
@@ -4327,16 +4334,18 @@ def get_banco_disponible(db_path: str, limite_iso: str) -> list[dict]:
     """Posts del banco nunca usados o usados antes de `limite_iso`.
 
     Primero los que nunca salieron, despues los reciclados de mas viejo a mas
-    nuevo. Los que nunca salieron van en el orden de la semilla (por id): el
-    banco del 4/11 ya viene intercalado (caso, general, scalerics, general) y
-    cada tema tiene un solo post. Los retirados no salen nunca.
+    nuevo. Los que nunca salieron van en el orden de la semilla (columna
+    `orden`, que reescribe seed_linkedin_banco): desde el 5/11 la semilla
+    alterna los objetivos, y un post que se suma despues sale en su lugar de la
+    rotacion y no al final. Cada tema tiene un solo post. Los retirados no
+    salen nunca.
     """
     conn = _connect(db_path)
     try:
         rows = conn.execute(
             "SELECT * FROM linkedin_banco "
             "WHERE retirado = 0 AND (usado_en IS NULL OR usado_en < ?) "
-            "ORDER BY usado_en IS NOT NULL, usado_en, id",
+            "ORDER BY usado_en IS NOT NULL, usado_en, orden IS NULL, orden, id",
             (limite_iso,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -4476,12 +4485,15 @@ def seed_linkedin_banco(db_path: str) -> None:
         conn.executemany(
             "INSERT OR IGNORE INTO linkedin_banco (tema, angulo, texto, frase) "
             "VALUES (?, ?, ?, ?)",
-            LINKEDIN_BANCO_SEMILLA,
+            [(tema, angulo, texto, frase)
+             for tema, angulo, _objetivo, texto, frase in LINKEDIN_BANCO_SEMILLA],
         )
         conn.execute("UPDATE linkedin_banco SET retirado = 1")
         conn.executemany(
-            "UPDATE linkedin_banco SET retirado = 0 WHERE tema = ? AND angulo = ?",
-            [(tema, angulo) for tema, angulo, _texto, _frase in LINKEDIN_BANCO_SEMILLA],
+            "UPDATE linkedin_banco SET retirado = 0, objetivo = ?, orden = ? "
+            "WHERE tema = ? AND angulo = ?",
+            [(objetivo, i, tema, angulo)
+             for i, (tema, angulo, objetivo, _texto, _frase) in enumerate(LINKEDIN_BANCO_SEMILLA)],
         )
         conn.commit()
     finally:

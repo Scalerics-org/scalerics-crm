@@ -16623,6 +16623,15 @@ let liPedido = 0;
 let liEditandoId = null;
 let liPublicandoId = null;
 
+// Lo que persigue cada post del banco (pedido de Juan, 5/11/2026).
+const LI_OBJETIVOS = {
+  marca: 'Construir marca',
+  confianza: 'Dar confianza',
+  clientes: 'Traer clientes',
+  caso: 'Caso de éxito',
+  equipo: 'Equipo'
+};
+
 const LI_ESTADOS = {
   borrador: ['Borrador', 'li-chip-azul'],
   publicado: ['Publicada', 'li-chip-verde'],
@@ -16842,6 +16851,7 @@ function liTarjeta(b, limite) {
   return '<article class="li-tarjeta li-' + liEsc(b.estado) + '" id="li-t-' + id + '">' +
     '<div class="li-cab"><span class="li-orden">N.º ' + Number(b.orden) + '</span>' +
     '<span class="li-tema">' + liEsc(b.tema || 'Publicación') + '</span>' +
+    (LI_OBJETIVOS[b.objetivo] ? '<span class="li-chip li-chip-gris" title="Objetivo del posteo">' + LI_OBJETIVOS[b.objetivo] + '</span>' : '') +
     '<span class="li-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' +
     '<div class="li-texto">' + liEsc(b.texto) + '</div>' + visual +
     '<div class="li-pie">' + contador + publicada + enLinkedin + editada + pendiente + '</div>' + errorPub +
