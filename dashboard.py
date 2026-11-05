@@ -4197,6 +4197,21 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-dato{display:flex;flex-direction:column;gap:2px;min-width:0}
 .sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
 .sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+/* Anuncio dinamico: abierto, la tarjeta ocupa la fila entera para que la
+   tabla de piezas entre. */
+.sc-anun:has(.sc-anun-desglose:not([hidden])){grid-column:1/-1}
+.sc-anun-desglose-btn{align-self:flex-start;font:inherit;font-size:.75rem;font-weight:600;color:var(--texto);background:var(--hover);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;cursor:pointer}
+.sc-anun-desglose-btn:hover{border-color:var(--rotulo)}
+.sc-desg-aviso{font-size:.72rem;line-height:1.5;color:var(--texto-tenue);margin:4px 0 6px}
+.sc-desg-tit{font-size:.78rem;font-weight:700;color:var(--texto);margin:10px 0 6px}
+.sc-desg-tit span{font-weight:600;color:var(--rotulo)}
+.sc-desg-scroll{overflow-x:auto}
+.sc-desg{width:100%;border-collapse:collapse;font-size:.76rem;font-variant-numeric:tabular-nums}
+.sc-desg th{text-align:left;font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.sc-desg td{padding:7px 8px;border-bottom:1px solid var(--borde);color:var(--texto);white-space:nowrap;vertical-align:middle}
+.sc-desg td.sc-desg-pieza{white-space:normal;min-width:220px;max-width:420px}
+.sc-desg-foto{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--hover);flex-shrink:0;vertical-align:middle;margin-right:10px}
+.sc-desg-txt{font-size:.74rem;line-height:1.4;color:var(--texto-tenue);overflow-wrap:anywhere}
 /* El estado va con palabra Y con color. El borde solo seria color solo, que es
    justo lo que no puede distinguir quien no ve bien los colores. */
 .sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
@@ -21965,6 +21980,14 @@ function _mkPintarPiezas(d) {
       dato('Clics', a.clics, 'numero') +
       dato('CTR', a.ctr, 'porcentaje') +
       '</div>' +
+      // Anuncio dinamico: una sola tarjeta con varias imagenes y textos
+      // adentro. El desglose dice cual anda (pedido de Juan, 5/11).
+      (a.dinamico
+        ? `<button type="button" class="sc-anun-desglose-btn" ` +
+          `onclick="mkVerDesglose(this, '${esc(a.ad_id)}', '${esc(d.mes)}')">` +
+          'Anuncio dinámico: ver qué imagen y qué texto funcionan</button>' +
+          '<div class="sc-anun-desglose" hidden></div>'
+        : '') +
       '</div></article>';
   };
 
@@ -21980,6 +22003,61 @@ function _mkPintarPiezas(d) {
           `Ninguna de las piezas de ${nombre} sigue activa hoy.`) +
     grupo('Ya no están activas', inactivas,
           `Todas las piezas de ${nombre} siguen activas hoy.`);
+}
+
+// El desglose de un anuncio dinamico: cada imagen, titulo y texto que Meta
+// combina, con lo que dio en el mes. Se pide al abrirlo, no con las piezas.
+async function mkVerDesglose(btn, adId, mes) {
+  const caja = btn.nextElementSibling;
+  if (!caja.hidden) { caja.hidden = true; return; }
+  caja.hidden = false;
+  caja.innerHTML = '<div class="sc-vacio">Cargando el desglose…</div>';
+  let d;
+  try {
+    const r = await fetch('/api/marketing/piezas/' + encodeURIComponent(adId) +
+      '/desglose?mes=' + encodeURIComponent(mes));
+    if (!r.ok) throw new Error('error ' + r.status);
+    d = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudo cargar el desglose: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  const tipos = d.tipos || {};
+  const nombres = {imagen: 'Imágenes', titulo: 'Títulos', texto: 'Textos', video: 'Videos'};
+  const orden = ['imagen', 'titulo', 'texto', 'video'].filter(t => (tipos[t] || []).length);
+  if (!orden.length) {
+    caja.innerHTML = '<div class="sc-vacio">Todavía no hay desglose de este mes. ' +
+      'Se trae con el sync diario de anuncios, solo de los dinámicos que están ' +
+      'activos.</div>';
+    return;
+  }
+  const fila = (p, tipo) => {
+    const pieza = tipo === 'imagen' && p.tiene_imagen
+      ? `<img class="sc-desg-foto" loading="lazy" alt="" src="/api/marketing/piezas/` +
+        `${encodeURIComponent(adId)}/imagen/${encodeURIComponent(p.pieza_id)}">` +
+        (p.texto ? `<span class="sc-desg-txt">${esc(p.texto)}</span>` : '')
+      : `<span class="sc-desg-txt">${esc(p.texto || '(sin texto)')}</span>`;
+    return '<tr>' +
+      `<td class="sc-desg-pieza">${pieza}</td>` +
+      `<td>${esc(SC.fmt(p.gasto, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(p.leads, 'numero'))}</td>` +
+      `<td>${esc(SC.fmt(p.cpl, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(p.impresiones, 'numero'))}</td>` +
+      `<td>${esc(SC.fmt(p.ctr, 'porcentaje'))}</td>` +
+      '</tr>';
+  };
+  caja.innerHTML =
+    '<div class="sc-desg-aviso">Meta reparte el gasto del anuncio entre las ' +
+    'imágenes, y aparte entre los textos: cada grupo suma el total por su lado, ' +
+    'así que no se suman entre sí.</div>' +
+    orden.map(t =>
+      `<h5 class="sc-desg-tit">${esc(nombres[t] || t)} <span>(${tipos[t].length})</span></h5>` +
+      '<div class="sc-desg-scroll"><table class="sc-desg"><thead><tr>' +
+      '<th>Pieza</th><th>Gasto</th><th>Leads</th><th>Costo por lead</th>' +
+      '<th>Impresiones</th><th>CTR</th></tr></thead><tbody>' +
+      tipos[t].map(p => fila(p, t)).join('') + '</tbody></table></div>'
+    ).join('');
 }
 
 // ========== Activity feed ==========

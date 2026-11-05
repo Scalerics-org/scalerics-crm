@@ -501,7 +501,7 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
     try:
         filas = conn.execute("""
             SELECT i.ad_id, a.ad_name, a.object_type, a.titulo,
-                   a.imagen_archivo, a.effective_status,
+                   a.imagen_archivo, a.effective_status, a.dinamico,
                    SUM(i.spend)       AS gasto,
                    SUM(i.impressions) AS impresiones,
                    SUM(i.clicks)      AS clics,
@@ -573,6 +573,9 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             "tipo": f["object_type"],
             "titulo": f["titulo"],
             "tiene_imagen": bool(f["imagen_archivo"]),
+            # Un anuncio que Meta arma combinando piezas: la tarjeta ofrece
+            # ver el desglose (desglose_dinamico).
+            "dinamico": bool(f["dinamico"]),
             "corriendo": corriendo,
             "moneda": f["moneda"],
             "gasto": gasto,
@@ -654,6 +657,63 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
         # por que. None cuando esa tabla no tiene nada del mes.
         "gasto_pauta": gasto_pauta,
     }
+
+
+_TIPOS_PIEZA = ("imagen", "titulo", "texto", "video")
+
+
+def desglose_dinamico(db_path: str, ad_id: str, mes: str) -> dict:
+    """Las piezas de UN anuncio dinamico en un mes, con lo que dio cada una.
+
+    Pedido de Juan (5/11), por el anuncio de Argentina: es uno solo pero adentro
+    tiene varias imagenes y textos, y lo que se decide es cual anda.
+
+    **Cada tipo se lee por su lado y nunca se suman entre si.** Meta reparte el
+    gasto del anuncio entre las imagenes, y por separado entre los textos: la
+    suma de las imagenes es el gasto del anuncio, y la de los textos tambien.
+    Sumar imagenes con textos contaria la plata dos veces.
+
+    Mismas reglas que las tarjetas: solo los numeros del mes, y el costo por
+    lead solo si hay leads.
+    """
+    desde, hasta = limites_del_mes(mes)
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT p.tipo, p.pieza_id, p.texto, p.imagen_archivo,
+                   SUM(i.spend) AS gasto, SUM(i.impressions) AS impresiones,
+                   SUM(i.clicks) AS clics, SUM(i.leads) AS leads
+              FROM meta_ad_pieza_insights i
+              JOIN meta_ad_piezas p
+                ON p.ad_id = i.ad_id AND p.tipo = i.tipo
+               AND p.pieza_id = i.pieza_id
+             WHERE i.ad_id = ? AND i.date BETWEEN ? AND ?
+             GROUP BY p.tipo, p.pieza_id
+            HAVING SUM(i.spend) > 0 OR SUM(i.impressions) > 0
+             ORDER BY SUM(i.spend) DESC, SUM(i.impressions) DESC
+        """, (ad_id, desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    tipos = {t: [] for t in _TIPOS_PIEZA}
+    for f in filas:
+        gasto = round(float(f["gasto"] or 0), 2)
+        leads = int(f["leads"] or 0)
+        impresiones = int(f["impresiones"] or 0)
+        clics = int(f["clics"] or 0)
+        tipos.setdefault(f["tipo"], []).append({
+            "pieza_id": f["pieza_id"],
+            "texto": f["texto"],
+            "tiene_imagen": bool(f["imagen_archivo"]),
+            "gasto": gasto,
+            "impresiones": impresiones,
+            "clics": clics,
+            "leads": leads,
+            "cpl": _costo(gasto, leads),
+            "ctr": _tasa(clics, impresiones),
+        })
+    return {"ad_id": ad_id, "mes": mes, "desde": desde, "hasta": hasta,
+            "tipos": {t: lista for t, lista in tipos.items() if lista}}
 
 
 def resumen_en_curso(db_path: str, desde: str, hasta: str) -> dict:
