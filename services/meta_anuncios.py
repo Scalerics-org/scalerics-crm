@@ -34,9 +34,20 @@ logger = logging.getLogger(__name__)
 # verdad esta corriendo — un anuncio prendido adentro de una campana apagada no
 # corre, y es la diferencia entre "esto se esta pautando" y no.
 _CAMPOS_AD = (
-    "id,name,effective_status,campaign{id,name},adset{name},"
-    "creative{id,object_type,title,body,image_url,video_id}"
+    "id,name,effective_status,campaign{id,name},adset{name,is_dynamic_creative},"
+    "creative{id,object_type,title,body,image_url,video_id,asset_feed_spec}"
 )
+
+# Los desgloses por pieza de un anuncio dinamico: uno por tipo, porque Meta no
+# deja pedir dos a la vez. La clave es lo que contesta Meta, el valor el `tipo`
+# que se guarda.
+_DESGLOSES = {"image_asset": "imagen", "body_asset": "texto",
+              "title_asset": "titulo", "video_asset": "video"}
+
+# Cada desglose es una llamada por anuncio y por tipo. Hoy hay uno solo (el de
+# Argentina); el tope esta para que una cuenta llena de dinamicos no dispare el
+# rate limit de Meta (code 17) en el sync diario.
+DINAMICOS_MAXIMOS = 10
 
 _CAMPOS_INSIGHT = (
     "ad_id,ad_name,spend,account_currency,impressions,clicks,reach,actions"
@@ -167,6 +178,112 @@ def _traer_insights_de(cuenta: str, desde: str, hasta: str, pausa: float = 0,
     return filas
 
 
+def es_dinamico(anuncio: dict) -> bool:
+    """Si Meta arma el anuncio combinando varias piezas. Puede venir marcado en
+    el conjunto (creativo dinamico) o en el creativo (asset_feed_spec)."""
+    return bool((anuncio.get("adset") or {}).get("is_dynamic_creative")
+                or (anuncio.get("creative") or {}).get("asset_feed_spec"))
+
+
+def _traer_desglose(ad_id: str, desglose: str, desde: str, hasta: str) -> list:
+    """El gasto por dia de cada pieza de UN tipo de un anuncio dinamico."""
+    import json
+
+    import requests
+
+    from meta_config import GRAPH
+
+    params = {
+        "access_token": os.environ["META_ADS_TOKEN"],
+        "fields": "spend,impressions,clicks,actions",
+        "breakdowns": desglose,
+        "time_increment": 1,
+        "time_range": json.dumps({"since": desde, "until": hasta}),
+        "limit": 500,
+    }
+    filas, url = [], f"{GRAPH}/{ad_id}/insights"
+    while url:
+        r = requests.get(url, params=params, timeout=60)
+        if not r.ok:
+            raise _ErrorDeMeta(f"desglose {desglose} {r.status_code}: {_motivo(r)}")
+        d = r.json()
+        if "error" in d:
+            raise _ErrorDeMeta(f"desglose {desglose}: {d['error']}")
+        filas.extend(d.get("data", []))
+        url = d.get("paging", {}).get("next")
+        params = {}
+    return filas
+
+
+def _pieza_de(fila: dict, desglose: str):
+    """La pieza que viene en una fila del desglose, en nuestros nombres.
+
+    Meta la manda como objeto: {"id", "text"} para textos y titulos,
+    {"id", "hash", "url", "name"} para imagenes y {"id", "video_id",
+    "thumbnail_url", "video_name"} para videos."""
+    p = fila.get(desglose)
+    if not isinstance(p, dict) or not p.get("id"):
+        return None
+    return {
+        "pieza_id": str(p["id"]),
+        "texto": p.get("text") or p.get("name") or p.get("video_name") or None,
+        "imagen_url": p.get("url") or p.get("thumbnail_url") or None,
+    }
+
+
+def _guardar_desglose(conn, ad_id: str, tipo: str, desglose: str, crudas,
+                      carpeta: str, bajar) -> tuple:
+    """Upsert de las piezas y de su gasto por dia. Devuelve (filas, imagenes)."""
+    filas, imagenes = 0, 0
+    for f in crudas:
+        pieza = _pieza_de(f, desglose)
+        if not pieza or not f.get("date_start"):
+            continue
+        previo = conn.execute(
+            "SELECT imagen_archivo FROM meta_ad_piezas "
+            "WHERE ad_id = ? AND tipo = ? AND pieza_id = ?",
+            (ad_id, tipo, pieza["pieza_id"])).fetchone()
+        archivo = previo["imagen_archivo"] if previo else None
+        if archivo and not os.path.exists(archivo):
+            archivo = None
+        # Solo las imagenes: la miniatura de un video es chica y no sirve.
+        if tipo == "imagen" and pieza["imagen_url"] and not archivo:
+            destino = os.path.join(carpeta, f"pieza_{ad_id}_{pieza['pieza_id']}.jpg")
+            try:
+                if bajar(pieza["imagen_url"], destino):
+                    archivo = destino
+                    imagenes += 1
+            except Exception as e:
+                logger.warning(f"Pieza {ad_id}/{pieza['pieza_id']}: {e}")
+        conn.execute("""
+            INSERT INTO meta_ad_piezas
+                (ad_id, tipo, pieza_id, texto, imagen_url, imagen_archivo, synced_at)
+            VALUES (?,?,?,?,?,?, CURRENT_TIMESTAMP)
+            ON CONFLICT(ad_id, tipo, pieza_id) DO UPDATE SET
+                texto          = COALESCE(excluded.texto, meta_ad_piezas.texto),
+                imagen_url     = COALESCE(excluded.imagen_url, meta_ad_piezas.imagen_url),
+                imagen_archivo = excluded.imagen_archivo,
+                synced_at      = CURRENT_TIMESTAMP
+        """, (ad_id, tipo, pieza["pieza_id"], pieza["texto"],
+              pieza["imagen_url"], archivo))
+        conn.execute("""
+            INSERT INTO meta_ad_pieza_insights
+                (date, ad_id, tipo, pieza_id, spend, impressions, clicks, leads,
+                 synced_at)
+            VALUES (?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+            ON CONFLICT(date, ad_id, tipo, pieza_id) DO UPDATE SET
+                spend       = excluded.spend,
+                impressions = excluded.impressions,
+                clicks      = excluded.clicks,
+                leads       = excluded.leads,
+                synced_at   = CURRENT_TIMESTAMP
+        """, (f["date_start"], ad_id, tipo, pieza["pieza_id"],
+              float(f.get("spend") or 0), _entero(f.get("impressions")),
+              _entero(f.get("clicks")), _leads_de(f)))
+        filas += 1
+    return filas, imagenes
+
+
 def _guardar_insights(conn, crudas) -> int:
     """Upsert por (date, ad_id): correrlo dos veces sobre el mismo dia lo
     actualiza, no lo duplica. Devuelve cuantas filas guardo."""
@@ -225,7 +342,8 @@ def _leads_de(fila: dict) -> int:
 
 
 def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
-                         traer_ads=None, traer_insights=None, bajar=None) -> dict:
+                         traer_ads=None, traer_insights=None, bajar=None,
+                         traer_desglose=None) -> dict:
     """Trae anuncios, fotos e insights por anuncio. Idempotente.
 
     Las tres funciones que hablan con afuera se pueden inyectar: los tests
@@ -239,6 +357,10 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
                     "salteado": "sin_credenciales"}
         traer_ads = traer_ads or _traer_ads
         traer_insights = traer_insights or _traer_insights
+    # Con la API falsa de los tests y sin desglose inyectado, no hay desglose:
+    # no se puede salir a la red.
+    traer_desglose = traer_desglose or (
+        _traer_desglose if traer_ads is _traer_ads else (lambda *a: []))
     bajar = bajar or _bajar
 
     carpeta = _dir_creativos(db_path)
@@ -246,7 +368,7 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
 
     conn = _connect(db_path)
     try:
-        anuncios, imagenes = 0, 0
+        anuncios, imagenes, dinamicos = 0, 0, []
         for a in traer_ads():
             ad_id = a.get("id")
             if not ad_id:
@@ -279,8 +401,8 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
                 INSERT INTO meta_ads
                     (ad_id, ad_name, campaign_id, campaign_name, adset_name,
                      effective_status, creative_id, object_type, titulo, cuerpo,
-                     imagen_url, imagen_archivo, synced_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+                     imagen_url, imagen_archivo, dinamico, synced_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
                 ON CONFLICT(ad_id) DO UPDATE SET
                     ad_name          = excluded.ad_name,
                     campaign_id      = excluded.campaign_id,
@@ -293,6 +415,7 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
                     cuerpo           = excluded.cuerpo,
                     imagen_url       = excluded.imagen_url,
                     imagen_archivo   = excluded.imagen_archivo,
+                    dinamico         = excluded.dinamico,
                     synced_at        = CURRENT_TIMESTAMP
             """, (
                 ad_id, a.get("name"),
@@ -302,9 +425,13 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
                 a.get("effective_status"),
                 c.get("id"), c.get("object_type"),
                 c.get("title") or None, c.get("body") or None,
-                url, archivo,
+                url, archivo, 1 if es_dinamico(a) else 0,
             ))
             anuncios += 1
+            # Del desglose solo hacen falta los que estan al aire: uno apagado
+            # ya tiene guardado lo que gasto mientras corrio.
+            if es_dinamico(a) and a.get("effective_status") == "ACTIVE":
+                dinamicos.append(ad_id)
 
         filas, fallo = 0, None
         try:
@@ -318,13 +445,32 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
 
         filas = _guardar_insights(conn, crudas)
 
+        # El desglose por pieza de los dinamicos. Si falla, se avisa y sigue:
+        # el gasto del anuncio ya esta guardado y es lo que no se puede perder.
+        filas_piezas = 0
+        if len(dinamicos) > DINAMICOS_MAXIMOS:
+            logger.warning(f"Anuncios: {len(dinamicos)} dinamicos, se desglosan "
+                           f"los primeros {DINAMICOS_MAXIMOS}")
+        for ad_id in dinamicos[:DINAMICOS_MAXIMOS]:
+            for desglose, tipo in _DESGLOSES.items():
+                try:
+                    crudas = traer_desglose(ad_id, desglose, desde, hasta)
+                except _ErrorDeMeta as e:
+                    logger.warning(f"Anuncio dinamico {ad_id}: {e}")
+                    continue
+                n, imgs = _guardar_desglose(conn, ad_id, tipo, desglose, crudas,
+                                            carpeta, bajar)
+                filas_piezas += n
+                imagenes += imgs
+
         conn.commit()
     finally:
         conn.close()
 
     logger.info(f"Anuncios: {anuncios} anuncios, {filas} filas de gasto, "
                 f"{imagenes} imagenes nuevas")
-    salida = {"anuncios": anuncios, "filas": filas, "imagenes": imagenes}
+    salida = {"anuncios": anuncios, "filas": filas, "imagenes": imagenes,
+              "dinamicos": len(dinamicos), "filas_piezas": filas_piezas}
     if fallo:
         salida["error_gasto"] = fallo
     return salida

@@ -538,6 +538,47 @@ def init_db(db_path: str) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ad_insights_fecha "
                      "ON meta_ad_insights(date)")
 
+        # Anuncios dinamicos (pedido de Juan, 5/11, por el de Argentina): un
+        # solo anuncio con varias imagenes, textos y titulos que Meta combina.
+        # Mirado como anuncio es una fila; lo que se decide es que pieza de
+        # adentro anda. `dinamico` lo marca el sync y las dos tablas de abajo
+        # guardan el desglose por pieza.
+        _add_column(conn, "meta_ads", "dinamico", "INTEGER NOT NULL DEFAULT 0")
+
+        # Una fila por pieza de un anuncio dinamico: la imagen, el texto o el
+        # titulo. `tipo` es imagen | texto | titulo | video. La foto se baja
+        # una vez al volumen por lo mismo que la del anuncio: la URL caduca.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ad_piezas (
+                ad_id          TEXT NOT NULL,
+                tipo           TEXT NOT NULL,
+                pieza_id       TEXT NOT NULL,
+                texto          TEXT,
+                imagen_url     TEXT,
+                imagen_archivo TEXT,
+                synced_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (ad_id, tipo, pieza_id)
+            )
+        """)
+
+        # El gasto de cada pieza por dia. Meta lo da con un desglose por tipo
+        # de pieza: las imagenes suman el gasto del anuncio, y los textos
+        # tambien, cada tipo por su lado. Por eso nunca se suman tipos entre si.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ad_pieza_insights (
+                date        TEXT NOT NULL,
+                ad_id       TEXT NOT NULL,
+                tipo        TEXT NOT NULL,
+                pieza_id    TEXT NOT NULL,
+                spend       REAL DEFAULT 0,
+                impressions INTEGER DEFAULT 0,
+                clicks      INTEGER DEFAULT 0,
+                leads       INTEGER DEFAULT 0,
+                synced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, ad_id, tipo, pieza_id)
+            )
+        """)
+
         # Cada corrida guarda el dossier entero, no solo el informe: es lo que
         # permite auditar después por qué se dijo lo que se dijo, y comparar
         # contra el período anterior sin recalcular el pasado.

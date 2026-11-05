@@ -269,6 +269,49 @@ def api_piezas():
     return jsonify(piezas_del_mes(_db(), mes))
 
 
+@marketing_bp.route("/api/marketing/piezas/<ad_id>/desglose")
+def api_piezas_desglose(ad_id):
+    """Lo que dio cada imagen, texto y titulo de un anuncio dinamico en un mes."""
+    from services.anuncios import desglose_dinamico
+
+    if not _AD_ID.match(ad_id or ""):
+        return jsonify({"error": "id invalido"}), 400
+    mes = request.args.get("mes") or date.today().isoformat()[:7]
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    return jsonify(desglose_dinamico(_db(), ad_id, mes))
+
+
+@marketing_bp.route("/api/marketing/piezas/<ad_id>/imagen/<pieza_id>")
+def api_pieza_imagen(ad_id, pieza_id):
+    """La foto de una pieza de un anuncio dinamico, servida desde el volumen
+    (la URL de Meta caduca, igual que la del anuncio)."""
+    import os.path
+
+    from flask import send_file
+
+    from database import _connect
+    from services.meta_anuncios import _dir_creativos
+
+    if not _AD_ID.match(ad_id or "") or not _AD_ID.match(pieza_id or ""):
+        return jsonify({"error": "id invalido"}), 400
+    conn = _connect(_db())
+    try:
+        fila = conn.execute(
+            "SELECT imagen_archivo FROM meta_ad_piezas WHERE ad_id = ? "
+            "AND tipo = 'imagen' AND pieza_id = ?", (ad_id, pieza_id)).fetchone()
+    finally:
+        conn.close()
+    ruta = fila["imagen_archivo"] if fila else None
+    carpeta = os.path.abspath(_dir_creativos(_db()))
+    if (not ruta or not os.path.abspath(ruta).startswith(carpeta + os.sep)
+            or not os.path.exists(ruta)):
+        return jsonify({"error": "sin imagen"}), 404
+    resp = send_file(ruta, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "private, max-age=2592000"
+    return resp
+
+
 @marketing_bp.route("/api/marketing/leads-semana")
 def api_leads_semana():
     """Cuando llegan los leads, de a UNA semana (lunes a domingo, Montevideo).
