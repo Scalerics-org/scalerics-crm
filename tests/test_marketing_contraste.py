@@ -148,6 +148,11 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # El sello de version al pie del panel.
                  ".sc-version",
                  ".sc-piezas-grupo span",
+                 # El desglose de los anuncios dinamicos (5/11), adentro de la
+                 # tarjeta de anuncio: los encabezados de la tabla, la cuenta
+                 # de cada tipo y el borde del boton al pasar el mouse.
+                 ".sc-desg th", ".sc-desg-tit span",
+                 ".sc-anun-desglose-btn:hover",
                  # Las horas y los días de "Cuándo llegan los leads", sobre
                  # --superficie (la columna fija del día pinta ese fondo).
                  ".sc-lleg th"}
