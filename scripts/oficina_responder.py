@@ -7,7 +7,11 @@ de OFICINA_BOT_TOKEN o de %APPDATA%/Scalerics/oficina_bot_token.txt (lo crea
 "Activar Oficina.bat") y nunca se imprime.
 
 Uso:
-    python scripts/oficina_responder.py pendientes
+    python scripts/oficina_responder.py pendientes [agente]
+        sin agente, las de Recordatorios wpp (bruno); "seo" para el de SEO, GEO y AEO
+    python scripts/oficina_responder.py informe <agente> <archivo.json>
+        el JSON: {"asunto": "...", "texto": "...", "fuente": "..."}; queda en la
+        Oficina y sale por mail
     python scripts/oficina_responder.py responder <id> <archivo.json>
         el JSON: {"texto": "...", "fuente": "de dónde salió el dato"}
     python scripts/oficina_responder.py recordatorios
@@ -53,9 +57,14 @@ def main(args):
     if not args:
         sys.exit(__doc__)
     cmd = args[0]
-    if cmd == "pendientes":
-        print(json.dumps(_pedir("GET", "/api/oficina-bot/pendientes")["pendientes"],
+    if cmd == "pendientes" and len(args) <= 2:
+        agente = args[1] if len(args) == 2 else "bruno"
+        print(json.dumps(_pedir("GET", "/api/oficina-bot/pendientes", params={"agente": agente})["pendientes"],
                          ensure_ascii=False, indent=2))
+    elif cmd == "informe" and len(args) == 3:
+        cuerpo = json.load(open(args[2], encoding="utf-8"))
+        print(json.dumps(_pedir("POST", f"/api/oficina-bot/agentes/{args[1]}/informe", json=cuerpo),
+                         ensure_ascii=False))
     elif cmd == "responder" and len(args) == 3:
         cuerpo = json.load(open(args[2], encoding="utf-8"))
         print(json.dumps(_pedir("POST", f"/api/oficina-bot/mensajes/{int(args[1])}/responder",
