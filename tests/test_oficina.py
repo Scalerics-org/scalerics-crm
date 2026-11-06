@@ -57,11 +57,31 @@ def _cli(app, email, paneles=None):
 
 # ── servicio ─────────────────────────────────────────────────────────────────
 
-def test_queda_un_solo_agente_y_se_llama_recordatorios_wpp():
+def test_los_agentes_son_recordatorios_wpp_y_seo():
     import os
-    assert list(of.AGENTES) == ["bruno"]
+    assert list(of.AGENTES) == ["bruno", "seo"]
     assert of.AGENTES["bruno"]["nombre"] == "Recordatorios wpp"
-    assert os.listdir(os.path.join("static", "oficina")) == ["bruno.svg"]
+    assert of.AGENTES["seo"]["nombre"] == "SEO, GEO y AEO"
+    assert sorted(os.listdir(os.path.join("static", "oficina"))) == ["bruno.svg", "seo.svg"]
+
+
+def test_cada_tarea_ve_solo_las_preguntas_de_su_agente(db):
+    p_wa = of.preguntar(db, "bruno", "¿Me escribió Luan?")
+    p_seo = of.preguntar(db, "seo", "¿Cómo venimos en Google?")
+    # Sin agente, las de Recordatorios wpp: su tarea pide /pendientes sin parámetro.
+    assert [p["id"] for p in of.pendientes(db)] == [p_wa]
+    assert [p["id"] for p in of.pendientes(db, "seo")] == [p_seo]
+    with pytest.raises(of.NoSePuede):
+        of.pendientes(db, "nadie")
+
+
+def test_el_informe_queda_en_la_conversacion_sin_pregunta(db):
+    mid = of.publicar_informe(db, "seo", "  Esta semana: 30 clics.  ", "Search Console")
+    m = of.ficha(db, "seo")["mensajes"][-1]
+    assert (m["id"], m["autor"], m["texto"]) == (mid, "agente", "Esta semana: 30 clics.")
+    assert of.pendientes(db, "seo") == []
+    with pytest.raises(of.NoSePuede):
+        of.publicar_informe(db, "seo", "   ")
 
 
 def test_pregunta_queda_pendiente_hasta_que_el_bot_responde(db):
@@ -144,7 +164,7 @@ def test_el_panel_es_solo_para_admin(app):
     assert otro.post("/api/oficina/agentes/bruno/mensajes", json={"texto": "hola"}).status_code == 403
     jefe = _cli(app, "jefe@scalerics.com")
     r = jefe.get("/api/oficina/agentes")
-    assert r.status_code == 200 and len(r.get_json()["agentes"]) == 1
+    assert r.status_code == 200 and len(r.get_json()["agentes"]) == 2
     assert jefe.get("/api/oficina/agentes/sofia").status_code == 404
 
 
@@ -277,8 +297,9 @@ def test_no_vuelve_la_consulta_libre_del_crm(app):
 
 
 def test_la_pantalla_se_llama_recordatorios_wpp_y_no_tiene_el_equipo():
-    assert "<h1>Recordatorios wpp</h1>" in HTML
+    assert '<h1 id="of-titulo">Recordatorios wpp</h1>' in HTML
     assert re.search(r'id="nav-oficina"[^>]*>.*Recordatorios wpp</div>', HTML)
+    assert re.search(r"""id="nav-oficina-seo" onclick="ofIr\('seo'\)"[^>]*>.*SEO, GEO y AEO</div>""", HTML)
     for resto in ('id="of-equipo"', ".of-equipo{", "ofPintarEquipo", "Bruno"):
         assert resto not in HTML, resto
     assert 'id="of-f-msg"' in HTML and 'id="of-f-ind"' in HTML
@@ -288,3 +309,20 @@ def test_si_fallan_los_recordatorios_se_avisa():
     cuerpo = HTML[HTML.index("async function ofCargarRecs()"):HTML.index("async function ofRecAccion(")]
     catch = cuerpo[cuerpo.index("} catch (e) {"):]
     assert "nota.textContent = e.message" in catch[:300]
+
+
+def test_el_informe_por_la_api_sale_por_mail(app, monkeypatch):
+    from services import email_service
+    enviados = []
+    monkeypatch.setattr(email_service, "_send", lambda to, subject, html, **kw: enviados.append((to, subject, html)) or True)
+    monkeypatch.setenv("SEO_INFORME_EMAIL", "juan@ejemplo.com")
+    bot = app.test_client()
+    r = bot.post("/api/oficina-bot/agentes/seo/informe", headers={"x-oficina-token": TOKEN},
+                 json={"asunto": "SEO: semana del 9/11", "texto": "Subimos.\n<b>ojo</b>", "fuente": "Search Console"})
+    assert r.get_json()["mail"] is True
+    to, subject, html = enviados[0]
+    assert (to, subject) == ("juan@ejemplo.com", "SEO: semana del 9/11")
+    assert "Subimos.<br>&lt;b&gt;ojo&lt;/b&gt;" in html
+    assert bot.post("/api/oficina-bot/agentes/nadie/informe", headers={"x-oficina-token": TOKEN},
+                    json={"texto": "x"}).status_code == 400
+    assert bot.get("/api/oficina-bot/pendientes?agente=nadie", headers={"x-oficina-token": TOKEN}).status_code == 404

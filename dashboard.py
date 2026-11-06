@@ -5047,10 +5047,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
        Solo admin, como Contraseñas:
        se muestra desde el bloque de /api/me. -->
   <div class="nav-section-label">WHATSAPP</div>
-  <div class="nav-item" id="nav-oficina" onclick="showPanel('oficina')" style="display:none"><i data-lucide="message-circle" class="nav-icon"></i> Recordatorios wpp</div>
+  <div class="nav-item" id="nav-oficina" onclick="ofIr('bruno')" style="display:none"><i data-lucide="message-circle" class="nav-icon"></i> Recordatorios wpp</div>
   <!-- Agentes (22/10): lo que proponen las tareas programadas de Claude del equipo. Panel "agentes" de panel_access. -->
   <div class="nav-section-label">AGENTES</div>
   <div class="nav-item" id="nav-agentes" onclick="showPanel('agentes')"><i data-lucide="bot" class="nav-icon"></i> Agentes <span id="ag-badge" style="display:none;background:var(--azul);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px"></span></div>
+  <!-- SEO, GEO y AEO (5/11): segundo agente de la Oficina; usa el mismo panel con ofIr('seo'). Solo admin. -->
+  <div class="nav-item" id="nav-oficina-seo" onclick="ofIr('seo')" style="display:none"><i data-lucide="search" class="nav-icon"></i> SEO, GEO y AEO</div>
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
@@ -6357,8 +6359,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="oficina-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Recordatorios wpp</h1>
-        <div class="page-date">Lo que encontró en tus chats de WhatsApp. Abajo le podés preguntar y dejarle indicaciones</div>
+        <h1 id="of-titulo">Recordatorios wpp</h1>
+        <div class="page-date" id="of-sub">Lo que encontró en tus chats de WhatsApp. Abajo le podés preguntar y dejarle indicaciones</div>
       </div>
     </div>
     <div class="cr-nota" id="of-nota" role="status" aria-live="polite"></div>
@@ -13020,6 +13022,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
       if (navCred) navCred.style.display = 'flex';
       const navOf = document.getElementById('nav-oficina');
       if (navOf) navOf.style.display = 'flex';
+      const navSeo = document.getElementById('nav-oficina-seo');
+      if (navSeo) navSeo.style.display = 'flex';
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
     const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
@@ -17612,11 +17616,32 @@ function ofFecha(s) {
   return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit'});
 }
 
+// La Oficina tiene dos agentes en el mismo panel: Recordatorios wpp (con los
+// recordatorios arriba) y SEO, GEO y AEO (solo la ficha). El menú elige cuál.
+const OF_CABECERAS = {
+  bruno: ['Recordatorios wpp', 'Lo que encontró en tus chats de WhatsApp. Abajo le podés preguntar y dejarle indicaciones'],
+  seo: ['SEO, GEO y AEO', 'Trabaja solo para que nos encuentren en Google y en las IA. Los lunes te cuenta qué hizo, acá y por mail'],
+};
+
+function ofIr(id) {
+  ofSel = OF_CABECERAS[id] ? id : OF_AGENTE;
+  showPanel('oficina');
+  if (ofSel !== OF_AGENTE) {
+    document.getElementById('nav-oficina')?.classList.remove('active');
+    document.getElementById('nav-oficina-seo')?.classList.add('active');
+  }
+}
+
 async function ofCargar() {
   const nota = document.getElementById('of-nota');
   if (nota) nota.textContent = '';
-  ofCargarRecs();
-  await ofAbrir(OF_AGENTE);
+  const [titulo, sub] = OF_CABECERAS[ofSel] || OF_CABECERAS[OF_AGENTE];
+  document.getElementById('of-titulo').textContent = titulo;
+  document.getElementById('of-sub').textContent = sub;
+  const recs = document.getElementById('of-recs');
+  if (ofSel === OF_AGENTE) ofCargarRecs();
+  else if (recs) recs.innerHTML = '';
+  await ofAbrir(ofSel);
 }
 
 async function ofAbrir(id) {
@@ -17635,7 +17660,7 @@ async function ofAbrir(id) {
 function ofMensajesHtml(f) {
   const a = f.agente;
   if (!f.mensajes.length) {
-    return '<div class="of-msg ag">Hola Juan. ' + crEsc(a.descripcion) + ' Preguntame lo que quieras de tus chats.</div>';
+    return '<div class="of-msg ag">Hola Juan. ' + crEsc(a.descripcion) + ' ' + crEsc(a.saludo || '') + '</div>';
   }
   return f.mensajes.map(m => {
     if (m.autor === 'juan') {

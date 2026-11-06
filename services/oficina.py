@@ -13,6 +13,12 @@ Code programada en la compu de Juan, que lee los pendientes por
 agente (indicaciones, aprendizajes, últimos mensajes) y devuelve la respuesta.
 Por eso tarda unos minutos. Juan pidió que sea gratis.
 
+El 5/11 se sumó el agente de SEO, GEO y AEO (`seo`): que a Scalerics la
+encuentren en Google y en las IA. Juan le pregunta desde el CRM como a
+Recordatorios wpp; lo contesta otra tarea programada (docs/agente-seo.md), que
+además los lunes deja el informe semanal con `publicar_informe` y lo manda por
+mail. Cada tarea pide solo las preguntas de su agente.
+
 Solo admin.
 """
 
@@ -26,8 +32,19 @@ AGENTES = {
         "nombre": "Recordatorios wpp", "rol": "Tu WhatsApp Business",
         "descripcion": "Lee tus chats, te arma recordatorios y los mensajes para responder. Nunca manda nada solo.",
         "mira": "Tus chats de WhatsApp Business, menos los que dejaste afuera.",
+        "saludo": "Preguntame lo que quieras de tus chats.",
+    },
+    "seo": {
+        "nombre": "SEO, GEO y AEO", "rol": "Que nos encuentren en Google y en las IA",
+        "descripcion": "Trabaja solo: mejora y publica textos y páginas de scalerics.com para Google y las IA, "
+                       "sin tocar el diseño. Los lunes te cuenta qué hizo y cómo venimos.",
+        "mira": "Search Console, la web scalerics.com y lo que responden las IA.",
+        "saludo": "Preguntame cómo venimos en Google o en las IA, o pedime algo y lo hago.",
     },
 }
+# El que contesta si la tarea no dice de quién: la de Recordatorios wpp es
+# anterior al segundo agente y pide /pendientes sin parámetro.
+AGENTE_POR_DEFECTO = "bruno"
 
 LARGO_MENSAJE = 2000
 LARGO_RESPUESTA = 6000
@@ -260,13 +277,14 @@ def opinar(db_path: str, mensaje_id: int, tipo: str, correccion=None) -> None:
 
 # ── lo que usa la sesión de Claude Code ──────────────────────────────────────
 
-def pendientes(db_path: str) -> list[dict]:
-    """Cada pregunta sin responder con el contexto que necesita el agente."""
+def pendientes(db_path: str, agente: str = AGENTE_POR_DEFECTO) -> list[dict]:
+    """Las preguntas sin responder de un agente, con el contexto que necesita."""
+    _agente(agente)
     conn = _connect(db_path)
     try:
         preguntas = _filas(conn,
             "SELECT id, agente, texto, creado_en FROM oficina_mensajes "
-            "WHERE autor = 'juan' AND estado = 'pendiente' ORDER BY id")
+            "WHERE autor = 'juan' AND estado = 'pendiente' AND agente = ? ORDER BY id", (agente,))
         salida = []
         for p in preguntas:
             if p["agente"] not in AGENTES:
@@ -305,6 +323,22 @@ def responder(db_path: str, pregunta_id: int, texto, fuente=None) -> int:
         cur = conn.execute(
             "INSERT INTO oficina_mensajes (agente, autor, texto, responde_a, fuente, creado_en) "
             "VALUES (?, 'agente', ?, ?, ?, ?)", (p["agente"], texto, pregunta_id, fuente, _ahora()))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def publicar_informe(db_path: str, agente: str, texto, fuente=None) -> int:
+    """Un mensaje que el agente escribe sin que Juan pregunte (el informe de los lunes)."""
+    _agente(agente)
+    texto = _texto(texto, LARGO_RESPUESTA, "Falta el texto del informe")
+    fuente = (fuente or "").strip()[:200] if isinstance(fuente, str) else ""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO oficina_mensajes (agente, autor, texto, fuente, creado_en) "
+            "VALUES (?, 'agente', ?, ?, ?)", (agente, texto, fuente, _ahora()))
         conn.commit()
         return cur.lastrowid
     finally:

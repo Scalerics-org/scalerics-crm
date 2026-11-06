@@ -6,10 +6,12 @@ el ADMIN_TOKEN, que abre todo el CRM.
 """
 
 import hmac
+import html
 import os
 
 from flask import Blueprint, current_app, jsonify, request
 
+from services import email_service
 from services import oficina as of
 from services import wa_juan
 
@@ -35,7 +37,36 @@ def _candado_bot():
 
 @oficina_bot_bp.route("/api/oficina-bot/pendientes")
 def bot_pendientes():
-    return jsonify({"ok": True, "pendientes": of.pendientes(_db())})
+    agente = request.args.get("agente") or of.AGENTE_POR_DEFECTO
+    try:
+        return jsonify({"ok": True, "pendientes": of.pendientes(_db(), agente)})
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+
+
+def _mail_informe(agente: str, asunto: str, texto: str) -> bool:
+    """El informe también va por mail (Juan, 20/10: informes por mail, no por WhatsApp)."""
+    destino = (os.environ.get("SEO_INFORME_EMAIL", "").strip()
+               or os.environ.get("ADMIN_EMAIL", "").strip())
+    if not destino:
+        return False
+    nombre = of.AGENTES[agente]["nombre"]
+    cuerpo = html.escape(texto).replace("\n", "<br>")
+    pagina = email_service._layout(nombre, asunto, f'<p style="font-size:15px;line-height:1.6">{cuerpo}</p>',
+                                   cta_url="https://scalerics-crm.fly.dev/", cta_label="Abrir en el CRM")
+    return email_service._send(destino, asunto, pagina)
+
+
+@oficina_bot_bp.route("/api/oficina-bot/agentes/<agente>/informe", methods=["POST"])
+def bot_informe(agente):
+    datos = request.get_json(silent=True) or {}
+    try:
+        nuevo = of.publicar_informe(_db(), agente, datos.get("texto"), datos.get("fuente"))
+    except of.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    asunto = (datos.get("asunto") or "").strip()[:150] if isinstance(datos.get("asunto"), str) else ""
+    mail = _mail_informe(agente, asunto or f"Informe de {of.AGENTES[agente]['nombre']}", datos["texto"].strip())
+    return jsonify({"ok": True, "id": nuevo, "mail": mail})
 
 
 @oficina_bot_bp.route("/api/oficina-bot/mensajes/<int:msj_id>/responder", methods=["POST"])
